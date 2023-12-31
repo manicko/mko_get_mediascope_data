@@ -1,0 +1,7 @@
+# exclude everything from output folder
+data/output/*
+# exception to the rule
+!data/output/.gitkeep
+settings.json
+/venv/
+/.idea/
