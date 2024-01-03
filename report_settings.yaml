@@ -11,10 +11,13 @@
     }
   },
   'category_name': 'Парфюмерия',
-  'ad_filter': 'articleLevel4Id in (4767, 4911)  and adIssueStatusId = R', # Парфюмерия
+  'ad_filter': 'articleLevel4Id in (4767, 4911)  and adIssueStatusId = R',  #Парфюмерия
+    #'articleLevel4Id in (4767, 4911)  and adIssueStatusId = R',  Парфюмерия
     #'articleLevel2Id = 2272 and adIssueStatusId = R' Финансовые услуги
-  'basedemo_filter': 'sex = 2 AND age >= 25 AND age <= 45'   # задаем ЦА w 25-45 BC
-    #'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',   #all 30-60 BC
+  'target_audiences':{
+    'all 30-60 BC':'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+    'w 25-45 BC':'sex = 2 AND age >= 25 AND age <= 45'
+  }
 
 
  }

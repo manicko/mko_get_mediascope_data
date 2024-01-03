@@ -28,7 +28,7 @@ period = get_last_period('m', 3)
 
 print(period)
 date_filter = [period]
-
+date_filter  = [('2023-02-01', '2023-04-22')]
 # Задаем дни недели
 weekday_filter = None
 
