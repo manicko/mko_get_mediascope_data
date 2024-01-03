@@ -10,13 +10,6 @@ from mediascope_api.mediavortex import catalogs as cwc
 # Настраиваем отображение
 
 # Включаем отображение всех колонок
-pd.set_option('display.max_columns', None)
-# Задаем максимальное количество выводимых строк. Раскомментируйте нужную строку
-# 200 строк
-# pd.set_option("display.max_rows", 200)
-# Отображаем все строки. ВАЖНО! Отображение большого DataFrame требует много ресурсов
-# pd.set_option("display.max_rows", None)
-
 # Cоздаем объекты для работы с TVI API
 mnet = mscore.MediascopeApiNetwork()
 mtask = cwt.MediaVortexTask()

@@ -1,36 +1,33 @@
 from pathlib import Path
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from data_getter.utils import get_last_period
-
+from data_getter.utils import (get_last_period, write_to_file, yaml_to_dict)
+import yaml
 import time
 import pandas as pd
-
 
 from mediascope_api.core import net as mscore
 from mediascope_api.mediavortex import tasks as cwt
 from mediascope_api.mediavortex import catalogs as cwc
 
+default_settings_yaml = "default_report_settings.yaml"
+report_settings = 'report_settings.yaml'
 
-# Cоздаем объекты для работы с TVI API
-mnet = mscore.MediascopeApiNetwork()
-mtask = cwt.MediaVortexTask()
-cats = cwc.MediaVortexCats()
+DEFAULT_SETTINGS = yaml_to_dict(default_settings_yaml)
+SETTINGS = yaml_to_dict(report_settings)
 
-# Найдем id товарная категория 2-го уровня - "УСЛУГИ ФИНАНСОВЫЕ"
-# Для этого в параметр level передадим 2, в параметр name - название категории
-# cats.get_tv_article(levels=['2'], name=['УСЛУГИ ФИНАНСОВЫЕ'])
+if SETTINGS['date_filter'] is None:
+    SETTINGS['date_filter'] = [('2023-09-01', '2023-09-02')]  # [get_last_period(**SETTINGS['last_time'])]
 
-# Получим список всех демографических переменных
-# cats.get_tv_demo_attribute()
+settings = DEFAULT_SETTINGS['CROSS_TAB']['DEFAULT_DATA_PARAMS'].copy()
+settings.update(DEFAULT_SETTINGS['CROSS_TAB']['DYNAMICS_BY_SPOTS'])
+for k, v in SETTINGS.items():
+    if k in settings:
+        settings[k] = v
 
-# Обратимся к словарю типов распространения
-# cats.get_tv_breaks_distribution()
-# Для типа распространения "Сетевой" идентификатор - N
+settings.update(DEFAULT_SETTINGS['CROSS_TAB']['DYNAMICS_BY_SPOTS'])
 
-# Обратимся к словарю статусов события
-# cats.get_tv_issue_status()
-# Для "Реальный", будем использовать id R
+
 
 # Задаем параметры по умолчанию для выгрузки из медиаскоп
 GET_DATA_PARAMS = {
@@ -102,9 +99,9 @@ for i, param in enumerate(slices_ru):
 # Функция для задания периода - последние несколько месяцев, лет или недель
 # сначала указываем тип: 'y' -год, 'm' месяц,
 # w' - неделя, затем количество и, наконец True - если включаем текущий день и нет, если нет.
-period = get_last_period('m', 11)
+period = get_last_period('w', 1)
 GET_DATA_PARAMS['date_filter'] = [period]
-# GET_DATA_PARAMS['date_filter'] = [('2023-09-01', '2023-09-31')]
+GET_DATA_PARAMS['date_filter'] = [('2023-09-01', '2023-09-02')]
 
 print(GET_DATA_PARAMS['date_filter'])
 
@@ -140,28 +137,27 @@ slices_ru = slices_en.copy()
 for i, param in enumerate(slices_ru):
     slices_ru[i] = param.replace('EName', 'Name')
 
-GET_DATA_PARAMS['slices'] = slices_ru
+GET_DATA_PARAMS['slices'] = slices_en
 
-# Формируем задание для API TV Index в формате JSON
-task_json = mtask.build_crosstab_task(**GET_DATA_PARAMS)
-
-# Отправляем задание на расчет и ждем выполнения
-task_crosstab = mtask.wait_task(mtask.send_crosstab_task(task_json))
-
-# Получаем результат
-df = mtask.result2table(mtask.get_result(task_crosstab))
-
-df = df[GET_DATA_PARAMS['slices'] + GET_DATA_PARAMS['statistics']]
-
-# path to folder containing SQLight databases
-ROOT_DIR = Path().absolute()
-
-# folder containing data for import export CSV
-CSV_PATH = Path.joinpath(ROOT_DIR, r'data/')
-
-# folder to output CSV from database
-CSV_PATH_OUT = Path.joinpath(CSV_PATH, 'output/')
-file_prefix = 'out'
-time_str = time.strftime("%Y%m%d-%H%M%S")
-out_file = Path(CSV_PATH_OUT, f'{file_prefix}_{time_str}.csv')
-df.to_csv(path_or_buf=out_file, index=False)
+for k,v in GET_DATA_PARAMS.items():
+    if k in settings and settings[k] != v:
+        print(f'key={k},v={v},settings[k]={settings[k]}')
+    elif k not in settings:
+        print(f'key{k} not in settings')
+# Cоздаем объекты для работы с TVI API
+# mnet = mscore.MediascopeApiNetwork()
+# mtask = cwt.MediaVortexTask()
+# cats = cwc.MediaVortexCats()
+#
+# # Формируем задание для API TV Index в формате JSON
+# task_json = mtask.build_crosstab_task(**GET_DATA_PARAMS)
+#
+# # Отправляем задание на расчет и ждем выполнения
+# task_crosstab = mtask.wait_task(mtask.send_crosstab_task(task_json))
+#
+# # Получаем результат
+# df = mtask.result2table(mtask.get_result(task_crosstab))
+#
+# df = df[GET_DATA_PARAMS['slices'] + GET_DATA_PARAMS['statistics']]
+#
+# write_to_file(df, 'test')

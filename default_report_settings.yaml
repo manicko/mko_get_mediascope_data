@@ -1,0 +1,75 @@
+{
+  'REPORT_TYPES': {
+    'dynamics_by_spots': 'CROSS_TAB',
+    'top_advertisers': 'CROSS_TAB',
+    'top_programs':'CROSS_TAB'
+  },
+  'CROSS_TAB': {
+    # Задаем параметры по умолчанию для выгрузки из медиаскоп
+    'DEFAULT_DATA_PARAMS': {
+      'date_filter': Null,  # Фильтр указывается в виде списка ('Начало', 'Конец'). Можно указать несколько периодов
+      'weekday_filter': Null,  # Задаем дни недели
+      'daytype_filter': Null,  # Задаем тип дня
+      'company_filter': Null,  # Задаем каналы
+      'location_filter': Null,  # Задаем место просмотра
+      'basedemo_filter': Null,  # Задаем ЦА
+      'targetdemo_filter': Null, # Доп фильтр ЦА, нужен только в случае расчета отношения между ЦА, например, при расчете Affinity Index
+      'program_filter': Null,  # Фильтр программ
+      'break_filter': Null,  # Фильтр блоков
+      'ad_filter': Null,  # Фильтр роликов:
+      'slices': Null,  # Указываем список срезов
+      'statistics': Null,  # Указываем список статистик для расчета
+      'sortings': Null,  # Задаем условия сортировки:
+      'options': Null  # Задаем опции расчета
+    },
+    'DYNAMICS_BY_SPOTS': {
+      # Указываем список срезов
+      'slices': [
+        # 'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
+        'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
+        # 'researchWeek',  # неделя разрешено указывать не более 1 временного среза на задачу.
+        'advertiserListEName',  # Список рекламодателей
+        # 'advertiserListId',  # Список рекламодателей id
+        'brandListEName',  # Список брендов
+        # 'brandListId',  # Список брендов id
+        'subbrandListEName',  # Список суббрендов
+        # 'subbrandListId',  # Список суббрендов id
+        'modelListEName',  # Список продуктов
+        # 'modelListId',  # Список продуктов id
+        'articleList3EName',  # Список товарных категорий 3
+        'articleList4EName',  # Список товарных категорий 4
+        'adEName',  # Ролик
+        'adStandardDuration',  # Ролик ожидаемая длительность
+        'adDistributionTypeEName',  # Ролик распространение
+        'adTypeName',  # Ролик тип
+        'adPositionId',  # Ролик позиция в блоке
+        'adPositionTypeEName',  # Ролик позиционирование
+        'adPrimeTimeStatusId',  # Прайм/ОфПрайм роликов id' 1 - Prime-time, 2 - Off-prime
+        'adPrimeTimeStatusEName',  # Прайм/ОфПрайм роликов (англ.)
+        'adId',  # Ролик ID
+        'adNotes',  # Ролик описание
+        'tvCompanyEName',  # телекомпания
+        'programEName',  # Программа
+        'programCategoryEName',  # Программа категория (англ.)
+        'programCategoryShortEName',  # Программа короткая категория
+        'programTypeEName'  # Программа жанр
+      ],
+      # Задаем опции расчета
+      'options': {
+        # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+        # Возможно указать только одно значение
+        'kitId': 1,
+        'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+        "standRtg": {
+          "useRealDuration": True,  # расчет по реальной длительности ролика.
+          "standardDuration": 20  # стандартная длительность 20 сек.
+        }
+      },
+      'statistics': [
+        'RtgPerSum',  # суммарный рейтинг группы событий в %
+        'StandRtgPerSum',
+        'QuantitySum'  # количество эфирных событий
+      ]
+    }
+  }
+}
