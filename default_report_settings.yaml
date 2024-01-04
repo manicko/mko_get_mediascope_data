@@ -1,8 +1,9 @@
 {
   'REPORT_TYPES': {
-    'dynamics_by_spots': 'CROSS_TAB',
-    'top_advertisers': 'CROSS_TAB',
-    'top_programs':'CROSS_TAB'
+    'DYNAMICS_BY_SPOTS': 'CROSS_TAB',
+    'DYNAMICS_BY_SPOTS_DICT': 'CROSS_TAB',
+    'TOP_ADVERTISERS': 'CROSS_TAB',
+    'TOP_PROGRAMS':'CROSS_TAB'
   },
   'CROSS_TAB': {
     # Задаем параметры по умолчанию для выгрузки из медиаскоп

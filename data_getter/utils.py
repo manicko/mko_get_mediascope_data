@@ -16,7 +16,21 @@ def str_to_date(d: str):
         return d
 
 
+def get_frequency(settings: dict) -> str | None:
+    if 'multiple_files' not in settings or settings['multiple_files'] is False:
+        return None
+    if 'last_time' not in settings['period']:
+        return None
+    if 'period_type' not in settings['period']['last_time']:
+        return None
+    return settings['period']['last_time']['period_type']
+
+
 def slice_period(period: tuple, period_type: str = 'm'):
+    if period_type is None:
+        yield period
+        return
+
     # добавить проверку на дату старта интервала - начало недели, начало месяца и т.д.
     allowed_periods = {'y': 'years', 'm': 'months', 'w': 'weeks'}
     if period_type not in allowed_periods:
