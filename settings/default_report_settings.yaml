@@ -71,6 +71,29 @@
         'StandRtgPerSum',
         'QuantitySum'  # количество эфирных событий
       ]
+    },
+    'DYNAMICS_BY_SPOTS_DICT': {
+      # Указываем список срезов
+      'slices': [
+        'advertiserEName',  # Список рекламодателей
+        'brandEName',  # Список брендов
+        'subbrandEName',  # Список суббрендов
+        'modelEName'  # Список продуктов
+      ],
+      # Задаем опции расчета
+      'options': {
+        # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+        # Возможно указать только одно значение
+        'kitId': 1,
+        'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+        "standRtg": {
+          "useRealDuration": True,  # расчет по реальной длительности ролика.
+          "standardDuration": 20  # стандартная длительность 20 сек.
+        }
+      },
+      'statistics': [
+        'QuantitySum'  # количество эфирных событий
+      ]
     }
   }
 }

@@ -3,7 +3,7 @@ from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 import yaml
 import time
-import os as os
+from pandas import (concat, DataFrame)
 
 
 def str_to_date(d: str):
@@ -104,7 +104,8 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
     return output
 
 
-def write_to_file(data_frame, folder: str = None, csv_path_out: str = None, file_prefix: str = None):
+def write_to_file(data_frame, folder: str = None, csv_path_out: str = None, file_prefix: str = None,
+                  add_time: bool = True):
     if csv_path_out is None:
         # path to folder containing SQLight databases
         root_dir = Path().absolute()
@@ -116,11 +117,21 @@ def write_to_file(data_frame, folder: str = None, csv_path_out: str = None, file
         file_prefix = 'out'
     if folder is not None:
         csv_path_out = Path.joinpath(csv_path_out, folder)
-    if os.path.isdir(csv_path_out) is False:
-        os.makedirs(csv_path_out)
-    time_str = time.strftime("%Y%m%d-%H%M%S")
-    out_file = Path(csv_path_out, f'{file_prefix}_{time_str}.csv')
-    data_frame.to_csv(path_or_buf=out_file, index=False)
+    # creating folder with subfolders
+    csv_path_out.mkdir(parents=True, exist_ok=True)
+    # try:
+    #     csv_path_out.mkdir(parents=True)  # could use flag exist_ok=True to skip check for folder exists
+    # except FileExistsError:
+    #     print(f'folder: {csv_path_out} already exists')
+    # finally:
+    time_str = ''
+    if add_time is True:
+        time_str = '_' + time.strftime("%Y%m%d_%H%M%S")
+    out_file = Path(csv_path_out, f'{file_prefix}{time_str}.csv')
+    try:
+        data_frame.to_csv(path_or_buf=out_file, index=False, mode='x')
+    except FileExistsError:
+        print(f'File {out_file} already exists. Skip it.')
 
 
 def en_to_ru(slices_en: list) -> list:
@@ -141,3 +152,55 @@ def yaml_to_dict(file: str):
             print(exc)
         else:
             return data
+
+
+def prepare_dict(df):
+    shift = 2  # column number in raw data with advertiser
+    data = {}
+    col_number = len(df.columns)
+    d_col_names = [
+        'action',
+        'search_column_idx',
+        'value',
+        'term',
+        'cat',
+        'adv',
+        'bra',
+        'sbr',
+        'mdl',
+        'cln_0',
+        'cln_1',
+        'cln_2',
+        'cln_3',
+        'cln_4',
+        'cln_5'
+    ]
+
+    # формируем словарь с уникальными значениями колонок
+    for search_id, col in enumerate(df, start=shift):
+        data[search_id] = df[col].unique().tolist()
+
+    data = [[search_id, v, f'"col_{search_id}":"{v}"'] for search_id, rows in data.items() for v in rows]
+
+    # помещаем значение в соответствующую колонку
+    for row in data:
+        row.extend([None] * col_number)
+        search_id, value = row[:2]
+        row[search_id + 1] = value
+
+    df = DataFrame(
+        data,
+        columns=[
+            'search_column_idx',
+            'value',
+            'term',
+            'adv',
+            'bra',
+            'sbr',
+            'mdl'
+        ]
+    )
+    # print(df)
+    df = concat([df, DataFrame(columns=[col for col in d_col_names if col not in df.columns])])
+    df = df[d_col_names]
+    return df

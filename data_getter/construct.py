@@ -1,7 +1,14 @@
 from pathlib import Path
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
-from data_getter.utils import (en_to_ru, slice_period, write_to_file, yaml_to_dict, get_frequency)
+from data_getter.utils import (
+    en_to_ru,
+    slice_period,
+    write_to_file,
+    yaml_to_dict,
+    get_frequency,
+    prepare_dict
+)
 import yaml
 import time
 import pandas as pd
@@ -13,8 +20,9 @@ from mediascope_api.mediavortex import tasks as cwt
 from mediascope_api.mediavortex import catalogs as cwc
 
 # загружаем базовые настройки и настройки заданной выгрузки
-DEFAULT_SETTINGS_YAML = "default_report_settings.yaml"
-REPORT_SETTINGS = 'report_settings.yaml'
+# DEFAULT_SETTINGS_YAML = "../settings/default_report_settings.yaml"
+# REPORT_SETTINGS = '../settings/report_settings.yaml'
+DEFAULT_SETTINGS_YAML = "settings/default_report_settings.yaml"
 
 
 def report_load_export(report_settings, mtask):
@@ -30,8 +38,9 @@ def report_load_export(report_settings, mtask):
     for k, v in report_settings.items():
         if k in settings:
             settings[k] = v
-
-    category = unidecode(report_settings['category_name']).lower()
+    category = ''
+    if 'category_name' in report_settings:
+        category = unidecode(report_settings['category_name'])
     targets = report_settings['target_audiences']
     # меняем настройки выгрузки на русский, если необходимо
     if report_settings['data_lang'] == 'ru':
@@ -52,7 +61,7 @@ def report_load_export(report_settings, mtask):
     print('Готовим задачи к расчету')
     for interval in intervals:
         settings['date_filter'] = [interval]
-        interval_name = f'{category}_{"_".join(interval)}'
+        interval_name = "_".join([category] + list(interval))
         task_intervals[interval_name] = {}
 
         for t_name, t_filter in targets.items():
@@ -86,19 +95,28 @@ def report_load_export(report_settings, mtask):
             df.rename(columns={'prj_name': 'targetAudience'}, inplace=True)
             columns = ['targetAudience'] + columns
         df = df[columns]
+        if report_settings['report_subtype'] == 'DYNAMICS_BY_SPOTS_DICT':
+            df = prepare_dict(df[settings['slices']])
 
         # записываем файл в соответствующую папку
+        dir_name = []
+        if category:
+            dir_name.append(category)
+        if 'folder' in report_settings:
+            dir_name.append(unidecode(report_settings['folder']).lower())
+        dir_name = '/'.join(dir_name)
         write_to_file(
             df,
-            folder=category,
+            folder=dir_name,
             file_prefix=interval_name
         )
         print('.', end='')
+
+
     print()
     print('Готово')
 
-
-mt = cwt.MediaVortexTask()
-r_settings = yaml_to_dict(REPORT_SETTINGS)
-for report in r_settings:
-    report_load_export(report, mt)
+# mt = cwt.MediaVortexTask(settings_filename='../settings/mediascope_connection_settings.json')
+# r_settings = yaml_to_dict(REPORT_SETTINGS)
+# for report in r_settings:
+#     report_load_export(report, mt)
