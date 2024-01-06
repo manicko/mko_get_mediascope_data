@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from data_getter.utils import get_last_period
+from core.utils import get_last_period
 import csv as csv
 import time
 import pandas as pd

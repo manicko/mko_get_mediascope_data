@@ -1,7 +1,7 @@
 from pathlib import Path
 import time
 import pandas as pd
-from data_getter.utils import get_last_period
+from core.utils import get_last_period
 
 from mediascope_api.core import net as mscore
 from mediascope_api.mediavortex import tasks as cwt

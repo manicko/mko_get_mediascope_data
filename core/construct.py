@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
-from data_getter.utils import (
+from core.utils import (
     en_to_ru,
     slice_period,
     write_to_file,
@@ -40,7 +40,7 @@ def report_load_export(report_settings, mtask):
             settings[k] = v
     category = ''
     if 'category_name' in report_settings:
-        category = unidecode(report_settings['category_name'])
+        category = unidecode(report_settings['category_name']).lower()
     targets = report_settings['target_audiences']
     # меняем настройки выгрузки на русский, если необходимо
     if report_settings['data_lang'] == 'ru':

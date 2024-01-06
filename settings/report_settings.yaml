@@ -5,7 +5,7 @@
     'folder':'raw_data',
     'multiple_files': True, # True, если разбиваем выгрузки по месяцам/неделям
     'category_name': 'Парфюмерия',
-    'ad_filter': 'articleLevel4Id in (4767, 4911)  and adIssueStatusId = R',  #Парфюмерия
+    'ad_filter': 'articleLevel4Id = 4973  and adIssueStatusId = R',  #Парфюмерия
     #'articleLevel4Id in (4767, 4911)  and adIssueStatusId = R',  Парфюмерия
     #'articleLevel2Id = 2272 and adIssueStatusId = R' Финансовые услуги
     'target_audiences': {
@@ -27,7 +27,7 @@
     'folder':'dict',
     'multiple_files': False, # True, если разбиваем выгрузки по месяцам/неделям
     'category_name': 'Парфюмерия',
-    'ad_filter': 'articleLevel4Id in (4767, 4911)  and adIssueStatusId = R',  #Парфюмерия
+    'ad_filter': 'articleLevel4Id = 4973  and adIssueStatusId = R',  #Парфюмерия
     #'articleLevel4Id in (4767, 4911)  and adIssueStatusId = R',  Парфюмерия
     #'articleLevel2Id = 2272 and adIssueStatusId = R' Финансовые услуги
     'target_audiences': { Null: Null },

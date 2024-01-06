@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from data_getter.utils import (get_last_period, write_to_file, yaml_to_dict)
+from core.utils import (get_last_period, write_to_file, yaml_to_dict)
 import yaml
 import time
 import pandas as pd

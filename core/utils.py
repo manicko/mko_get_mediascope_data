@@ -129,7 +129,7 @@ def write_to_file(data_frame, folder: str = None, csv_path_out: str = None, file
         time_str = '_' + time.strftime("%Y%m%d_%H%M%S")
     out_file = Path(csv_path_out, f'{file_prefix}{time_str}.csv')
     try:
-        data_frame.to_csv(path_or_buf=out_file, index=False, mode='x')
+        data_frame.to_csv(path_or_buf=out_file, index=False, mode='x', decimal=',', sep=';')
     except FileExistsError:
         print(f'File {out_file} already exists. Skip it.')
 
@@ -155,9 +155,8 @@ def yaml_to_dict(file: str):
 
 
 def prepare_dict(df):
-    shift = 2  # column number in raw data with advertiser
-    data = {}
-    col_number = len(df.columns)
+    shift = 2  # номер колонки с рекламодателем advertiser в выгрузке
+    action = 'upd'  # действие по умолчанию
     d_col_names = [
         'action',
         'search_column_idx',
@@ -177,30 +176,51 @@ def prepare_dict(df):
     ]
 
     # формируем словарь с уникальными значениями колонок
+    data = {}
     for search_id, col in enumerate(df, start=shift):
         data[search_id] = df[col].unique().tolist()
 
-    data = [[search_id, v, f'"col_{search_id}":"{v}"'] for search_id, rows in data.items() for v in rows]
+    # переносим словарь в датафрейм и добавляем индекс
+    df = DataFrame.from_dict(data, orient='index')
+    df = df.T.unstack().dropna().reset_index(level=1, drop=True).reset_index()
 
-    # помещаем значение в соответствующую колонку
-    for row in data:
-        row.extend([None] * col_number)
-        search_id, value = row[:2]
-        row[search_id + 1] = value
+    # переименовываем колонки
+    df.columns = ['search_column_idx', 'value']
+    # добавляем колонку с поисковыми условиями и колонку с action
+    df['term'] = '"col_' + df['search_column_idx'].astype(str) + '":"' + df['value'] + '"'
+    df['action'] = action
 
-    df = DataFrame(
-        data,
-        columns=[
-            'search_column_idx',
-            'value',
-            'term',
-            'adv',
-            'bra',
-            'sbr',
-            'mdl'
-        ]
-    )
-    # print(df)
+    # заполняем колонки с 'adv'по 'mdl'
+    start = d_col_names.index('adv')
+    end = d_col_names.index('mdl') + 1
+    for i, col_name in enumerate(d_col_names[start:end]):
+        df[col_name] = None
+        df.loc[df['search_column_idx'] == shift + i, col_name] = df['value']
+
+    # Альтернативный вариант, через массивы:
+    # col_number = len(df.columns)
+    # data = [[search_id, v, f'"col_{search_id}":"{v}"'] for search_id, rows in data.items() for v in rows]
+    #
+    # # помещаем значение в соответствующую колонку
+    # for row in data:
+    #     row.extend([None] * col_number)
+    #     search_id, value = row[:2]
+    #     row[search_id + 1] = value
+    #
+    # df = DataFrame(
+    #     data,
+    #     columns=[
+    #         'search_column_idx',
+    #         'value',
+    #         'term',
+    #         'adv',
+    #         'bra',
+    #         'sbr',
+    #         'mdl'
+    #     ]
+    # )
+    # # print(df)
     df = concat([df, DataFrame(columns=[col for col in d_col_names if col not in df.columns])])
     df = df[d_col_names]
+    # df['action'] = "upd"
     return df

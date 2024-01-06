@@ -1,8 +1,8 @@
 from pathlib import Path
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
-from data_getter.utils import (en_to_ru, slice_period, get_last_period, write_to_file, yaml_to_dict)
-from data_getter.construct import (report_load_export)
+from core.utils import (en_to_ru, slice_period, get_last_period, write_to_file, yaml_to_dict)
+from core.construct import (report_load_export)
 import yaml
 import time
 import pandas as pd
