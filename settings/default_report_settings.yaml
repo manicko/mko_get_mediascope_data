@@ -26,9 +26,10 @@
     'DYNAMICS_BY_SPOTS': {
       # Указываем список срезов
       'slices': [
-        # 'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
-        'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
+        'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
+        # 'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
         # 'researchWeek',  # неделя разрешено указывать не более 1 временного среза на задачу.
+        'articleList4EName',  # Список товарных категорий 4
         'advertiserListEName',  # Список рекламодателей
         # 'advertiserListId',  # Список рекламодателей id
         'brandListEName',  # Список брендов
@@ -37,9 +38,10 @@
         # 'subbrandListId',  # Список суббрендов id
         'modelListEName',  # Список продуктов
         # 'modelListId',  # Список продуктов id
+        'adEName',  # Ролик
+        'articleList2EName',  # Список товарных категорий 2
         'articleList3EName',  # Список товарных категорий 3
         'articleList4EName',  # Список товарных категорий 4
-        'adEName',  # Ролик
         'adStandardDuration',  # Ролик ожидаемая длительность
         'adDistributionTypeEName',  # Ролик распространение
         'adTypeName',  # Ролик тип
@@ -75,6 +77,7 @@
     'DYNAMICS_BY_SPOTS_DICT': {
       # Указываем список срезов
       'slices': [
+        'articleLevel4EName',  # Список категорий 4 уровня
         'advertiserEName',  # Список рекламодателей
         'brandEName',  # Список брендов
         'subbrandEName',  # Список суббрендов

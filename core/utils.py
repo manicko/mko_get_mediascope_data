@@ -190,8 +190,8 @@ def prepare_dict(df):
     df['term'] = '"col_' + df['search_column_idx'].astype(str) + '":"' + df['value'] + '"'
     df['action'] = action
 
-    # заполняем колонки с 'adv'по 'mdl'
-    start = d_col_names.index('adv')
+    # заполняем колонки с 'cat' или 'adv'по 'mdl'
+    start = d_col_names.index('cat')
     end = d_col_names.index('mdl') + 1
     for i, col_name in enumerate(d_col_names[start:end]):
         df[col_name] = None

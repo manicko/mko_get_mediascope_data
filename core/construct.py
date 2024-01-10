@@ -7,6 +7,7 @@ from core.utils import (
     write_to_file,
     yaml_to_dict,
     get_frequency,
+    get_last_period,
     prepare_dict
 )
 import yaml
@@ -51,7 +52,7 @@ def report_load_export(report_settings, mtask):
     frequency = get_frequency(report_settings)
     # проверяем, если фильтр дат не задан явно, задаем его
     if period is None:
-        period = ('2023-02-01', '2023-03-22')  # get_last_period(**SETTINGS['period']['last_time'])
+        period = get_last_period(**report_settings['period']['last_time']) #('2023-02-01', '2023-03-22')  #
 
     # разбиваем период на интервалы и выгружаем в отдельные файлы
     task_intervals = {}  # переменная для хранения интервалов
