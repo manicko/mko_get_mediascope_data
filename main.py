@@ -15,7 +15,7 @@ from mediascope_api.mediavortex import catalogs as cwc
 
 
 # настройки заданной выгрузки
-REPORT_SETTINGS = 'settings/report_settings.yaml'
+REPORT_SETTINGS = 'settings/report_settings_cars.yaml'
 
 if __name__ == '__main__':
     mt = cwt.MediaVortexTask(settings_filename='settings/mediascope_connection_settings.json')

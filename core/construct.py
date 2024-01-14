@@ -1,6 +1,12 @@
 from pathlib import Path
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
+
+from urllib3.exceptions import (
+    ConnectTimeoutError,
+    MaxRetryError
+)
+
 from core.utils import (
     en_to_ru,
     slice_period,
@@ -52,7 +58,7 @@ def report_load_export(report_settings, mtask):
     frequency = get_frequency(report_settings)
     # проверяем, если фильтр дат не задан явно, задаем его
     if period is None:
-        period = get_last_period(**report_settings['period']['last_time']) #('2023-02-01', '2023-03-22')  #
+        period = get_last_period(**report_settings['period']['last_time'])  # ('2023-02-01', '2023-03-22')  #
 
     # разбиваем период на интервалы и выгружаем в отдельные файлы
     task_intervals = {}  # переменная для хранения интервалов
@@ -75,10 +81,28 @@ def report_load_export(report_settings, mtask):
             print('.', end='')
 
     print()
-    # ждем выполнения
-    mtask.wait_task(temp_tasks)
+    while True:
+        try:
+            # ждем выполнения
+            mtask.wait_task(temp_tasks)
+        except (mtask.ConnectTimeout, mtask.ConnectTimeoutError, mtask.MaxRetryError) as err:
+            print('mtask', err)
+            ask = input("Press 'y' to continue, 'n' to break")
+            if ask == 'n':
+                break
+        except (ConnectTimeoutError, MaxRetryError):
+            print('urllib', err)
+            ask = input("Press 'y' to continue, 'n' to break")
+            if ask == 'n':
+                break
+        except Exception as hz:
+            print('hz', type(hz), hz)
+        else:
+            break
+
     del temp_tasks
-    print('Расчет завершен, получаем результат и сохраняем в файлы')
+
+    print('Расчет завершен, получаем результат')
 
     # Получаем результат
     for interval_name, interval in task_intervals.items():
@@ -87,32 +111,35 @@ def report_load_export(report_settings, mtask):
         for t_name in targets.keys():
             # print(t_name)
             df = mtask.result2table(mtask.get_result(interval[t_name]['task']), project_name=t_name)
-            results.append(df)
-        df = pd.concat(results)
-
-        # настраиваем колонки данных на выходе
-        columns = settings['slices'] + settings['statistics']
-        if 'prj_name' in df:
-            df.rename(columns={'prj_name': 'targetAudience'}, inplace=True)
-            columns = ['targetAudience'] + columns
-        df = df[columns]
-        if report_settings['report_subtype'] == 'DYNAMICS_BY_SPOTS_DICT':
-            df = prepare_dict(df[settings['slices']])
-
-        # записываем файл в соответствующую папку
-        dir_name = []
-        if category:
-            dir_name.append(category)
-        if 'folder' in report_settings:
-            dir_name.append(unidecode(report_settings['folder']).lower())
-        dir_name = '/'.join(dir_name)
-        write_to_file(
-            df,
-            folder=dir_name,
-            file_prefix=interval_name
-        )
-        print('.', end='')
-
+            if not df.empty:
+                results.append(df)
+        if results:
+            df = pd.concat(results)
+            # настраиваем колонки данных на выходе
+            columns = settings['slices'] + settings['statistics']
+            if 'prj_name' in df:
+                df.rename(columns={'prj_name': 'targetAudience'}, inplace=True)
+                columns = ['targetAudience'] + columns
+            try:
+                df = df[columns]
+            except KeyError as err:
+                print(f"Ошибка '{err}' при выгрузке интервала: '{interval_name}. Он будет пропущен.'")
+            else:
+                if report_settings['report_subtype'] == 'DYNAMICS_BY_SPOTS_DICT':
+                    df = prepare_dict(df[settings['slices']])
+                # записываем файл в соответствующую папку
+                dir_name = []
+                if category:
+                    dir_name.append(category)
+                if 'folder' in report_settings:
+                    dir_name.append(unidecode(report_settings['folder']).lower())
+                dir_name = '/'.join(dir_name)
+                write_to_file(
+                    df,
+                    folder=dir_name,
+                    file_prefix=interval_name
+                )
+                print('.', end='')
 
     print()
     print('Готово')

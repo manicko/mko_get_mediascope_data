@@ -28,8 +28,9 @@ def get_frequency(settings: dict) -> str | None:
 
 def slice_period(period: tuple, period_type: str = 'm'):
     if period_type is None:
+        if isinstance(period, list):
+            period = tuple(period)
         yield period
-        return
 
     # добавить проверку на дату старта интервала - начало недели, начало месяца и т.д.
     allowed_periods = {'y': 'years', 'm': 'months', 'w': 'weeks'}
@@ -80,7 +81,7 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
         return '', ''
 
     first_day_of_period = today = date.today()
-    last_day_of_period = today
+    last_day_of_period = today + relativedelta(days=-5) # TODO: добавить последний доступный интервал в базе
 
     if period_type == 'y':
         start_year = today.year - period_num
