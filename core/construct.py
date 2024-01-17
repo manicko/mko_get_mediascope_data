@@ -14,7 +14,8 @@ from core.utils import (
     yaml_to_dict,
     get_frequency,
     get_last_period,
-    prepare_dict
+    prepare_dict,
+    check_period
 )
 import yaml
 import time
@@ -32,7 +33,7 @@ from mediascope_api.mediavortex import catalogs as cwc
 DEFAULT_SETTINGS_YAML = "settings/default_report_settings.yaml"
 
 
-def report_load_export(report_settings, mtask):
+def report_load_export(report_settings, mtask, ct):
     # загружаем базовые настройки и настройки заданной выгрузки
 
     default_settings = yaml_to_dict(DEFAULT_SETTINGS_YAML)
@@ -63,6 +64,7 @@ def report_load_export(report_settings, mtask):
     # разбиваем период на интервалы и выгружаем в отдельные файлы
     task_intervals = {}  # переменная для хранения интервалов
     temp_tasks = []
+    period = check_period(period)
     intervals = slice_period(period, frequency)
 
     print('Готовим задачи к расчету')

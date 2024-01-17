@@ -56,6 +56,16 @@ def slice_period(period: tuple, period_type: str = 'm'):
         yield f'{start_next:%Y-%m-%d}', f'{last:%Y-%m-%d}'
 
 
+def check_period(cat, period):
+    # проверяем доступный период в каталоге
+    df = cat.get_availability_period()
+    available_period = df.loc[df['name'] == 'TV Index All Russia'][['periodFrom', 'periodTo']].values.tolist()
+    available_period = list(map(str_to_date, available_period[0]))
+    test_period = list(map(str_to_date, period))
+    output = max(available_period[0], test_period[0]), min(available_period[1], test_period[1])
+    return tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
+
+
 def get_last_period(period_type: str = 'w', period_num: int = 2, include_current: bool = False) -> tuple:
     """
     Returns period as a tuple for last 'period_num' months, weeks or years starting from now
@@ -81,7 +91,7 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
         return '', ''
 
     first_day_of_period = today = date.today()
-    last_day_of_period = today + relativedelta(days=-5) # TODO: добавить последний доступный интервал в базе
+    last_day_of_period = today + relativedelta()
 
     if period_type == 'y':
         start_year = today.year - period_num

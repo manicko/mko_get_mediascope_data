@@ -18,9 +18,10 @@ from mediascope_api.mediavortex import catalogs as cwc
 REPORT_SETTINGS = 'settings/report_settings_cars.yaml'
 
 if __name__ == '__main__':
+    ct = cwc.MediaVortexCats(settings_filename='settings/mediascope_connection_settings.json')
     mt = cwt.MediaVortexTask(settings_filename='settings/mediascope_connection_settings.json')
     r_settings = yaml_to_dict(REPORT_SETTINGS)
     print(f'Получено задач к расчету:{len(r_settings)}')
     for i, report in enumerate(r_settings):
         print(f'Приступаем к {i+1} задаче')
-        report_load_export(report, mt)
+        report_load_export(report, mt, ct)
