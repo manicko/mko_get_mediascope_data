@@ -1,13 +1,6 @@
 {
-  'REPORT_TYPES': {
-    'DYNAMICS_BY_SPOTS': 'CROSS_TAB',
-    'DYNAMICS_BY_SPOTS_DICT': 'CROSS_TAB',
-    'TOP_ADVERTISERS': 'CROSS_TAB',
-    'TOP_PROGRAMS':'CROSS_TAB'
-  },
-  'CROSS_TAB': {
     # Задаем параметры по умолчанию для выгрузки из медиаскоп
-    'DEFAULT_DATA_PARAMS': {
+    'DATA_DEFAULTS': {
       'date_filter': Null,  # Фильтр указывается в виде списка ('Начало', 'Конец'). Можно указать несколько периодов
       'weekday_filter': Null,  # Задаем дни недели
       'daytype_filter': Null,  # Задаем тип дня
@@ -98,5 +91,4 @@
         'QuantitySum'  # количество эфирных событий
       ]
     }
-  }
 }

@@ -2,7 +2,7 @@
 data/output/*
 # exception to the rule
 !data/output/.gitkeep
-settings/mediascope_connection_settings.json
+settings/connections/mediascope.json
 /venv/
 /.idea/
 /tests.py

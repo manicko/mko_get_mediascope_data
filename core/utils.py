@@ -3,7 +3,6 @@ from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 import yaml
 import time
-from pandas import (concat, DataFrame)
 
 
 def str_to_date(d: str):
@@ -54,16 +53,6 @@ def slice_period(period: tuple, period_type: str = 'm'):
     # if last date is earlier vs last date of new interval, we set the last day as last
     if start_next <= last:
         yield f'{start_next:%Y-%m-%d}', f'{last:%Y-%m-%d}'
-
-
-def check_period(cat, period):
-    # проверяем доступный период в каталоге
-    df = cat.get_availability_period()
-    available_period = df.loc[df['name'] == 'TV Index All Russia'][['periodFrom', 'periodTo']].values.tolist()
-    available_period = list(map(str_to_date, available_period[0]))
-    test_period = list(map(str_to_date, period))
-    output = max(available_period[0], test_period[0]), min(available_period[1], test_period[1])
-    return tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
 
 
 def get_last_period(period_type: str = 'w', period_num: int = 2, include_current: bool = False) -> tuple:
@@ -163,75 +152,3 @@ def yaml_to_dict(file: str):
             print(exc)
         else:
             return data
-
-
-def prepare_dict(df):
-    shift = 2  # номер колонки с рекламодателем advertiser в выгрузке
-    action = 'upd'  # действие по умолчанию
-    d_col_names = [
-        'action',
-        'search_column_idx',
-        'value',
-        'term',
-        'cat',
-        'adv',
-        'bra',
-        'sbr',
-        'mdl',
-        'cln_0',
-        'cln_1',
-        'cln_2',
-        'cln_3',
-        'cln_4',
-        'cln_5'
-    ]
-
-    # формируем словарь с уникальными значениями колонок
-    data = {}
-    for search_id, col in enumerate(df, start=shift):
-        data[search_id] = df[col].unique().tolist()
-
-    # переносим словарь в датафрейм и добавляем индекс
-    df = DataFrame.from_dict(data, orient='index')
-    df = df.T.unstack().dropna().reset_index(level=1, drop=True).reset_index()
-
-    # переименовываем колонки
-    df.columns = ['search_column_idx', 'value']
-    # добавляем колонку с поисковыми условиями и колонку с action
-    df['term'] = '"col_' + df['search_column_idx'].astype(str) + '":"' + df['value'] + '"'
-    df['action'] = action
-
-    # заполняем колонки с 'cat' или 'adv'по 'mdl'
-    start = d_col_names.index('cat')
-    end = d_col_names.index('mdl') + 1
-    for i, col_name in enumerate(d_col_names[start:end]):
-        df[col_name] = None
-        df.loc[df['search_column_idx'] == shift + i, col_name] = df['value']
-
-    # Альтернативный вариант, через массивы:
-    # col_number = len(df.columns)
-    # data = [[search_id, v, f'"col_{search_id}":"{v}"'] for search_id, rows in data.items() for v in rows]
-    #
-    # # помещаем значение в соответствующую колонку
-    # for row in data:
-    #     row.extend([None] * col_number)
-    #     search_id, value = row[:2]
-    #     row[search_id + 1] = value
-    #
-    # df = DataFrame(
-    #     data,
-    #     columns=[
-    #         'search_column_idx',
-    #         'value',
-    #         'term',
-    #         'adv',
-    #         'bra',
-    #         'sbr',
-    #         'mdl'
-    #     ]
-    # )
-    # # print(df)
-    df = concat([df, DataFrame(columns=[col for col in d_col_names if col not in df.columns])])
-    df = df[d_col_names]
-    # df['action'] = "upd"
-    return df

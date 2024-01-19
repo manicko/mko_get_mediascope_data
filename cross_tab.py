@@ -10,7 +10,7 @@ from mediascope_api.core import net as mscore
 from mediascope_api.mediavortex import tasks as cwt
 from mediascope_api.mediavortex import catalogs as cwc
 
-default_settings_yaml = "default_report_settings.yaml"
+default_settings_yaml = "nat_tv_settings.yaml"
 report_settings = 'report_settings.yaml'
 
 DEFAULT_SETTINGS = yaml_to_dict(default_settings_yaml)

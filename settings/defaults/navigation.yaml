@@ -1,0 +1,6 @@
+{#TODO: write function reading folded settings
+    'DYNAMICS_BY_SPOTS': 'settings/defaults/media/tv/nat_tv_settings.yaml',
+    'DYNAMICS_BY_SPOTS_DICT': 'settings/defaults/media/tv/nat_tv_settings.yaml',
+    'TOP_ADVERTISERS': 'settings/defaults/media/tv/nat_tv_settings.yaml',
+    'TOP_PROGRAMS': 'settings/defaults/media/tv/nat_tv_settings.yaml'
+}
