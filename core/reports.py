@@ -4,6 +4,7 @@ from pandas import (concat, DataFrame)
 from unidecode import unidecode
 from os import PathLike
 
+from requests.exceptions import (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError)
 from mediascope_api.mediavortex import tasks as cwt
 from mediascope_api.mediavortex import catalogs as cwc
 from mediascope_api.core.errors import HTTP404Error
@@ -24,13 +25,11 @@ from core.utils import (
 )
 
 MEDIASCOPE_CONNECTION_SETTINGS = 'settings/connections/mediascope.json'
-
-DEFAULT_SETTINGS_YAML = "settings/defaults/media/tv/nat_tv_settings.yaml"
 PATHS_TO_DEFAULTS = 'settings/defaults/navigation.yaml'
 
 
 class Report:
-    def __init__(self, settings, defaults_file: str | bytes | PathLike = None):
+    def __init__(self, settings, defaults_file: str | bytes | PathLike | None = None):
         # print('init Report')
         self.type = settings['report_subtype']
         self.settings = settings
@@ -39,7 +38,7 @@ class Report:
         if 'category_name' in self.settings:
             self.name = unidecode(self.settings['category_name']).lower()
 
-    def get_data_settings(self, defaults_file: str | bytes | PathLike = None):
+    def get_data_settings(self, defaults_file: str | bytes | PathLike | None = None):
         pass
 
 
@@ -51,6 +50,11 @@ class MediaReport(Report):
         self.connection_settings_file = connection_settings_file
         self.connection = self.connect_to_base()
         self.catalogs = cwc.MediaVortexCats(settings_filename=self.connection_settings_file)
+        self.builder = self.get_builder()
+        self.sender = self.get_sender()
+
+    def get_builder(self):
+        pass
 
     def connect_to_base(self):
         pass
@@ -62,7 +66,6 @@ class MediaReport(Report):
         pass
 
     def load_data(self):
-        self.connect_to_base()
         self.request_data()
         self.wait_data()
 
@@ -77,7 +80,9 @@ class TVMediaReport(MediaReport):
     def __init__(self, *args, **kwargs):
         super(TVMediaReport, self).__init__(*args, **kwargs)
         # print('init TVMediaReport')
-        self.targets = self.settings['target_audiences']
+        self.targets = self.settings.get('target_audiences', None)
+        if self.targets is None:
+            self.targets = {'not_set': None}
         self.period = self.get_period()
 
     def get_period(self):
@@ -90,7 +95,7 @@ class TVMediaReport(MediaReport):
         dir_name = []
         if self.name:
             dir_name.append(self.name)
-        if 'folder' in self.settings:
+        if 'folder' in self.settings and self.settings['folder']:
             dir_name.append(unidecode(self.settings['folder']).lower())
         dir_name = '/'.join(dir_name)
         write_to_file(
@@ -108,13 +113,14 @@ class NatTVReport(TVMediaReport):
         self.task_intervals = {}  # переменная для хранения интервалов
         self.temp_tasks = []
 
-    def get_data_settings(self, defaults_file: str | bytes | PathLike = None):
+    def get_data_settings(self, defaults_file: str | bytes | PathLike | None = None):
         # getting path corresponding to the current report type and combine settings
         if defaults_file is None:
             defaults_file = yaml_to_dict(PATHS_TO_DEFAULTS)
         data = yaml_to_dict(defaults_file[self.type])
         data_settings = data['DATA_DEFAULTS']
-        data_settings.update(data[self.type])
+        if self.type in data:
+            data_settings.update(data[self.type])
         for k, v in self.settings.items():
             if k in data_settings:
                 data_settings[k] = v
@@ -152,8 +158,8 @@ class NatTVReport(TVMediaReport):
             for t_name, t_filter in self.targets.items():
                 # Отправляем задание
                 self.data_settings['basedemo_filter'] = t_filter
-                task_json = self.connection.build_crosstab_task(**self.data_settings)
-                self.task_intervals[interval_name][t_name] = {'task': self.connection.send_crosstab_task(task_json)}
+                task_json = self.builder(**self.data_settings)
+                self.task_intervals[interval_name][t_name] = {'task': self.sender(task_json)}
                 self.temp_tasks.append(self.task_intervals[interval_name][t_name])
                 time.sleep(2)
                 print('.', end='')
@@ -174,6 +180,13 @@ class NatTVReport(TVMediaReport):
                 ask = input("Press 'y' to continue, 'n' to break")
                 if ask == 'n':
                     break
+
+            except (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError) as err:
+                print('request', err)
+                ask = input("Press 'y' to continue, 'n' to break")
+                if ask == 'n':
+                    break
+
             except Exception as hz:
                 print('hz', type(hz), hz)
                 ask = input("Press 'y' to continue, 'n' to break")
@@ -225,14 +238,21 @@ class NatTVReport(TVMediaReport):
         return columns
 
 
-class DynamicsBySpots(NatTVReport):
-    pass
-
-
-class DynamicsBySpotsDict(NatTVReport):
+class NatTVCrossTab(NatTVReport):
     def __init__(self, *args, **kwargs):
-        super(DynamicsBySpotsDict, self).__init__(*args, **kwargs)
-        print('init DynamicsBySpotsDict')
+        super(NatTVCrossTab, self).__init__(*args, **kwargs)
+
+    def get_builder(self):
+        return self.connection.build_crosstab_task
+
+    def get_sender(self):
+        return self.connection.send_crosstab_task
+
+
+class NatCrossTabDict(NatTVCrossTab):
+    def __init__(self, *args, **kwargs):
+        super(NatCrossTabDict, self).__init__(*args, **kwargs)
+        # print('init NatCrossTabDict')
 
     def prepare_extract_columns(self, df=None):
         columns = self.data_settings['slices']
@@ -309,12 +329,20 @@ class DynamicsBySpotsDict(NatTVReport):
         return df
 
 
-class TopNatTVAdvertisers(NatTVReport):
-    pass
+class NatTVSimple(NatTVReport):
+    def get_builder(self):
+        return self.connection.build_simple_task
+
+    def get_sender(self):
+        return self.connection.send_simple_task
 
 
-class TopNatTVPrograms(NatTVReport):
-    pass
+class NatTVTimeBand(NatTVReport):
+    def get_builder(self):
+        return self.connection.build_timeband_task
+
+    def get_sender(self):
+        return self.connection.send_timeband_task
 
 
 class RegTVReport(TVMediaReport):

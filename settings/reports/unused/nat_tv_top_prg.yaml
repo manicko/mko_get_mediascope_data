@@ -1,0 +1,23 @@
+[
+  {
+    'report_subtype': 'TOP_NAT_TV_PROGRAMS', # тип отчета
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder': 'top_programs',
+    'multiple_files': False, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'category_name': 'tv_report',
+    'ad_filter': Null,
+    'target_audiences': {
+      'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
+      'all 25-55 BC': 'age >= 25 AND age <= 55 AND incomeGroupRussia IN (2,3)',
+      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)'
+    },
+    'period': {
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'm',
+        'period_num': '3',
+        'include_current': False
+      }
+    },
+  }
+]

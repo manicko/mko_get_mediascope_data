@@ -1,6 +1,10 @@
 {#TODO: write function reading folded settings
-    'DYNAMICS_BY_SPOTS': 'settings/defaults/media/tv/nat_tv_settings.yaml',
-    'DYNAMICS_BY_SPOTS_DICT': 'settings/defaults/media/tv/nat_tv_settings.yaml',
-    'TOP_ADVERTISERS': 'settings/defaults/media/tv/nat_tv_settings.yaml',
-    'TOP_PROGRAMS': 'settings/defaults/media/tv/nat_tv_settings.yaml'
+    'DYNAMICS_BY_SPOTS': 'settings/defaults/media/tv/nat_tv_cross_tab.yaml',
+    'DYNAMICS_BY_SPOTS_DICT': 'settings/defaults/media/tv/nat_tv_cross_tab.yaml',
+    'TOP_NAT_TV_ADVERTISERS': 'settings/defaults/media/tv/nat_tv_cross_tab.yaml',
+    'TOP_NAT_TV_PROGRAMS': 'settings/defaults/media/tv/nat_tv_cross_tab.yaml',
+    'NAT_TV_CHANNELS_BA': 'settings/defaults/media/tv/nat_tv_cross_tab.yaml',
+    'NAT_TV_CHANNELS_ATV': 'settings/defaults/media/tv/nat_tv_time_band.yaml',
+    'NAT_TV_CHANNELS_TVR': 'settings/defaults/media/tv/nat_tv_time_band.yaml',
+    'NAT_TV_CHANNELS_SOC_DEM_MAP': 'settings/defaults/media/tv/nat_tv_time_band.yaml'
 }

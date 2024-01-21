@@ -30,7 +30,7 @@ def slice_period(period: tuple, period_type: str = 'm'):
         if isinstance(period, list):
             period = tuple(period)
         yield period
-
+        return
     # добавить проверку на дату старта интервала - начало недели, начало месяца и т.д.
     allowed_periods = {'y': 'years', 'm': 'months', 'w': 'weeks'}
     if period_type not in allowed_periods:
@@ -79,8 +79,8 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
         print('period_num should be > 0')
         return '', ''
 
-    first_day_of_period = today = date.today()
-    last_day_of_period = today + relativedelta()
+    first_day_of_period = None
+    last_day_of_period = today = date.today()
 
     if period_type == 'y':
         start_year = today.year - period_num
@@ -101,6 +101,7 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
 
     output = (first_day_of_period, last_day_of_period)
     output = tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
+
     return output
 
 
