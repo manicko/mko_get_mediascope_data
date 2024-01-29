@@ -1,7 +1,7 @@
 import core.reports as reports
 from core.utils import (yaml_to_dict)
 
-REPORT_SETTINGS = 'settings/reports/nat_tv_channels_atv_m.yaml'
+REPORT_SETTINGS = 'settings/reports/nat_tv_channels_atv_w.yaml'
 REPORT_TYPES = {
     'DYNAMICS_BY_SPOTS': reports.NatTVCrossTab,
     'DYNAMICS_BY_SPOTS_DICT': reports.NatCrossTabDict,

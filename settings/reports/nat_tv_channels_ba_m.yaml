@@ -2,7 +2,7 @@
   {
     'report_subtype': 'NAT_TV_CHANNELS_BA', # тип отчета
     'data_lang': 'ru', # задаем язык выгрузки
-    'folder': 'channels_ba',
+    'folder': 'channels_ba_m',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
     'category_name': 'tv_report',
     'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,

@@ -1,6 +1,6 @@
 [
   {
-    'report_subtype': 'NAT_TV_CHANNELS_TVR', # тип отчета
+    'report_subtype': 'NAT_TV_CHANNELS_ATV', # тип отчета
     'data_lang': 'ru', # задаем язык выгрузки
     'folder': 'channels_tvr_w',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
@@ -21,22 +21,23 @@
       'all 30-50 AB': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (1,2)'
     },
     'period': {
-      'date_filter': [ '2022-01-01', '2023-12-31' ], #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
-        'period_type': 'm',
-        'period_num': '3',
+        'period_type': 'y',
+        'period_num': '2',
         'include_current': False
       }
     },
     'options': {
       "kitId": 1, #TV Index Russia all
-      "totalType": "TotalChannels" #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
+      "totalType": "TotalTVSet" #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
     },
     'slices': [
       'researchWeek',  # месяц разрешено указывать не более 1 временного среза на задачу.
       'tvCompanyEName',  # телекомпания
     ],
     'statistics': [
+      'ATV', # среднесуточное время просмотра в минутах среди населения
       'RtgPer'
     ],
   }
