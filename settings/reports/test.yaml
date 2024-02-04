@@ -1,23 +1,19 @@
 [
   {
-    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # тип отчета
     'data_lang': 'en', # задаем язык выгрузки
-    'folder':'raw_data',
+    'folder': 'dict',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
     'category_name': 'test',
     'ad_filter': 'articleLevel3Id = 123 and adIssueStatusId = R', #ЛЕГКОВОЙ АВТОТРАНСПОРТ
-
-    'target_audiences': {
-      'all 25-44 BC': 'age >= 25 AND age <= 44 AND incomeGroupRussia IN (2,3)',
-      'all 25-54 BC': 'age >= 25 AND age <= 54 AND incomeGroupRussia IN (2,3)'
-    },
+    'target_audiences': { Null: Null },
     'period': {
-      'date_filter': ['2020-01-01', '2023-12-31'], #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'date_filter': Null, #['2023-01-01', '2023-03-31'], #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
-        'period_type': 'm',
-        'period_num': 10,
-        'include_current': True
+        'period_type': 'w',
+        'period_num': '1',
+        'include_current': False
       }
-    },
+    }
   }
  ]

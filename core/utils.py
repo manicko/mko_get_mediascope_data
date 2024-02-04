@@ -105,25 +105,25 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
     return output
 
 
-def write_to_file(data_frame, folder: str = None, csv_path_out: str = None, file_prefix: str = None,
-                  add_time: bool = True):
+def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, file_prefix: str = None,
+                add_time: bool = True):
     if csv_path_out is None:
-        # path to folder containing SQLight databases
+        # absolute path to sub_folder
         root_dir = Path().absolute()
-        # folder containing data for import export CSV
+        # sub_folder containing data for import export CSV
         csv_path = Path.joinpath(root_dir, r'data/')
-        # folder to output CSV from database
+        # sub_folder to output CSV from database
         csv_path_out = Path.joinpath(csv_path, 'output/')
     if file_prefix is None:
         file_prefix = 'out'
-    if folder is not None:
-        csv_path_out = Path.joinpath(csv_path_out, folder)
-    # creating folder with subfolders
+    if sub_folder is not None:
+        csv_path_out = Path.joinpath(csv_path_out, sub_folder)
+    # creating sub_folder with subfolders
     csv_path_out.mkdir(parents=True, exist_ok=True)
     # try:
-    #     csv_path_out.mkdir(parents=True)  # could use flag exist_ok=True to skip check for folder exists
+    #     csv_path_out.mkdir(parents=True)  # could use flag exist_ok=True to skip check for sub_folder exists
     # except FileExistsError:
-    #     print(f'folder: {csv_path_out} already exists')
+    #     print(f'sub_folder: {csv_path_out} already exists')
     # finally:
     time_str = ''
     if add_time is True:

@@ -4,7 +4,7 @@
     'data_lang': 'en', # задаем язык выгрузки
     'folder':'raw_data',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'category_name': 'cars',
+    'category_name': 'cars2',
     'ad_filter': 'articleLevel3Id = 123 and adIssueStatusId = R', #ЛЕГКОВОЙ АВТОТРАНСПОРТ
 
     'target_audiences': {
@@ -14,10 +14,10 @@
       'm 25-54 BC': 'sex = 1 AND age >= 25 AND age <= 54 AND incomeGroupRussia IN (2,3)'
     },
     'period': {
-      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'date_filter': ['2020-01-01', '2023-12-31'], #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': '50',
+        'period_num': '2',
         'include_current': True
       }
     },
@@ -27,13 +27,13 @@
     'data_lang': 'en', # задаем язык выгрузки
     'folder':'dict',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'category_name': 'cars',
+    'category_name': 'cars2',
     'ad_filter': 'articleLevel3Id = 123 and adIssueStatusId = R', #ЛЕГКОВОЙ АВТОТРАНСПОРТ
     'target_audiences': { Null: Null },
     'period': {
-      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'date_filter': ['2020-01-01', '2023-12-31'], #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
-        'period_type': 'y',
+        'period_type': 'm',
         'period_num': '5',
         'include_current': True
       }

@@ -1,7 +1,7 @@
 import core.reports as reports
 from core.utils import (yaml_to_dict)
 
-REPORT_SETTINGS = 'settings/reports/nat_tv_channels_atv_w.yaml'
+REPORT_SETTINGS = 'settings/reports/test.yaml'
 REPORT_TYPES = {
     'DYNAMICS_BY_SPOTS': reports.NatTVCrossTab,
     'DYNAMICS_BY_SPOTS_DICT': reports.NatCrossTabDict,
@@ -22,5 +22,4 @@ if __name__ == '__main__':
         print(f'Приступаем к отчету {i}')
         rep = task_settings['report_subtype']
         t = REPORT_TYPES[rep](settings=task_settings)
-        t.load_data()
-        t.extract_data()
+        t.create_report()

@@ -1,9 +1,7 @@
-import time
-
 from pandas import (concat, DataFrame)
 from unidecode import unidecode
 from os import PathLike
-
+import asyncio
 from requests.exceptions import (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError)
 from mediascope_api.mediavortex import tasks as cwt
 from mediascope_api.mediavortex import catalogs as cwc
@@ -11,18 +9,21 @@ from mediascope_api.core.errors import HTTP404Error
 
 from urllib3.exceptions import (
     ConnectTimeoutError,
-    MaxRetryError
+    MaxRetryError,
+    TimeoutError
 )
 
 from core.utils import (
     en_to_ru,
     slice_period,
-    write_to_file,
+    csv_to_file,
     yaml_to_dict,
     get_frequency,
     get_last_period,
     str_to_date
 )
+
+from core.tasks import TVTask
 
 MEDIASCOPE_CONNECTION_SETTINGS = 'settings/connections/mediascope.json'
 PATHS_TO_DEFAULTS = 'settings/defaults/navigation.yaml'
@@ -38,13 +39,27 @@ class Report:
         if 'category_name' in self.settings:
             self.name = unidecode(self.settings['category_name']).lower()
 
+        self.path = self.get_path()
+
+    def get_path(self):
+        dir_name = []
+        if self.name:
+            dir_name.append(self.name)
+        if 'folder' in self.settings and self.settings['folder']:
+            dir_name.append(unidecode(self.settings['folder']).lower())
+        return '/'.join(dir_name)
+
     def get_data_settings(self, defaults_file: str | bytes | PathLike | None = None):
         pass
 
 
 class MediaReport(Report):
     def __init__(self, *args, settings,
-                 connection_settings_file: str | bytes | PathLike = MEDIASCOPE_CONNECTION_SETTINGS, **kwargs):
+                 connection_settings_file: str | bytes | PathLike = MEDIASCOPE_CONNECTION_SETTINGS,
+                 max_tasks=100,
+                 connection_errors_limit=200,
+                 **kwargs
+                 ):
         super(MediaReport, self).__init__(*args, settings=settings, **kwargs)
         # print('init MediaReport')
         self.connection_settings_file = connection_settings_file
@@ -52,28 +67,56 @@ class MediaReport(Report):
         self.catalogs = cwc.MediaVortexCats(settings_filename=self.connection_settings_file)
         self.builder = self.get_builder()
         self.sender = self.get_sender()
-
-    def get_builder(self):
-        pass
+        self.max_tasks = max_tasks
+        self.task_queue = asyncio.Queue(maxsize=self.max_tasks)
+        self.connection_errors_limit = connection_errors_limit
 
     def connect_to_base(self):
         pass
 
-    def request_data(self):
+    def get_builder(self):
         pass
 
-    def wait_data(self):
-        pass
-
-    def load_data(self):
-        self.request_data()
-        self.wait_data()
-
-    def extract_data(self):
+    def get_sender(self):
         pass
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
+
+    async def generate_tasks(self):
+        yield None
+
+    async def send_task(self, task):
+        pass
+
+    async def wait_task(self, task):
+        pass
+
+    async def extract_data(self, task):
+        pass
+
+    async def worker(self):
+        while True:
+            item = await self.task_queue.get()
+            await self.send_task(item)
+            if item.status is True:
+                await self.wait_task(item)
+            if item.status is True:
+                await self.extract_data(item)
+                print(f'\nЗадача {item.name} готова')
+            if item.status is False:
+                print(f"Расчет: '{item.name}. будет пропущен.'")
+                await asyncio.to_thread(item.to_yaml, self.path)
+            self.task_queue.task_done()
+
+    async def processing_tasks(self):
+        tsks = [asyncio.create_task(self.worker()) for _ in range(self.max_tasks)]
+        [await self.task_queue.put(t) async for t in self.generate_tasks()]
+        await self.task_queue.join()
+        [t.cancel() for t in tsks]
+
+    def create_report(self):
+        asyncio.run(self.processing_tasks())
 
 
 class TVMediaReport(MediaReport):
@@ -90,20 +133,6 @@ class TVMediaReport(MediaReport):
 
     def connect_to_base(self):
         return cwt.MediaVortexTask(settings_filename=self.connection_settings_file)
-
-    def to_csv(self, df, file_prefix):
-        dir_name = []
-        if self.name:
-            dir_name.append(self.name)
-        if 'folder' in self.settings and self.settings['folder']:
-            dir_name.append(unidecode(self.settings['folder']).lower())
-        dir_name = '/'.join(dir_name)
-        write_to_file(
-            df,
-            folder=dir_name,
-            file_prefix=file_prefix
-        )
-        print('.', end='')
 
 
 class NatTVReport(TVMediaReport):
@@ -149,79 +178,118 @@ class NatTVReport(TVMediaReport):
         output = max(available_period[0], test_period[0]), min(available_period[1], test_period[1])
         return tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
 
-    def request_data(self):
+    async def send_task(self, task):
+        task_json = await self.network_handler(
+            self.builder, 1, **task.settings)
+        if task_json is not False:
+            task.key = {}
+            task.key = await self.network_handler(
+                self.sender, 1, task_json)
+        if not task.key:
+            task.status = False
+            task.log_error = True
+
+    async def generate_tasks(self):
+        settings = self.data_settings.copy()
         for interval in self.period:
-            self.data_settings['date_filter'] = [interval]
-            interval_name = "_".join([self.name] + list(interval))
-            self.task_intervals[interval_name] = {}
-
+            settings['date_filter'] = [interval]
+            name = "_".join(interval)
             for t_name, t_filter in self.targets.items():
-                # Отправляем задание
-                self.data_settings['basedemo_filter'] = t_filter
-                task_json = self.builder(**self.data_settings)
-                self.task_intervals[interval_name][t_name] = {'task': self.sender(task_json)}
-                self.temp_tasks.append(self.task_intervals[interval_name][t_name])
-                time.sleep(2)
-                print('.', end='')
-        print()
+                settings['basedemo_filter'] = t_filter
+                task = TVTask(name, settings.copy(), self.type)
+                if t_name:
+                    task.name += '_' + unidecode(t_name)
+                task.interval = interval
+                task.target = t_name
+                yield task
 
-    def wait_data(self):
+    async def wait_task(self, task):
         while True:
-            try:
-                # ждем выполнения
-                self.connection.wait_task(self.temp_tasks)
-            except HTTP404Error as err:
-                print('mtask', err)
-                ask = input("Press 'y' to continue, 'n' to break")
-                if ask == 'n':
-                    break
-            except (ConnectTimeoutError, MaxRetryError) as err:
-                print('urllib', err)
-                ask = input("Press 'y' to continue, 'n' to break")
-                if ask == 'n':
-                    break
-
-            except (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError) as err:
-                print('request', err)
-                ask = input("Press 'y' to continue, 'n' to break")
-                if ask == 'n':
-                    break
-
-            except Exception as hz:
-                print('hz', type(hz), hz)
-                ask = input("Press 'y' to continue, 'n' to break")
-                if ask == 'n':
-                    break
-            else:
+            await asyncio.sleep(2)
+            status = await self.network_handler(
+                self.connection.get_status,
+                10,
+                task.key)
+            if status is False:
+                task.status = False
+                task.log_error = True
+                print('wait problem')
                 break
-        del self.temp_tasks
-        print('Расчет завершен, получаем результат')
+            elif isinstance(status, dict):
+                # print(f'\n Статуc расчета задачи {task.name}: {status.get('taskStatus', None)}, {status.get('message', None)}')
+                if status.get('taskStatus', None) in ('DONE', 'FAILED', 'CANCELLED'):
+                    break
 
-    def extract_data(self):
+    async def network_handler(self, func, sleep_time: int = 1, *args, **kwargs):
+        count_errors = 0
+        while True:
+            print('=', end='')
+            await asyncio.sleep(sleep_time)
+            try:
+                result = await asyncio.to_thread(
+                    func,
+                    *args,
+                    **kwargs)
+            except HTTP404Error as err:
+                print('\n mtask err', err)
+                count_errors += 1
+            # except (ConnectTimeoutError, MaxRetryError, TimeoutError) as err:
+            #     print('urllib', err)
+            #     count_errors += 1
+            except (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError) as err:
+                print(f'\n request err:  ', err)
+                count_errors += 1
+            except Exception as hz:
+                print(f'\n Unexpected err', type(hz), hz)
+                count_errors += 1
+            else:
+                return result
+            finally:
+                if count_errors >= self.connection_errors_limit:
+                    print(
+                        f'\n Не удалось получить расчет задачи. Превышен лимит неуспешных соединений {self.connection_errors_limit}')
+                    return False
+
+    async def extract_data(self, task):
         # Получаем результат
-        for interval_name, interval in self.task_intervals.items():
-            results = []
-            # print(interval)
-            for t_name in self.targets.keys():
-                # print(t_name)
-                df = self.connection.result2table(self.connection.get_result(interval[t_name]['task']),
-                                                  project_name=t_name)
-                if not df.empty:
-                    results.append(df)
-                else:
-                    print(f"Интервал: '{interval_name}. будет пропущен.'")
-            if results:
-                df = concat(results)
-                # настраиваем колонки данных на выходе
-                columns = self.prepare_extract_columns(df)
-                df = NatTVReport.prepare_data(columns, df)
-                if df is None:
-                    print(f"Интервал: '{interval_name}. будет пропущен.'")
-                    continue
-                self.to_csv(df, interval_name)
 
-    @staticmethod
-    def prepare_data(columns, df):
+        res_json = await self.network_handler(
+            self.connection.get_result,
+            2,
+            task.key)
+        if res_json is False:
+            task.status = False
+            task.log_error = True
+        if task.status is True:
+            df = await self.network_handler(
+                self.connection.result2table,
+                2,
+                res_json,
+                project_name=task.target)
+
+            if df.empty:
+                task.status = False
+                task.log_error = False
+            elif df is None:
+                task.status = False
+                task.log_error = True
+            else:
+                columns = await self.prepare_extract_columns(df)
+                df = await self.prepare_data(df, columns)
+                if df is None:
+                    task.status = False
+                    task.log_error = False
+                else:
+                    await asyncio.to_thread(
+                        csv_to_file,
+                        df,
+                        sub_folder=self.path,
+                        file_prefix=task.name,
+                        add_time=False
+                    )
+                    print(f'\n сохраняю {task.name} в файл')
+
+    async def prepare_data(self, df, columns):
         try:
             df = df[columns]
         except KeyError as err:
@@ -230,7 +298,7 @@ class NatTVReport(TVMediaReport):
         else:
             return df
 
-    def prepare_extract_columns(self, df):
+    async def prepare_extract_columns(self, df):
         columns = self.data_settings['slices'] + self.data_settings['statistics']
         if 'prj_name' in df:
             df.rename(columns={'prj_name': 'targetAudience'}, inplace=True)
@@ -254,11 +322,11 @@ class NatCrossTabDict(NatTVCrossTab):
         super(NatCrossTabDict, self).__init__(*args, **kwargs)
         # print('init NatCrossTabDict')
 
-    def prepare_extract_columns(self, df=None):
+    async def prepare_extract_columns(self, df=None):
         columns = self.data_settings['slices']
         return columns
 
-    def prepare_data(self, df):
+    async def prepare_data(self, df, columns):
         shift = 2  # номер колонки с рекламодателем advertiser в выгрузке
         action = 'upd'  # действие по умолчанию
         d_col_names = [
@@ -278,7 +346,11 @@ class NatCrossTabDict(NatTVCrossTab):
             'cln_4',
             'cln_5'
         ]
-
+        try:
+            df = df[columns]
+        except KeyError as err:
+            print(f"Ошибка '{err}' при выгрузке интервала.", end=" ")
+            return None
         # формируем словарь с уникальными значениями колонок
         data = {}
         for search_id, col in enumerate(df, start=shift):
@@ -287,11 +359,12 @@ class NatCrossTabDict(NatTVCrossTab):
         # переносим словарь в датафрейм и добавляем индекс
         df = DataFrame.from_dict(data, orient='index')
         df = df.T.unstack().dropna().reset_index(level=1, drop=True).reset_index()
-
+        print(df)
         # переименовываем колонки
         df.columns = ['search_column_idx', 'value']
+        print(df)
         # добавляем колонку с поисковыми условиями и колонку с action
-        df['term'] = '"col_' + df['search_column_idx'].astype(str) + '":"' + df['value'] + '"'
+        df['term'] = '"col_' + df['search_column_idx'].astype(str) + '":"' + df['value'].astype(str) + '"'
         df['action'] = action
 
         # заполняем колонки с 'cat' или 'adv'по 'mdl'
@@ -324,7 +397,10 @@ class NatCrossTabDict(NatTVCrossTab):
         #     ]
         # )
         # # print(df)
-        df = concat([df, DataFrame(columns=[col for col in d_col_names if col not in df.columns])])
+        df = await asyncio.to_thread(
+            concat,
+            [df, DataFrame(columns=[col for col in d_col_names if col not in df.columns])]
+        )
         df = df[d_col_names]
         return df
 
