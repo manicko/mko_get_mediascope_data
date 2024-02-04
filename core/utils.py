@@ -3,6 +3,7 @@ from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 import yaml
 import time
+import aiofiles as aiof
 
 
 def str_to_date(d: str):
@@ -105,15 +106,32 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
     return output
 
 
+def get_absolute_path():
+    # absolute path to sub_folder
+    root_dir = Path().absolute()
+    # sub_folder containing data for import export CSV
+    path = Path.joinpath(root_dir, 'data', 'output')
+    return path
+
+
+def get_log_file(sub_folder):
+    log_file = get_absolute_path()
+    log_file = Path.joinpath(log_file, sub_folder)
+    log_file.mkdir(parents=True, exist_ok=True)
+    log_file = Path.joinpath(log_file, 'error.log')
+    return log_file
+
+
+async def log_to_file(log_file, data):
+    async with aiof.open(log_file, 'a', encoding="utf-8") as outfile:
+        await outfile.write(f"{data}\r\n")
+        await outfile.flush()
+
+
 def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, file_prefix: str = None,
                 add_time: bool = True):
     if csv_path_out is None:
-        # absolute path to sub_folder
-        root_dir = Path().absolute()
-        # sub_folder containing data for import export CSV
-        csv_path = Path.joinpath(root_dir, r'data/')
-        # sub_folder to output CSV from database
-        csv_path_out = Path.joinpath(csv_path, 'output/')
+        csv_path_out = get_absolute_path()
     if file_prefix is None:
         file_prefix = 'out'
     if sub_folder is not None:

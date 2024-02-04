@@ -4,7 +4,7 @@
     'data_lang': 'en', # задаем язык выгрузки
     'folder':'raw_data',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'category_name': 'cars2',
+    'category_name': 'cars',
     'ad_filter': 'articleLevel3Id = 123 and adIssueStatusId = R', #ЛЕГКОВОЙ АВТОТРАНСПОРТ
 
     'target_audiences': {
@@ -27,7 +27,7 @@
     'data_lang': 'en', # задаем язык выгрузки
     'folder':'dict',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'category_name': 'cars2',
+    'category_name': 'cars',
     'ad_filter': 'articleLevel3Id = 123 and adIssueStatusId = R', #ЛЕГКОВОЙ АВТОТРАНСПОРТ
     'target_audiences': { Null: Null },
     'period': {

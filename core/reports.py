@@ -7,11 +7,11 @@ from mediascope_api.mediavortex import tasks as cwt
 from mediascope_api.mediavortex import catalogs as cwc
 from mediascope_api.core.errors import HTTP404Error
 
-from urllib3.exceptions import (
-    ConnectTimeoutError,
-    MaxRetryError,
-    TimeoutError
-)
+# from urllib3.exceptions import (
+#     ConnectTimeoutError,
+#     MaxRetryError,
+#     TimeoutError
+# )
 
 from core.utils import (
     en_to_ru,
@@ -20,7 +20,9 @@ from core.utils import (
     yaml_to_dict,
     get_frequency,
     get_last_period,
-    str_to_date
+    str_to_date,
+    get_log_file,
+    log_to_file
 )
 
 from core.tasks import TVTask
@@ -40,6 +42,7 @@ class Report:
             self.name = unidecode(self.settings['category_name']).lower()
 
         self.path = self.get_path()
+        self.log_file = get_log_file(self.path)
 
     def get_path(self):
         dir_name = []
@@ -63,13 +66,17 @@ class MediaReport(Report):
         super(MediaReport, self).__init__(*args, settings=settings, **kwargs)
         # print('init MediaReport')
         self.connection_settings_file = connection_settings_file
-        self.connection = self.connect_to_base()
-        self.catalogs = cwc.MediaVortexCats(settings_filename=self.connection_settings_file)
+        self.connection_errors_limit = connection_errors_limit
+        self.connection = asyncio.run(self.network_handler(self.connect_to_base))
+        self.catalogs = asyncio.run(
+            self.network_handler(
+                cwc.MediaVortexCats, settings_filename=self.connection_settings_file
+            )
+        )
         self.builder = self.get_builder()
         self.sender = self.get_sender()
         self.max_tasks = max_tasks
         self.task_queue = asyncio.Queue(maxsize=self.max_tasks)
-        self.connection_errors_limit = connection_errors_limit
 
     def connect_to_base(self):
         pass
@@ -103,9 +110,9 @@ class MediaReport(Report):
                 await self.wait_task(item)
             if item.status is True:
                 await self.extract_data(item)
-                print(f'\nЗадача {item.name} готова')
+                print(f'Задача {item.name} готова')
             if item.status is False:
-                print(f"Расчет: '{item.name}. будет пропущен.'")
+                print(f"Расчет: '{item.name} будет пропущен.'")
                 await asyncio.to_thread(item.to_yaml, self.path)
             self.task_queue.task_done()
 
@@ -117,6 +124,37 @@ class MediaReport(Report):
 
     def create_report(self):
         asyncio.run(self.processing_tasks())
+
+    async def network_handler(self, func, sleep_time: int = 1, *args, **kwargs):
+        count_errors = 0
+        while True:
+            await asyncio.sleep(sleep_time)
+            try:
+                result = await asyncio.to_thread(
+                    func,
+                    *args,
+                    **kwargs)
+            except HTTP404Error as err:
+                await log_to_file(self.log_file, f'\n mtask err : {err} \n')
+                count_errors += 1
+            # except (ConnectTimeoutError, MaxRetryError, TimeoutError) as err:
+            #     print('urllib', err)
+            #     count_errors += 1
+            except (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError) as err:
+                await log_to_file(self.log_file, f'\n request err: {err} \n')
+                count_errors += 1
+            except Exception as hz:
+                await log_to_file(self.log_file, f'\n Unexpected err: {hz}    of type    {type(hz)}\n')
+                count_errors += 1
+            else:
+                return result
+            finally:
+                if count_errors >= self.connection_errors_limit:
+                    print(
+                        f'\n Не удалось получить расчет задачи. '
+                        f'Превышен лимит неуспешных соединений '
+                        f'{self.connection_errors_limit}')
+                    return False
 
 
 class TVMediaReport(MediaReport):
@@ -185,6 +223,7 @@ class NatTVReport(TVMediaReport):
             task.key = {}
             task.key = await self.network_handler(
                 self.sender, 1, task_json)
+            print('=', end='')
         if not task.key:
             task.status = False
             task.log_error = True
@@ -216,43 +255,13 @@ class NatTVReport(TVMediaReport):
                 print('wait problem')
                 break
             elif isinstance(status, dict):
-                # print(f'\n Статуc расчета задачи {task.name}: {status.get('taskStatus', None)}, {status.get('message', None)}')
+                # print(f'\n Статуc расчета задачи {task.name}:
+                # {status.get('taskStatus', None)}, {status.get('message', None)}')
                 if status.get('taskStatus', None) in ('DONE', 'FAILED', 'CANCELLED'):
                     break
 
-    async def network_handler(self, func, sleep_time: int = 1, *args, **kwargs):
-        count_errors = 0
-        while True:
-            print('=', end='')
-            await asyncio.sleep(sleep_time)
-            try:
-                result = await asyncio.to_thread(
-                    func,
-                    *args,
-                    **kwargs)
-            except HTTP404Error as err:
-                print('\n mtask err', err)
-                count_errors += 1
-            # except (ConnectTimeoutError, MaxRetryError, TimeoutError) as err:
-            #     print('urllib', err)
-            #     count_errors += 1
-            except (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError) as err:
-                print(f'\n request err:  ', err)
-                count_errors += 1
-            except Exception as hz:
-                print(f'\n Unexpected err', type(hz), hz)
-                count_errors += 1
-            else:
-                return result
-            finally:
-                if count_errors >= self.connection_errors_limit:
-                    print(
-                        f'\n Не удалось получить расчет задачи. Превышен лимит неуспешных соединений {self.connection_errors_limit}')
-                    return False
-
     async def extract_data(self, task):
         # Получаем результат
-
         res_json = await self.network_handler(
             self.connection.get_result,
             2,
@@ -266,7 +275,6 @@ class NatTVReport(TVMediaReport):
                 2,
                 res_json,
                 project_name=task.target)
-
             if df.empty:
                 task.status = False
                 task.log_error = False
@@ -285,9 +293,10 @@ class NatTVReport(TVMediaReport):
                         df,
                         sub_folder=self.path,
                         file_prefix=task.name,
-                        add_time=False
+                        add_time=False,
+                        csv_path_out=None
                     )
-                    print(f'\n сохраняю {task.name} в файл')
+                    # print(f'\n сохраняю {task.name} в файл')
 
     async def prepare_data(self, df, columns):
         try:
@@ -359,10 +368,8 @@ class NatCrossTabDict(NatTVCrossTab):
         # переносим словарь в датафрейм и добавляем индекс
         df = DataFrame.from_dict(data, orient='index')
         df = df.T.unstack().dropna().reset_index(level=1, drop=True).reset_index()
-        print(df)
         # переименовываем колонки
         df.columns = ['search_column_idx', 'value']
-        print(df)
         # добавляем колонку с поисковыми условиями и колонку с action
         df['term'] = '"col_' + df['search_column_idx'].astype(str) + '":"' + df['value'].astype(str) + '"'
         df['action'] = action
