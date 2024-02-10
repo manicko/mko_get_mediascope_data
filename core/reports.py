@@ -274,6 +274,10 @@ class NatTVReport(TVMediaReport):
         return tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
 
     async def send_task(self, task):
+        """Sends request based on task settings to Mediascope database using API
+        :param task: task object
+        :return: Nothing
+        """
         task_json = await self.network_handler(
             self.builder, 1, **task.settings)
         if task_json is not False:
@@ -286,6 +290,11 @@ class NatTVReport(TVMediaReport):
             task.log_error = True
 
     async def generate_tasks(self):
+        """
+        Generator function returning task objects with
+        report settings sliced by intervals and demographic profiles
+        :return: generator
+        """
         settings = self.data_settings.copy()
         for interval in self.period:
             settings['date_filter'] = [interval]
@@ -300,6 +309,11 @@ class NatTVReport(TVMediaReport):
                 yield task
 
     async def wait_task(self, task):
+        """
+        Requesting status of the task using Mediascope API
+        :param task: Task object keeping params for the request
+        :return: Nothing
+        """
         while True:
             await asyncio.sleep(2)
             status = await self.network_handler(
@@ -318,6 +332,10 @@ class NatTVReport(TVMediaReport):
                     break
 
     async def extract_data(self, task):
+        """ Exports data to the CSV file
+        :param task: Task object with task settings
+        :return: Nothing
+        """
         # Получаем результат
         res_json = await self.network_handler(
             self.connection.get_result,
@@ -356,6 +374,12 @@ class NatTVReport(TVMediaReport):
                     # print(f'\n сохраняю {task.name} в файл')
 
     async def prepare_data(self, df, columns):
+        """
+        Prepare DataFrame with data
+        :param df: pandas DataFrame
+        :param columns: list, columns to be used in a report
+        :return: pandas DataFrame
+        """
         try:
             df = df[columns]
         except KeyError as err:
@@ -365,6 +389,10 @@ class NatTVReport(TVMediaReport):
             return df
 
     async def prepare_extract_columns(self, df):
+        """ Prepare columns to be used in the report
+        :param df: pandas DataFrame
+        :return: list, list of columns for the report
+        """
         columns = self.data_settings['slices'] + self.data_settings['statistics']
         if 'prj_name' in df:
             df.rename(columns={'prj_name': 'targetAudience'}, inplace=True)
@@ -384,6 +412,9 @@ class NatTVCrossTab(NatTVReport):
 
 
 class NatCrossTabDict(NatTVCrossTab):
+    """
+    Methods to load data for dictionary to clean the main report data
+    """
     def __init__(self, *args, **kwargs):
         super(NatCrossTabDict, self).__init__(*args, **kwargs)
         # print('init NatCrossTabDict')

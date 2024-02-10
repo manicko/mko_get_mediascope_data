@@ -6,17 +6,27 @@ import time
 import aiofiles as aiof
 
 
-def str_to_date(d: str):
+def str_to_date(date_string: str):
+    """
+    converts string to date format
+    :param date_string: str in format  %Y-%m-%d
+    :return: date
+    """
     try:
-        d = datetime.strptime(d, '%Y-%m-%d').date()
+        date_string = datetime.strptime(date_string, '%y-%m-%d').date()
     except (ValueError, TypeError) as err:
-        print(f'wrong format of date {d}')
+        print(f'wrong format of date_string {date_string}')
         print(err)
     else:
-        return d
+        return date_string
 
 
 def get_frequency(settings: dict) -> str | None:
+    """
+    Read settings to get frequency for slicing date intervals 'y': 'years', 'm': 'months', 'w': 'weeks'
+    :param settings: dict, settings of the report
+    :return: str, string 'y', 'm' or 'w'
+    """
     if 'multiple_files' not in settings or settings['multiple_files'] is False:
         return None
     if 'last_time' not in settings['period']:
@@ -49,11 +59,11 @@ def slice_period(period: tuple, period_type: str = 'm'):
         # adding the required period (week or month, vs 1 day, so the end - is an and of a month or week)
         start_next = start + delta_period
         end = start_next + delta_day
-        yield f'{start:%Y-%m-%d}', f'{end:%Y-%m-%d}'
+        yield f'{start:%Y-%m-%date_string}', f'{end:%Y-%m-%date_string}'
 
-    # if last date is earlier vs last date of new interval, we set the last day as last
+    # if last date_string is earlier vs last date_string of new interval, we set the last day as last
     if start_next <= last:
-        yield f'{start_next:%Y-%m-%d}', f'{last:%Y-%m-%d}'
+        yield f'{start_next:%Y-%m-%date_string}', f'{last:%Y-%m-%date_string}'
 
 
 def get_last_period(period_type: str = 'w', period_num: int = 2, include_current: bool = False) -> tuple:
@@ -101,7 +111,7 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
             last_day_of_period = first_day_of_period + relativedelta(days=6, weeks=period_num - 1)
 
     output = (first_day_of_period, last_day_of_period)
-    output = tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
+    output = tuple(map(lambda x: f'{x:%Y-%m-%date_string}', output))
 
     return output
 
@@ -136,12 +146,12 @@ def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, fi
         file_prefix = 'out'
     if sub_folder is not None:
         csv_path_out = Path.joinpath(csv_path_out, sub_folder)
-    # creating sub_folder with subfolders
+    # creating sub_folder with subfolder
     csv_path_out.mkdir(parents=True, exist_ok=True)
     # try:
     #     csv_path_out.mkdir(parents=True)  # could use flag exist_ok=True to skip check for sub_folder exists
     # except FileExistsError:
-    #     print(f'sub_folder: {csv_path_out} already exists')
+    #     print(f"sub_folder: {csv_path_out} already exists")
     # finally:
     time_str = ''
     if add_time is True:
