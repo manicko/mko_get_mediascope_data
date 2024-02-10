@@ -1,7 +1,7 @@
 import core.reports as reports
 from core.utils import (yaml_to_dict)
 
-REPORT_SETTINGS = 'settings/reports/test.yaml'
+REPORT_SETTINGS = 'settings/reports/tv_report.yaml'
 REPORT_TYPES = {
     'DYNAMICS_BY_SPOTS': reports.NatTVCrossTab,
     'DYNAMICS_BY_SPOTS_DICT': reports.NatCrossTabDict,
@@ -10,7 +10,7 @@ REPORT_TYPES = {
     'NAT_TV_CHANNELS_BA': reports.NatTVCrossTab,
     'NAT_TV_CHANNELS_ATV': reports.NatTVTimeBand,
     'NAT_TV_CHANNELS_TVR': reports.NatTVTimeBand,
-    'NAT_TV_CHANNELS_SOC_DEM_MAP': reports.NatTVTimeBand
+    'NAT_TV_CHANNELS_SOC_DEM': reports.NatTVTimeBand
 }
 
 if __name__ == '__main__':

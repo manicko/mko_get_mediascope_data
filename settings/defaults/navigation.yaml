@@ -6,5 +6,5 @@
     'NAT_TV_CHANNELS_BA': 'settings/defaults/media/tv/nat_tv_cross_tab.yaml',
     'NAT_TV_CHANNELS_ATV': 'settings/defaults/media/tv/nat_tv_time_band.yaml',
     'NAT_TV_CHANNELS_TVR': 'settings/defaults/media/tv/nat_tv_time_band.yaml',
-    'NAT_TV_CHANNELS_SOC_DEM_MAP': 'settings/defaults/media/tv/nat_tv_time_band.yaml'
+    'NAT_TV_CHANNELS_SOC_DEM': 'settings/defaults/media/tv/nat_tv_time_band.yaml'
 }

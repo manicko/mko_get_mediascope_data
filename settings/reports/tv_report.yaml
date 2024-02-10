@@ -9,11 +9,10 @@
     'target_audiences': {
       'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
       'all 25-55 BC': 'age >= 25 AND age <= 55 AND incomeGroupRussia IN (2,3)',
-      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)'
-#      'm 25-44 BC': 'sex = 1 AND age >= 25 AND age <= 44 AND incomeGroupRussia IN (2,3)',
-#      'm 25-54 BC': 'sex = 1 AND age >= 25 AND age <= 54 AND incomeGroupRussia IN (2,3)',
-#      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
-#      'w 25-55': 'sex = 2 and age >= 25 AND age <= 55'
+      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+      'm 25-44 BC': 'sex = 1 AND age >= 25 AND age <= 44 AND incomeGroupRussia IN (2,3)',
+      'm 25-54 BC': 'sex = 1 AND age >= 25 AND age <= 54 AND incomeGroupRussia IN (2,3)',
+      'w 25-55': 'sex = 2 and age >= 25 AND age <= 55'
     },
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
@@ -34,7 +33,10 @@
     'target_audiences': {
       'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
       'all 25-55 BC': 'age >= 25 AND age <= 55 AND incomeGroupRussia IN (2,3)',
-      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)'
+      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+      'm 25-44 BC': 'sex = 1 AND age >= 25 AND age <= 44 AND incomeGroupRussia IN (2,3)',
+      'm 25-54 BC': 'sex = 1 AND age >= 25 AND age <= 54 AND incomeGroupRussia IN (2,3)',
+      'w 25-55': 'sex = 2 and age >= 25 AND age <= 55'
     },
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
@@ -44,5 +46,190 @@
         'include_current': False
       }
     },
+  },
+  {
+    'report_subtype': 'NAT_TV_CHANNELS_ATV', # по месяцам
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder': 'channels_tva_m',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'category_name': 'tv_report',
+    'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
+      255,257,258,259,260,326,329,348,348,348)',
+    'target_audiences': {
+      'all 18+': 'age >= 18',
+      'all 20-30': 'age >= 20 AND age <= 30',
+      'all 30-40': 'age >= 30 AND age <= 40',
+      'all 40-50': 'age >= 40 AND age <= 50',
+      'all 50-60': 'age >= 50 AND age <= 60',
+      'all 60+': 'age >= 60',
+      'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
+      'all 25-55 BC': 'age >= 25 AND age <= 55 AND incomeGroupRussia IN (2,3)',
+      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+      'all 45-60 BC': 'age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+      'all 30-50 AB': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (1,2)',
+      'm 25-44 BC': 'sex = 1 AND age >= 25 AND age <= 44 AND incomeGroupRussia IN (2,3)',
+      'm 25-54 BC': 'sex = 1 AND age >= 25 AND age <= 54 AND incomeGroupRussia IN (2,3)',
+      'w 25-55': 'sex = 2 and age >= 25 AND age <= 55'
+
+    },
+    'period': {
+      'date_filter': Null, #[ '2023-01-01', '2023-12-31' ], #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'm',
+        'period_num': '25',
+        'include_current': False
+      }
+    },
+    'options': {
+      "kitId": 1, #TV Index Russia all
+      "totalType": "TotalTVSet" #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
+    },
+    'slices': [
+      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
+      'tvCompanyEName',  # телекомпания
+    ],
+    'statistics': [
+      'ATV', # среднесуточное время просмотра в минутах среди населения
+      'RtgPer'
+    ],
+  },
+  {
+    'report_subtype': 'NAT_TV_CHANNELS_ATV', # по неделям
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder': 'channels_tvr_w',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'category_name': 'tv_report',
+    'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
+      255,257,258,259,260,326,329,348,348,348)',
+    'target_audiences': {
+      'all 18+': 'age >= 18',
+      'all 20-30': 'age >= 20 AND age <= 30',
+      'all 30-40': 'age >= 30 AND age <= 40',
+      'all 40-50': 'age >= 40 AND age <= 50',
+      'all 50-60': 'age >= 50 AND age <= 60',
+      'all 60+': 'age >= 60',
+      'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
+      'all 25-55 BC': 'age >= 25 AND age <= 55 AND incomeGroupRussia IN (2,3)',
+      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+      'all 45-60 BC': 'age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+      'all 30-50 AB': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (1,2)',
+      'm 25-44 BC': 'sex = 1 AND age >= 25 AND age <= 44 AND incomeGroupRussia IN (2,3)',
+      'm 25-54 BC': 'sex = 1 AND age >= 25 AND age <= 54 AND incomeGroupRussia IN (2,3)',
+      'w 25-55': 'sex = 2 and age >= 25 AND age <= 55'
+    },
+    'period': {
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'w',
+        'period_num': '110',
+        'include_current': False
+      }
+    },
+    'options': {
+      "kitId": 1, #TV Index Russia all
+      "totalType": "TotalTVSet" #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
+    },
+    'slices': [
+      'researchWeek',  # месяц разрешено указывать не более 1 временного среза на задачу.
+      'tvCompanyEName',  # телекомпания
+    ],
+    'statistics': [
+      'ATV', # среднесуточное время просмотра в минутах среди населения
+      'RtgPer'
+    ],
+  },
+  {
+    'report_subtype': 'NAT_TV_CHANNELS_BA', # тип отчета
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder': 'channels_ba_m',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'category_name': 'tv_report',
+    'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
+    255,257,258,259,260,326,329,348,348,348)',
+    'break_filter': 'breaksContentType = C AND breaksDistributionType = N', #'breaksContentType IN (C,S)' #Блок содержание: коммерческий, спонсорский
+    'target_audiences': {
+      'all 4+': Null
+    },
+    'period': {
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'm',
+        'period_num': '25',
+        'include_current': False
+      }
+    },
+    'options': {
+      "kitId": 1, #TV Index Russia all
+      "issueType": "BREAKS",   #Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+    },
+    'slices': [
+      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
+      'tvCompanyEName',  # телекомпания
+    ],
+    'statistics': [
+      'SalesRtgPerAvg'
+    ],
+  },
+  {
+    'report_subtype': 'NAT_TV_CHANNELS_SOC_DEM', # тип отчета
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder': 'soc_dem_age',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'category_name': 'tv_report',
+    'ad_filter': Null,
+    'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
+       255,257,258,259,260,326,329,348,348,348)',
+    'period': {
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'm',
+        'period_num': '25',
+        'include_current': False
+      }
+    },
+    'options': {
+      "kitId": 1, #TV Index Russia all
+      "totalType": "TotalTVSet" #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
+    },
+    'slices': [
+      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
+      'tvCompanyEName',  # телекомпания
+    ],
+    'statistics': [
+      'WAgeAverage',
+      'Share'
+    ],
+
+  },
+  {
+    'report_subtype': 'NAT_TV_CHANNELS_SOC_DEM', # тип отчета
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder': 'soc_dem_sex',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'category_name': 'tv_report',
+    'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
+       255,257,258,259,260,326,329,348,348,348)',
+    'targetdemo_filter': 'sex = 2',
+    'period': {
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'm',
+        'period_num': '25',
+        'include_current': False
+      }
+    },
+    'options': {
+      "kitId": 1, #TV Index Russia all
+      "totalType": "TotalTVSet" #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
+    },
+    'slices': [
+      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
+      'tvCompanyEName',  # телекомпания
+    ],
+    'statistics': [
+      'TgSatPer'
+    ],
   }
+
+
 ]

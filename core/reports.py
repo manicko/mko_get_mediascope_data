@@ -34,17 +34,27 @@ PATHS_TO_DEFAULTS = 'settings/defaults/navigation.yaml'
 class Report:
     def __init__(self, settings, defaults_file: str | bytes | PathLike | None = None):
         # print('init Report')
+
         self.type = settings['report_subtype']
         self.settings = settings
+
+        # get default settings for the report
         self.data_settings = self.get_data_settings(defaults_file)
+
+        # use report type or category_name from settings as a name for the report
+        # will be used as extract folder
         self.name = self.type
         if 'category_name' in self.settings:
             self.name = unidecode(self.settings['category_name']).lower()
 
         self.path = self.get_path()
+
+        # log file will be used to report connection errors
         self.log_file = get_log_file(self.path)
 
     def get_path(self):
+        """makes relative path string to the report folder using
+        name of the report and folder if it's specified in settings"""
         dir_name = []
         if self.name:
             dir_name.append(self.name)
@@ -65,8 +75,12 @@ class MediaReport(Report):
                  ):
         super(MediaReport, self).__init__(*args, settings=settings, **kwargs)
         # print('init MediaReport')
-        self.connection_settings_file = connection_settings_file
+
+        # helps to override Mediascope API connection errors limit in case of bad network
         self.connection_errors_limit = connection_errors_limit
+
+        # get connection to Mediascope API
+        self.connection_settings_file = connection_settings_file
         self.connection = asyncio.run(self.network_handler(self.connect_to_base))
         self.catalogs = asyncio.run(
             self.network_handler(
@@ -75,6 +89,8 @@ class MediaReport(Report):
         )
         self.builder = self.get_builder()
         self.sender = self.get_sender()
+
+        # limits maximum tasks sent to Mediascope API
         self.max_tasks = max_tasks
         self.task_queue = asyncio.Queue(maxsize=self.max_tasks)
 
@@ -103,6 +119,12 @@ class MediaReport(Report):
         pass
 
     async def worker(self):
+        """managing task queue sequence:
+        sends task request to the base
+        waits for response
+        extracts data or task settings in case of error
+        marks task as done
+        """
         while True:
             item = await self.task_queue.get()
             await self.send_task(item)
@@ -117,15 +139,27 @@ class MediaReport(Report):
             self.task_queue.task_done()
 
     async def processing_tasks(self):
-        tsks = [asyncio.create_task(self.worker()) for _ in range(self.max_tasks)]
+        """creates group of task within a max_tasks limit,
+        put tasks from generator function to the queue and wits till all tasks are done"""
+        task_group = [asyncio.create_task(self.worker()) for _ in range(self.max_tasks)]
         [await self.task_queue.put(t) async for t in self.generate_tasks()]
         await self.task_queue.join()
-        [t.cancel() for t in tsks]
+        [t.cancel() for t in task_group]
 
     def create_report(self):
+        """ sync function to run async part"""
         asyncio.run(self.processing_tasks())
 
     async def network_handler(self, func, sleep_time: int = 1, *args, **kwargs):
+        # TODO: make this decorator function
+        """Wrapping function to handle network errors, override error limit of Mediascope API,
+        log error to the log file in the report folder.
+        :param func: function, name of a function sending request to Mediascope API
+        :param sleep_time: int, time to wait until nest request
+        :param args: any, params of a passed function
+        :param kwargs: any, named params of a passed function
+        :return: result of a function request
+        """
         count_errors = 0
         while True:
             await asyncio.sleep(sleep_time)
@@ -170,6 +204,10 @@ class TVMediaReport(MediaReport):
         pass
 
     def connect_to_base(self):
+        """
+        :return: Mediascope API task object providing methods to
+        request and receive data from the Mediascope TV database
+        """
         return cwt.MediaVortexTask(settings_filename=self.connection_settings_file)
 
 
@@ -181,6 +219,12 @@ class NatTVReport(TVMediaReport):
         self.temp_tasks = []
 
     def get_data_settings(self, defaults_file: str | bytes | PathLike | None = None):
+        """ reads default settings yaml file and returns dictionary with
+        default settings basing on the self report type
+
+        :param defaults_file: str or path, absolute path to yaml file
+        :return: dict, dictionary with default settings
+        """
         # getting path corresponding to the current report type and combine settings
         if defaults_file is None:
             defaults_file = yaml_to_dict(PATHS_TO_DEFAULTS)
@@ -196,6 +240,12 @@ class NatTVReport(TVMediaReport):
         return data_settings
 
     def get_period(self):
+        """ Prepare period to load data.
+        Slice intervals based on frequency from settings
+        Checks the latest available date in the Mediascope database using API
+
+        :return: Generator with intervals in a format of tuple ('2023-02-01', '2023-03-22')
+        """
         # задаем период выгрузки и частоту для разбивки периода на интервалы
         period = self.settings['period']['date_filter']
         frequency = get_frequency(self.settings)
@@ -207,7 +257,14 @@ class NatTVReport(TVMediaReport):
         intervals = slice_period(period, frequency)
         return intervals
 
-    def check_period(self, period):
+    def check_period(self, period: tuple[str]):
+        """
+        Checks the latest date of a period with the
+        latest available date in the Mediascope database using API
+        and adjust the report period accordingly
+        :param period: tuple of dates in format of strings, ('2023-02-01', '2023-03-22')
+        :return: tuple, example: ('2023-02-01', '2023-03-22')
+        """
         # проверяем доступный период в каталоге
         df = self.catalogs.get_availability_period()
         available_period = df.loc[df['name'] == 'TV Index All Russia'][['periodFrom', 'periodTo']].values.tolist()
@@ -236,7 +293,7 @@ class NatTVReport(TVMediaReport):
             for t_name, t_filter in self.targets.items():
                 settings['basedemo_filter'] = t_filter
                 task = TVTask(name, settings.copy(), self.type)
-                if t_name:
+                if t_filter:
                     task.name += '_' + unidecode(t_name)
                 task.interval = interval
                 task.target = t_name
@@ -255,7 +312,7 @@ class NatTVReport(TVMediaReport):
                 print('wait problem')
                 break
             elif isinstance(status, dict):
-                # print(f'\n Статуc расчета задачи {task.name}:
+                # print(f'\n Статус расчета задачи {task.name}:
                 # {status.get('taskStatus', None)}, {status.get('message', None)}')
                 if status.get('taskStatus', None) in ('DONE', 'FAILED', 'CANCELLED'):
                     break
@@ -365,7 +422,7 @@ class NatCrossTabDict(NatTVCrossTab):
         for search_id, col in enumerate(df, start=shift):
             data[search_id] = df[col].unique().tolist()
 
-        # переносим словарь в датафрейм и добавляем индекс
+        # переносим словарь в Dataframe и добавляем индекс
         df = DataFrame.from_dict(data, orient='index')
         df = df.T.unstack().dropna().reset_index(level=1, drop=True).reset_index()
         # переименовываем колонки
