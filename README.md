@@ -1,15 +1,15 @@
 # MEDIASCOPE DATA LOADER
 
 ## 🛠️ Description
-This Python project designed to load data using [Mediascope API](https://github.com/MEDIASCOPE-JSC/mediascope-api-lib)
+This Python project is designed to load data using [Mediascope API](https://github.com/MEDIASCOPE-JSC/mediascope-api-lib)
 
-**Key Features :**
-* Load data if network is not stable
+**Key Features:**
+* Load data even if network is not stable
 * Create settings for multiple reports and load them at once
 * Easy and versatile report settings
-* Automated slicing long period into parts for faster calculation and loading
+* Automated slicing of a long period into parts for faster calculation and loading
 * Supports multiple target audience
-* Asynchronous data loading increase speed significantly
+* Asynchronous data loading improves performance
 * Export data in CSV
 
 
@@ -37,7 +37,7 @@ This Python project designed to load data using [Mediascope API](https://github.
     
 - ### Configure the report settings
   - The report settings are located in the `settings/reports` folder
-  - Copy the existing report settings and modify it according to your needs
+  - Copy one of the `yaml` files with the predefined report settings, rename and modify it according to your needs
   - The key parameters with comments are highlighted below:
      ```  yaml         
     'report_subtype': 'DYNAMICS_BY_SPOTS', # defines the loader type
@@ -55,14 +55,19 @@ This Python project designed to load data using [Mediascope API](https://github.
       }
       ............
       ```
+  - You can set up here filters and slices following Mediascope API guides 
+  - Define the name and path to your report settings in the `main.py` as a parameter `REPORT_SETTINGS = 'settings/reports/YOUR_REPORT_NAME.yaml'`
+  
 - ### Loader types:
   - Using CrossTab:    
-    - `DYNAMICS_BY_SPOTS`:
-    - `DYNAMICS_BY_SPOTS_DICT`:
-    - `TOP_NAT_TV_ADVERTISERS`: 
-    - `TOP_NAT_TV_PROGRAMS`: 
-    - `NAT_TV_CHANNELS_BA`: 
+    - `DYNAMICS_BY_SPOTS`: tv spots by advertisers and brands
+    - `DYNAMICS_BY_SPOTS_DICT`: distinct brands, advertisers to be used to clear data with data_cleaner module
+    - `TOP_NAT_TV_ADVERTISERS`: get top advertiser on air
+    - `TOP_NAT_TV_PROGRAMS`: top programs
+    - `NAT_TV_CHANNELS_BA`: get buying audience dynamics per channel
   - Using TimeBand:
-    - `NAT_TV_CHANNELS_ATV`: 
-    - `NAT_TV_CHANNELS_TVR`:
-    - `NAT_TV_CHANNELS_SOC_DEM`: 
+    - `NAT_TV_CHANNELS_ATV`:  average time view dynamic per channel
+    - `NAT_TV_CHANNELS_TVR`: tvr dynamic per channel
+    - `NAT_TV_CHANNELS_SOC_DEM`: load average age, share of women and share per channel 
+    
+### Run the `main.py`

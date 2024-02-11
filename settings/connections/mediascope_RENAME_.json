@@ -1,0 +1,8 @@
+  {
+    "username": "you username",
+    "passw": "you password",
+    "client_id": "client_id",
+    "client_secret": "00000000-0000-0000-0000-000000000000",
+    "auth_server": "https://auth.mediascope.net/.....",
+    "root_url": "https://api.mediascope.net/...."
+  }
