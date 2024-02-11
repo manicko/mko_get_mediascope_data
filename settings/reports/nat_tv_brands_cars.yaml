@@ -2,11 +2,10 @@
   {
     'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
     'data_lang': 'en', # задаем язык выгрузки
+    'category_name': 'cars',
     'folder':'raw_data',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'category_name': 'cars',
     'ad_filter': 'articleLevel3Id = 123 and adIssueStatusId = R', #ЛЕГКОВОЙ АВТОТРАНСПОРТ
-
     'target_audiences': {
       'all 25-44 BC': 'age >= 25 AND age <= 44 AND incomeGroupRussia IN (2,3)',
       'all 25-54 BC': 'age >= 25 AND age <= 54 AND incomeGroupRussia IN (2,3)',
