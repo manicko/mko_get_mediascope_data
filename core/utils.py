@@ -13,7 +13,7 @@ def str_to_date(date_string: str):
     :return: date
     """
     try:
-        date_string = datetime.strptime(date_string, '%y-%m-%d').date()
+        date_string = datetime.strptime(date_string, '%Y-%m-%d').date()
     except (ValueError, TypeError) as err:
         print(f'wrong format of date_string {date_string}')
         print(err)
@@ -59,11 +59,11 @@ def slice_period(period: tuple, period_type: str = 'm'):
         # adding the required period (week or month, vs 1 day, so the end - is an and of a month or week)
         start_next = start + delta_period
         end = start_next + delta_day
-        yield f'{start:%Y-%m-%date_string}', f'{end:%Y-%m-%date_string}'
+        yield f'{start:%Y-%m-%d}', f'{end:%Y-%m-%d}'
 
-    # if last date_string is earlier vs last date_string of new interval, we set the last day as last
+    # if last date is earlier vs last date of new interval, we set the last day as last
     if start_next <= last:
-        yield f'{start_next:%Y-%m-%date_string}', f'{last:%Y-%m-%date_string}'
+        yield f'{start_next:%Y-%m-%d}', f'{last:%Y-%m-%d}'
 
 
 def get_last_period(period_type: str = 'w', period_num: int = 2, include_current: bool = False) -> tuple:
@@ -111,7 +111,7 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
             last_day_of_period = first_day_of_period + relativedelta(days=6, weeks=period_num - 1)
 
     output = (first_day_of_period, last_day_of_period)
-    output = tuple(map(lambda x: f'{x:%Y-%m-%date_string}', output))
+    output = tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
 
     return output
 
@@ -139,7 +139,7 @@ async def log_to_file(log_file, data):
 
 
 def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, file_prefix: str = None,
-                add_time: bool = True):
+                add_time: bool = True, *args, **kwargs):
     if csv_path_out is None:
         csv_path_out = get_absolute_path()
     if file_prefix is None:
@@ -157,8 +157,12 @@ def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, fi
     if add_time is True:
         time_str = '_' + time.strftime("%Y%m%d_%H%M%S")
     out_file = Path(csv_path_out, f'{file_prefix}{time_str}.csv')
+    if 'compression' in kwargs and isinstance(kwargs['compression'], dict) and 'method' in kwargs['compression']:
+        suffix = '.' + kwargs['compression']['method']
+        suffix = suffix.replace('.gzip', '.gz')
+        out_file = Path(out_file).with_suffix(suffix)
     try:
-        data_frame.to_csv(path_or_buf=out_file, index=False, mode='x', decimal=',', sep=';')
+        data_frame.to_csv(path_or_buf=out_file, index=False, mode='x', decimal=',', sep=';', *args, **kwargs)
     except FileExistsError:
         print(f'File {out_file} already exists. Skip it.')
 

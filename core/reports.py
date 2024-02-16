@@ -132,10 +132,11 @@ class MediaReport(Report):
                 await self.wait_task(item)
             if item.status is True:
                 await self.extract_data(item)
-                print(f'Задача {item.name} готова')
             if item.status is False:
                 print(f"Расчет: '{item.name} будет пропущен.'")
                 await asyncio.to_thread(item.to_yaml, self.path)
+            else:
+                print(f'Задача {item.name} готова.')
             self.task_queue.task_done()
 
     async def processing_tasks(self):
@@ -150,7 +151,7 @@ class MediaReport(Report):
         """ sync function to run async part"""
         asyncio.run(self.processing_tasks())
 
-    async def network_handler(self, func, sleep_time: int = 1, *args, **kwargs):
+    async def network_handler(self, func, sleep_time: int = 2, *args, **kwargs):
         # TODO: make this decorator function
         """Wrapping function to handle network errors, override error limit of Mediascope API,
         log error to the log file in the report folder.
@@ -188,7 +189,11 @@ class MediaReport(Report):
                         f'\n Не удалось получить расчет задачи. '
                         f'Превышен лимит неуспешных соединений '
                         f'{self.connection_errors_limit}')
-                    return False
+                    ask = input("Press 'y' to continue, 'n' to break ")
+                    if ask == 'n':
+                        return False
+                    else:
+                        count_errors = 0
 
 
 class TVMediaReport(MediaReport):
@@ -266,7 +271,7 @@ class NatTVReport(TVMediaReport):
         :return: tuple, example: ('2023-02-01', '2023-03-22')
         """
         # проверяем доступный период в каталоге
-        df = self.catalogs.get_availability_period()
+        df = asyncio.run(self.network_handler(self.catalogs.get_availability_period))
         available_period = df.loc[df['name'] == 'TV Index All Russia'][['periodFrom', 'periodTo']].values.tolist()
         available_period = list(map(str_to_date, available_period[0]))
         test_period = list(map(str_to_date, period))
@@ -279,11 +284,11 @@ class NatTVReport(TVMediaReport):
         :return: Nothing
         """
         task_json = await self.network_handler(
-            self.builder, 1, **task.settings)
+            self.builder, 2, **task.settings)
         if task_json is not False:
             task.key = {}
             task.key = await self.network_handler(
-                self.sender, 1, task_json)
+                self.sender, 2, task_json)
             print('=', end='')
         if not task.key:
             task.status = False
@@ -318,7 +323,7 @@ class NatTVReport(TVMediaReport):
             await asyncio.sleep(2)
             status = await self.network_handler(
                 self.connection.get_status,
-                10,
+                20,
                 task.key)
             if status is False:
                 task.status = False
@@ -369,7 +374,8 @@ class NatTVReport(TVMediaReport):
                         sub_folder=self.path,
                         file_prefix=task.name,
                         add_time=False,
-                        csv_path_out=None
+                        csv_path_out=None,
+                        compression=self.settings.get('compression', None)
                     )
                     # print(f'\n сохраняю {task.name} в файл')
 
@@ -415,6 +421,7 @@ class NatCrossTabDict(NatTVCrossTab):
     """
     Methods to load data for dictionary to clean the main report data
     """
+
     def __init__(self, *args, **kwargs):
         super(NatCrossTabDict, self).__init__(*args, **kwargs)
         # print('init NatCrossTabDict')
