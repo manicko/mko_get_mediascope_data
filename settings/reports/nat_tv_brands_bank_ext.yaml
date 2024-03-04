@@ -1,0 +1,72 @@
+[
+  {
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'category_name': 'banks',
+    'compression': {'method': 'gzip'},
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder':'raw_data',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'ad_filter': 'articleLevel2Id = 2272 and adIssueStatusId = R', #Финансовые услуги
+    'target_audiences': {
+      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)'
+    },
+    'period': {
+      'date_filter': Null, #['2020-01-01', '2024-01-31']
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'm',
+        'period_num': '9',
+        'include_current': True
+      }
+    },
+    'slices': [
+      'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
+      'articleList4EName',  # Список товарных категорий 4
+      'advertiserListEName',  # Список рекламодателей
+      # 'advertiserListId',  # Список рекламодателей id
+      'brandListEName',  # Список брендов
+      # 'brandListId',  # Список брендов id
+      'subbrandListEName',  # Список суббрендов
+      # 'subbrandListId',  # Список суббрендов id
+      'modelListEName',  # Список продуктов
+      # 'modelListId',  # Список продуктов id
+      'adEName',  # Ролик
+      'articleList3EName',  # Список товарных категорий 3
+      'adStandardDuration',  # Ролик ожидаемая длительность
+      'adDistributionTypeEName',  # Ролик распространение
+      'adTypeName',  # Ролик тип
+      'adPositionId',  # Ролик позиция в блоке
+      'adPositionTypeEName',  # Ролик позиционирование
+      'adPrimeTimeStatusEName',  # Прайм/ОфПрайм роликов (англ.)
+      'adId',  # Ролик ID
+      'adNotes',  # Ролик описание
+      'tvCompanyEName',  # телекомпания
+      'programEName',  # Программа
+      'programTypeEName',  # Программа жанр
+      'breaksStartTime', # Блок время начала
+      'breaksFinishTime', # Блок время начала
+      'breaksId',
+      'breaksDistributionType'
+    ],
+
+  },
+  {
+    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # тип отчета
+    'category_name': 'banks',
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder':'dict',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'ad_filter': 'articleLevel2Id = 2272 and adIssueStatusId = R', #Финансовые услуги
+    'target_audiences': { Null: Null },
+    'period': {
+      'date_filter': Null, #['2020-01-01', '2024-01-31']
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'm',
+        'period_num': 9,
+        'include_current': True
+      }
+    }
+  }
+#  {
+
+#  }
+ ]

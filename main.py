@@ -2,7 +2,7 @@ import core.reports as reports
 from core.utils import (yaml_to_dict)
 from datetime import datetime
 
-REPORT_SETTINGS = 'settings/reports/nat_tv_brands_snacks.yaml'
+REPORT_SETTINGS = 'settings/reports/nat_tv_brands_bank_ext.yaml'
 REPORT_TYPES = {
     'DYNAMICS_BY_SPOTS': reports.NatTVCrossTab,
     'DYNAMICS_BY_SPOTS_DICT': reports.NatCrossTabDict,
