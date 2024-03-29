@@ -41,6 +41,7 @@
       'adNotes',  # Ролик описание
       'tvCompanyEName',  # телекомпания
       'programEName',  # Программа
+      'programCategoryShortEName',  # Программа короткая категория
       'programTypeEName',  # Программа жанр
       'breaksStartTime', # Блок время начала
       'breaksFinishTime', # Блок время начала
