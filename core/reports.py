@@ -1,6 +1,7 @@
 from pandas import (concat, DataFrame)
 from unidecode import unidecode
 from os import PathLike
+from pathlib import Path
 import asyncio
 from requests.exceptions import (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError)
 from mediascope_api.mediavortex import tasks as cwt
@@ -13,7 +14,7 @@ from mediascope_api.core.errors import HTTP404Error
 #     TimeoutError
 # )
 
-from core.utils import (
+from .utils import (
     en_to_ru,
     slice_period,
     csv_to_file,
@@ -25,10 +26,15 @@ from core.utils import (
     log_to_file
 )
 
-from core.tasks import TVTask
+from .tasks import TVTask
+
+ROOT_DIR = Path(__file__).absolute().parent.parent
 
 MEDIASCOPE_CONNECTION_SETTINGS = 'settings/connections/mediascope.json'
 PATHS_TO_DEFAULTS = 'settings/defaults/navigation.yaml'
+
+MEDIASCOPE_CONNECTION_SETTINGS = Path.joinpath(ROOT_DIR, MEDIASCOPE_CONNECTION_SETTINGS)
+PATHS_TO_DEFAULTS = Path.joinpath(ROOT_DIR, PATHS_TO_DEFAULTS)
 
 
 class Report:
@@ -233,7 +239,8 @@ class NatTVReport(TVMediaReport):
         # getting path corresponding to the current report type and combine settings
         if defaults_file is None:
             defaults_file = yaml_to_dict(PATHS_TO_DEFAULTS)
-        data = yaml_to_dict(defaults_file[self.type])
+        defaults_file = Path.joinpath(ROOT_DIR, defaults_file[self.type])
+        data = yaml_to_dict(defaults_file)
         data_settings = data['DATA_DEFAULTS']
         if self.type in data:
             data_settings.update(data[self.type])

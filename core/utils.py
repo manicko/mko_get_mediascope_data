@@ -1,3 +1,4 @@
+from os import PathLike
 from pathlib import Path
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
@@ -116,16 +117,16 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
     return output
 
 
-def get_absolute_path():
+def get_output_path():
     # absolute path to sub_folder
-    root_dir = Path().absolute()
+    root_dir = Path(__file__).absolute().parent.parent
     # sub_folder containing data for import export CSV
     path = Path.joinpath(root_dir, 'data', 'output')
     return path
 
 
 def get_log_file(sub_folder):
-    log_file = get_absolute_path()
+    log_file = get_output_path()
     log_file = Path.joinpath(log_file, sub_folder)
     log_file.mkdir(parents=True, exist_ok=True)
     log_file = Path.joinpath(log_file, 'error.log')
@@ -141,7 +142,7 @@ async def log_to_file(log_file, data):
 def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, file_prefix: str = None,
                 add_time: bool = True, *args, **kwargs):
     if csv_path_out is None:
-        csv_path_out = get_absolute_path()
+        csv_path_out = get_output_path()
     if file_prefix is None:
         file_prefix = 'out'
     if sub_folder is not None:
@@ -177,7 +178,7 @@ def en_to_ru(slices_en: list) -> list:
     return slices_ru
 
 
-def yaml_to_dict(file: str):
+def yaml_to_dict(file: str | PathLike):
     with open(file, "r", encoding="utf8") as stream:
         try:
             data = yaml.safe_load(stream)

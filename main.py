@@ -1,8 +1,11 @@
 import core.reports as reports
 from core.utils import (yaml_to_dict)
 from datetime import datetime
+from pathlib import Path
 
+root_dir = Path().absolute()
 REPORT_SETTINGS = 'settings/reports/test.yaml'
+REPORT_SETTINGS = Path.joinpath(root_dir, REPORT_SETTINGS)
 REPORT_TYPES = {
     'DYNAMICS_BY_SPOTS': reports.NatTVCrossTab,
     'DYNAMICS_BY_SPOTS_DICT': reports.NatCrossTabDict,
