@@ -1,4 +1,9 @@
-import core.reports as reports
+from core.reports import (
+    NatCrossTabDict,
+    NatTVCrossTab,
+    NatTVTimeBand
+)
+
 from core.utils import (yaml_to_dict)
 from datetime import datetime
 from pathlib import Path
@@ -8,14 +13,14 @@ REPORT_SETTINGS = 'tv_report.yaml'
 
 def main(report_settings_file):
     REPORT_TYPES = {
-        'DYNAMICS_BY_SPOTS': reports.NatTVCrossTab,
-        'DYNAMICS_BY_SPOTS_DICT': reports.NatCrossTabDict,
-        'TOP_NAT_TV_ADVERTISERS': reports.NatTVCrossTab,
-        'TOP_NAT_TV_PROGRAMS': reports.NatTVCrossTab,
-        'NAT_TV_CHANNELS_BA': reports.NatTVCrossTab,
-        'NAT_TV_CHANNELS_ATV': reports.NatTVCrossTab,
-        'NAT_TV_CHANNELS_TVR': reports.NatTVTimeBand,
-        'NAT_TV_CHANNELS_SOC_DEM': reports.NatTVTimeBand
+        'DYNAMICS_BY_SPOTS': NatTVCrossTab,
+        'DYNAMICS_BY_SPOTS_DICT': NatCrossTabDict,
+        'TOP_NAT_TV_ADVERTISERS': NatTVCrossTab,
+        'TOP_NAT_TV_PROGRAMS': NatTVCrossTab,
+        'NAT_TV_CHANNELS_BA': NatTVCrossTab,
+        'NAT_TV_CHANNELS_ATV': NatTVCrossTab,
+        'NAT_TV_CHANNELS_TVR': NatTVTimeBand,
+        'NAT_TV_CHANNELS_SOC_DEM': NatTVTimeBand
     }
     folders = set()
     start_time = datetime.now().replace(microsecond=0)
