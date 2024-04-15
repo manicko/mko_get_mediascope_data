@@ -158,7 +158,6 @@ class MediaReport(Report):
         asyncio.run(self.processing_tasks())
 
     async def network_handler(self, func, sleep_time: int = 2, *args, **kwargs):
-        # TODO: make this decorator function
         """Wrapping function to handle network errors, override error limit of Mediascope API,
         log error to the log file in the report folder.
         :param func: function, name of a function sending request to Mediascope API
