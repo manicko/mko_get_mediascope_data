@@ -117,20 +117,16 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
     return output
 
 
-def get_output_path():
-    # absolute path to sub_folder
-    root_dir = Path(__file__).absolute().parent.parent
-    # sub_folder containing data for import export CSV
-    path = Path.joinpath(root_dir, 'data', 'output')
+def get_output_path(root_dir: [str | PathLike] = None, path: [str | PathLike] = None):
+    root_dir = Path(root_dir)
+    if root_dir is None or not root_dir.exists():
+        # absolute path to sub_folder
+        root_dir = Path(__file__).absolute().parent.parent
+        # sub_folder containing data for import export CSV
+        root_dir = Path.joinpath(root_dir, 'data', 'output')
+    path = Path.joinpath(root_dir, path)
+    path.mkdir(parents=True, exist_ok=True)
     return path
-
-
-def get_log_file(sub_folder):
-    log_file = get_output_path()
-    log_file = Path.joinpath(log_file, sub_folder)
-    log_file.mkdir(parents=True, exist_ok=True)
-    log_file = Path.joinpath(log_file, 'error.log')
-    return log_file
 
 
 async def log_to_file(log_file, data):

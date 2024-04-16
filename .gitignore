@@ -2,7 +2,7 @@
 data/output/*
 # exception to the rule
 !data/output/.gitkeep
-settings/connections/mediascope.json
+src/mko_get_mediascope_data/settings/connections/mediascope.json
 /venv/
 /.idea/
-/tests.py
+/tests/tests.py

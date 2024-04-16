@@ -22,8 +22,8 @@ from .utils import (
     get_frequency,
     get_last_period,
     str_to_date,
-    get_log_file,
-    log_to_file
+    log_to_file,
+    get_output_path
 )
 
 from .tasks import TVTask
@@ -38,7 +38,8 @@ PATHS_TO_DEFAULTS = Path.joinpath(ROOT_DIR, PATHS_TO_DEFAULTS)
 
 
 class Report:
-    def __init__(self, settings, defaults_file: str | bytes | PathLike | None = None):
+    def __init__(self, settings, output_path: [str | bytes | PathLike | None] = None,
+                 defaults_file: str | bytes | PathLike | None = None):
         # print('init Report')
 
         self.type = settings['report_subtype']
@@ -53,12 +54,12 @@ class Report:
         if 'category_name' in self.settings:
             self.name = unidecode(self.settings['category_name']).lower()
 
-        self.path = self.get_path()
-
+        self.path = self.get_subpath()
+        self.path = get_output_path(output_path, self.path)
         # log file will be used to report connection errors
-        self.log_file = get_log_file(self.path)
+        self.log_file = Path.joinpath(self.path, 'error.log')
 
-    def get_path(self):
+    def get_subpath(self):
         """makes relative path string to the report folder using
         name of the report and folder if it's specified in settings"""
         dir_name = []
@@ -377,10 +378,10 @@ class NatTVReport(TVMediaReport):
                     await asyncio.to_thread(
                         csv_to_file,
                         df,
-                        sub_folder=self.path,
+                        sub_folder=None,
                         file_prefix=task.name,
                         add_time=False,
-                        csv_path_out=None,
+                        csv_path_out=self.path,
                         compression=self.settings.get('compression', None)
                     )
                     # print(f'\n сохраняю {task.name} в файл')
