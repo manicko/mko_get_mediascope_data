@@ -6,3 +6,6 @@ src/mko_get_mediascope_data/settings/connections/mediascope.json
 /venv/
 /.idea/
 /tests/tests.py
+pyproject.toml
+/src/mko_get_mediascope_data.egg-info/
+/dist/
