@@ -14,7 +14,7 @@ from mediascope_api.core.errors import HTTP404Error
 #     TimeoutError
 # )
 
-from .utils import (
+from mko_get_mediascope_data.core.utils import (
     en_to_ru,
     slice_period,
     csv_to_file,
@@ -26,7 +26,7 @@ from .utils import (
     get_output_path
 )
 
-from .tasks import TVTask
+from mko_get_mediascope_data.core.tasks import TVTask
 
 ROOT_DIR = Path(__file__).absolute().parent.parent
 

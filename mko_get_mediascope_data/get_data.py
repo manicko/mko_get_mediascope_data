@@ -1,10 +1,10 @@
-from core.reports import (
+from mko_get_mediascope_data.core.reports import (
     NatCrossTabDict,
     NatTVCrossTab,
     NatTVTimeBand
 )
 from os import PathLike
-from core.utils import (yaml_to_dict)
+from mko_get_mediascope_data.core.utils import (yaml_to_dict)
 from datetime import datetime
 from pathlib import Path
 
@@ -49,7 +49,7 @@ def get_data(
 if __name__ == '__main__':
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
     report_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
-    output_path = f"C:/py_exp/mko_get_mediascope_data/data/output"
+    output_path = f"/data/output"
     connections = f'C:/py_exp/mko_get_mediascope_data/src/mko_get_mediascope_data/settings/connections/mediascope.json'
     get_data(
         report_settings_file,

@@ -1,11 +1,12 @@
-# exclude everything from output folder
-data/output/*
-# exception to the rule
-!data/output/.gitkeep
-src/mko_get_mediascope_data/settings/connections/mediascope.json
 /venv/
+/.venv/
 /.idea/
-/tests/tests.py
-pyproject.toml
-/src/mko_get_mediascope_data.egg-info/
 /dist/
+/src/mko_get_mediascope_data.egg-info/
+/mko_get_mediascope_data.egg-info/
+yproject.toml
+/tests/tests.py
+data/output/*
+!data/output/.gitkeep
+mko_get_mediascope_data/settings/connections/mediascope.json
+*mediascope.json
