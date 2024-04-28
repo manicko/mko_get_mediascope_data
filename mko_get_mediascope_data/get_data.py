@@ -8,7 +8,7 @@ from mko_get_mediascope_data.core.utils import (yaml_to_dict)
 from datetime import datetime
 from pathlib import Path
 
-REPORT_SETTINGS = 'tv_report.yaml'
+REPORT_SETTINGS = 'sovcombank_nat_tv_new_creatives.yaml'
 
 
 def get_data(
@@ -26,6 +26,16 @@ def get_data(
         'NAT_TV_CHANNELS_TVR': NatTVTimeBand,
         'NAT_TV_CHANNELS_SOC_DEM': NatTVTimeBand
     }
+    if not Path.is_file(report_settings_file):
+        raise FileNotFoundError(f'The system cannot '
+                                f'find the file specified:"{report_settings_file}"')
+    if not Path.is_file(connection_settings_file):
+        raise FileNotFoundError(f'The system cannot '
+                                f'find the file specified:"{report_settings_file}"')
+    if not Path.is_dir(output_path):
+        raise FileNotFoundError(f'The system cannot '
+                                f'find the directory specified: "{report_settings_file}"')
+
     folders = set()
     start_time = datetime.now().replace(microsecond=0)
     tasks = yaml_to_dict(report_settings_file)
@@ -43,16 +53,17 @@ def get_data(
 
     print(f'\n Подготовка отчета заняла {str(datetime.now().replace(microsecond=0) - start_time)}')
 
-    return folders
+    return list(folders)
 
 
 if __name__ == '__main__':
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
-    report_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
-    output_path = f"/data/output"
-    connections = f'C:/py_exp/mko_get_mediascope_data/src/mko_get_mediascope_data/settings/connections/mediascope.json'
+    rep_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
+    out_path = Path.joinpath(root_dir.parent, "data/output")
+    connections = Path.joinpath(root_dir, "settings/connections/mediascope.json")
+
     get_data(
-        report_settings_file,
-        output_path,
-        connections
+        report_settings_file=rep_settings_file,
+        output_path=out_path,
+        connection_settings_file=connections
     )
