@@ -8,8 +8,6 @@ from mko_get_mediascope_data.core.utils import (yaml_to_dict)
 from datetime import datetime
 from pathlib import Path
 
-REPORT_SETTINGS = 'sovcombank_nat_tv_new_creatives.yaml'
-
 
 def get_data(
         report_settings_file: [str, PathLike] = None,
@@ -57,6 +55,7 @@ def get_data(
 
 
 if __name__ == '__main__':
+    REPORT_SETTINGS = 'nat_tv_brands_last.yaml'
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
     rep_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
     out_path = Path.joinpath(root_dir.parent, "data/output")

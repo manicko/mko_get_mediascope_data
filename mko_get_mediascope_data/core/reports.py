@@ -473,7 +473,8 @@ class NatCrossTabDict(NatTVCrossTab):
         # переименовываем колонки
         df.columns = ['search_column_idx', 'value']
         # добавляем колонку с поисковыми условиями и колонку с action
-        df['term'] = '"col_' + df['search_column_idx'].astype(str) + '":"' + df['value'].astype(str) + '"'
+        # df['term'] = '"col_' + df['search_column_idx'].astype(str) + '":"' + df['value'].astype(str) + '"'
+        df['term'] = '"' + df['value'].astype(str) + '"'
         df['action'] = action
 
         # заполняем колонки с 'cat' или 'adv'по 'mdl'

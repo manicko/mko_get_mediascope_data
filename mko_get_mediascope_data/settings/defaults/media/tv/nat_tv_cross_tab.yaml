@@ -44,6 +44,7 @@
       'adPrimeTimeStatusEName',  # Прайм/ОфПрайм роликов (англ.)
       'adId',  # Ролик ID
       'adNotes',  # Ролик описание
+      'adFirstIssueDate', # Ролик дата первого выхода
       'tvCompanyEName',  # телекомпания
       'programEName',  # Программа
       'programCategoryEName',  # Программа категория (англ.)

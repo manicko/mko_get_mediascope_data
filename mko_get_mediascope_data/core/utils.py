@@ -157,7 +157,7 @@ def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, fi
     if 'compression' in kwargs and isinstance(kwargs['compression'], dict) and 'method' in kwargs['compression']:
         suffix = '.' + kwargs['compression']['method']
         suffix = suffix.replace('.gzip', '.gz')
-        out_file = Path(out_file).with_suffix(suffix)
+        out_file = Path(out_file).with_suffix(out_file.suffix + suffix)
     try:
         data_frame.to_csv(path_or_buf=out_file, index=False, mode='x', decimal=',', sep=';', *args, **kwargs)
     except FileExistsError:
