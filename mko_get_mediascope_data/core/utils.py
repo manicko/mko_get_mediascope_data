@@ -67,12 +67,30 @@ def slice_period(period: tuple, period_type: str = 'm'):
         yield f'{start_next:%Y-%m-%d}', f'{last:%Y-%m-%d}'
 
 
-def get_last_period(period_type: str = 'w', period_num: int = 2, include_current: bool = False) -> tuple:
+def check_period(period: tuple[str], available_period: list | None):
+    """
+    Adjust the report period with available dates accordingly
+    :param available_period: list,
+    :param period: tuple of dates in format of strings, ('2023-02-01', '2023-03-22')
+
+    :return: tuple, example: ('2023-02-01', '2023-03-22')
+    """
+    # проверяем доступный период в каталоге
+    test_period = list(map(str_to_date, period))
+    output = max(available_period[0], test_period[0]), min(available_period[1], test_period[1])
+    return tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
+
+
+def get_last_period(period_type: str = 'w',
+                    period_num: int = 2,
+                    include_current: bool = False,
+                    today: datetime = None) -> tuple:
     """
     Returns period as a tuple for last 'period_num' months, weeks or years starting from now
     :param period_type: str, 'y' for years, 'm' for months, 'w' for weeks
     :param period_num: int, number of periods ago in terms of 'period_type'
     :param include_current: bool, set to True to set period until today
+    :param today: date from which to get calculation
     :return:
     """
     allowed_types = {'y', 'm', 'w'}
@@ -91,8 +109,11 @@ def get_last_period(period_type: str = 'w', period_num: int = 2, include_current
         print('period_num should be > 0')
         return '', ''
 
+    if today is None:
+        today = date.today()
+
     first_day_of_period = None
-    last_day_of_period = today = date.today()
+    last_day_of_period = today
 
     if period_type == 'y':
         start_year = today.year - period_num

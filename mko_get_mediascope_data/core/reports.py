@@ -23,7 +23,8 @@ from mko_get_mediascope_data.core.utils import (
     get_last_period,
     str_to_date,
     log_to_file,
-    get_output_path
+    get_output_path,
+    check_period
 )
 
 from mko_get_mediascope_data.core.tasks import TVTask
@@ -209,25 +210,17 @@ class TVMediaReport(MediaReport):
         self.targets = self.settings.get('target_audiences', None)
         if self.targets is None:
             self.targets = {'not_set': None}
+        self.base_id = self.get_base_id()
         self.period = self.get_period()
 
-    def get_period(self):
-        pass
-
-    def connect_to_base(self):
+    def get_available_period(self):
         """
-        :return: Mediascope API task object providing methods to
-        request and receive data from the Mediascope TV database
+        Checks available dates in the Mediascope database using API
         """
-        return cwt.MediaVortexTask(settings_filename=self.connection_settings_file)
-
-
-class NatTVReport(TVMediaReport):
-    def __init__(self, *args, **kwargs):
-        super(NatTVReport, self).__init__(*args, **kwargs)
-        # print('init NatTVReport')
-        self.task_intervals = {}  # переменная для хранения интервалов
-        self.temp_tasks = []
+        df = asyncio.run(self.network_handler(self.catalogs.get_availability_period))
+        available_period = df.loc[df['id'] == str(self.base_id)][['periodFrom', 'periodTo']].values.tolist()
+        available_period = list(map(str_to_date, available_period[0]))
+        return available_period
 
     def get_data_settings(self, defaults_file: str | bytes | PathLike | None = None):
         """ reads default settings yaml file and returns dictionary with
@@ -251,6 +244,11 @@ class NatTVReport(TVMediaReport):
             data_settings['slices'] = en_to_ru(data_settings['slices'])
         return data_settings
 
+    def get_base_id(self):
+        if 'options' in self.data_settings and 'kitId' in self.data_settings['options']:
+            return self.data_settings['options']['kitId']
+        return 1
+
     def get_period(self):
         """ Prepare period to load data.
         Slice intervals based on frequency from settings
@@ -260,30 +258,34 @@ class NatTVReport(TVMediaReport):
         """
         # задаем период выгрузки и частоту для разбивки периода на интервалы
         period = self.settings['period']['date_filter']
+
         frequency = get_frequency(self.settings)
         # проверяем, если фильтр дат не задан явно, задаем его
+        base_available_dates = self.get_available_period()
         if period is None:
-            period = get_last_period(**self.settings['period']['last_time'])  # ('2023-02-01', '2023-03-22')  #
+            period = get_last_period(
+                today=base_available_dates[1],
+                **self.settings['period']['last_time']
+            )  # ('2023-02-01', '2023-03-22')  #
         # разбиваем период на интервалы и выгружаем в отдельные файлы
-        period = self.check_period(period)
+        period = check_period(period, base_available_dates)
         intervals = slice_period(period, frequency)
         return intervals
 
-    def check_period(self, period: tuple[str]):
+    def connect_to_base(self):
         """
-        Checks the latest date of a period with the
-        latest available date in the Mediascope database using API
-        and adjust the report period accordingly
-        :param period: tuple of dates in format of strings, ('2023-02-01', '2023-03-22')
-        :return: tuple, example: ('2023-02-01', '2023-03-22')
+        :return: Mediascope API task object providing methods to
+        request and receive data from the Mediascope TV database
         """
-        # проверяем доступный период в каталоге
-        df = asyncio.run(self.network_handler(self.catalogs.get_availability_period))
-        available_period = df.loc[df['name'] == 'TV Index All Russia'][['periodFrom', 'periodTo']].values.tolist()
-        available_period = list(map(str_to_date, available_period[0]))
-        test_period = list(map(str_to_date, period))
-        output = max(available_period[0], test_period[0]), min(available_period[1], test_period[1])
-        return tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
+        return cwt.MediaVortexTask(settings_filename=self.connection_settings_file)
+
+
+class NatTVReport(TVMediaReport):
+    def __init__(self, *args, **kwargs):
+        super(NatTVReport, self).__init__(*args, **kwargs)
+        # print('init NatTVReport')
+        self.task_intervals = {}  # переменная для хранения интервалов
+        self.temp_tasks = []
 
     async def send_task(self, task):
         """Sends request based on task settings to Mediascope database using API

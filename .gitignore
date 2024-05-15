@@ -9,3 +9,4 @@ data/*
 !data/output/.gitkeep
 mko_get_mediascope_data/settings/connections/mediascope.json
 *mediascope.json
+/mko_get_mediascope_data/settings/connections/mediascope2.json

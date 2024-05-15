@@ -1,0 +1,62 @@
+[
+  {
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'category_name': 'nat_tv',
+    'compression': {'method': 'gzip'},
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder':'raw_data',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'ad_filter':'articleLevel4Id IN (2317,2479,2483,4393,4394,4395,4397,4489,4490,4498,4499,4503,4504,4505,4509,4510,4512,4514,4515,4516,4517,4518,4519,4953,4954,4988,5016,5058,5059) and adIssueStatusId = R and adTypeId IN (1,5,15,23,24,25) and advertiserId NOT IN (79677)', #Финансовые услуги
+    'target_audiences': {
+      'all 4+': 'age >= 4',
+      'all 18+': 'age >= 18',
+      'all 30+': 'age >= 30',
+      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+      'all 30-50 AB': 'age >= 30 AND age <= 50 AND incomeGroupRussia IN (1,2)',
+      'all 45-60 BC': 'age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+      'all 55+ AB': 'age >= 55 AND incomeGroupRussia IN (1,2)',
+      'all 30-60 C': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (3)',
+    },
+    'period': {
+      'date_filter': Null, # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'w',
+        'period_num': '1',
+        'include_current': False
+      }
+    },
+    'statistics': [
+      'RtgPerSum',  # суммарный рейтинг группы событий в %
+      'StandRtgPerSum',
+      'QuantitySum'  # количество эфирных событий
+    ]
+
+  },
+  {
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'category_name': 'nat_tv',
+    'compression': { 'method': 'gzip' },
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder': 'raw_data',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'ad_filter':'articleLevel4Id IN (2317,2479,2483,4393,4394,4395,4397,4489,4490,4498,4499,4503,4504,4505,4509,4510,4512,4514,4515,4516,4517,4518,4519,4953,4954,4988,5016,5058,5059) and adIssueStatusId = R and adTypeId IN (1,5,15,23,24,25)', #Финансовые услуги
+    'target_audiences': {
+      'BA': Null
+    },
+    'period': {
+      'date_filter': Null, # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'w',
+        'period_num': '1',
+        'include_current': False
+      }
+    },
+    'statistics': [
+      'SalesRtgPerSum',
+      'SalesRtg000Sum',
+      'SalesRtgPerAvg'  # количество эфирных событий
+    ]
+
+  },
+
+ ]
