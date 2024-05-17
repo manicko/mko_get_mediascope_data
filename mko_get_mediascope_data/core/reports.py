@@ -279,14 +279,6 @@ class TVMediaReport(MediaReport):
         """
         return cwt.MediaVortexTask(settings_filename=self.connection_settings_file)
 
-
-class NatTVReport(TVMediaReport):
-    def __init__(self, *args, **kwargs):
-        super(NatTVReport, self).__init__(*args, **kwargs)
-        # print('init NatTVReport')
-        self.task_intervals = {}  # переменная для хранения интервалов
-        self.temp_tasks = []
-
     async def send_task(self, task):
         """Sends request based on task settings to Mediascope database using API
         :param task: task object
@@ -302,25 +294,6 @@ class NatTVReport(TVMediaReport):
         if not task.key:
             task.status = False
             task.log_error = True
-
-    async def generate_tasks(self):
-        """
-        Generator function returning task objects with
-        report settings sliced by intervals and demographic profiles
-        :return: generator
-        """
-        settings = self.data_settings.copy()
-        for interval in self.period:
-            settings['date_filter'] = [interval]
-            name = "_".join(interval)
-            for t_name, t_filter in self.targets.items():
-                settings['basedemo_filter'] = t_filter
-                task = TVTask(name, settings.copy(), self.type)
-                if t_filter:
-                    task.name += '_' + unidecode(t_name)
-                task.interval = interval
-                task.target = t_name
-                yield task
 
     async def wait_task(self, task):
         """
@@ -413,6 +386,33 @@ class NatTVReport(TVMediaReport):
             df.rename(columns={'prj_name': 'targetAudience'}, inplace=True)
             columns = ['targetAudience'] + columns
         return columns
+
+
+class NatTVReport(TVMediaReport):
+    def __init__(self, *args, **kwargs):
+        super(NatTVReport, self).__init__(*args, **kwargs)
+        # print('init NatTVReport')
+        self.task_intervals = {}  # переменная для хранения интервалов
+        self.temp_tasks = []
+
+    async def generate_tasks(self):
+        """
+        Generator function returning task objects with
+        report settings sliced by intervals and demographic profiles
+        :return: generator
+        """
+        settings = self.data_settings.copy()
+        for interval in self.period:
+            settings['date_filter'] = [interval]
+            name = "_".join(interval)
+            for t_name, t_filter in self.targets.items():
+                settings['basedemo_filter'] = t_filter
+                task = TVTask(name, settings.copy(), self.type)
+                if t_filter:
+                    task.name += '_' + unidecode(t_name)
+                task.interval = interval
+                task.target = t_name
+                yield task
 
 
 class NatTVCrossTab(NatTVReport):
