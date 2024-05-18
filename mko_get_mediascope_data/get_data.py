@@ -2,7 +2,8 @@ from mko_get_mediascope_data.core.reports import (
     TVCrossTab,
     TVTimeBand,
     TVSimple,
-    TVGetDictCrossTab
+    TVGetDictCrossTab,
+    RegTVCrossTab
 )
 from os import PathLike
 from mko_get_mediascope_data.core.utils import (yaml_to_dict)
@@ -20,6 +21,7 @@ def get_data(
         'TV_TIMEBAND': TVTimeBand,
         'TV_SIMPLE': TVSimple,
         'TV_DICT_CROSSTAB': TVGetDictCrossTab,
+        'REG_TV_CROSSTAB': RegTVCrossTab,
     }
     if not Path.is_file(report_settings_file):
         raise FileNotFoundError(f'The system cannot '
@@ -35,9 +37,9 @@ def get_data(
     start_time = datetime.now().replace(microsecond=0)
     tasks = yaml_to_dict(report_settings_file)
 
-    print(f'Обработка стартовала {str(start_time)}. Количество отчетов: {len(tasks)}.')
+    print(f'\nОбработка стартовала {str(start_time)}. Количество отчетов: {len(tasks)}.')
     for i, task_settings in enumerate(tasks, start=1):
-        print(f'Приступаем к отчету {i}')
+        print(f'\nПриступаем к отчету {i}\n')
         rep = task_settings['report_type']
         t = REPORT_TYPES[rep](settings=task_settings,
                               output_path=output_path,
@@ -52,7 +54,7 @@ def get_data(
 
 
 if __name__ == '__main__':
-    REPORT_SETTINGS = 'sovcombank/nat_tv_new_creatives.yaml'
+    REPORT_SETTINGS = 'sovcombank/nat_tv_tvreport.yaml'
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
     rep_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
     out_path = Path.joinpath(root_dir.parent, "data/output")

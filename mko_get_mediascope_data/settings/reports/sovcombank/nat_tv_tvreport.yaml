@@ -1,5 +1,6 @@
 [
   {
+    'report_type': 'TV_CROSSTAB',
     'report_subtype': 'TOP_NAT_TV_ADVERTISERS', # тип отчета
     'data_lang': 'ru', # задаем язык выгрузки
     'folder': 'top_adv',
@@ -24,6 +25,7 @@
     },
   },
   {
+    'report_type': 'TV_CROSSTAB',
     'report_subtype': 'TOP_NAT_TV_PROGRAMS', # тип отчета
     'data_lang': 'ru', # задаем язык выгрузки
     'folder': 'top_programs',
@@ -50,6 +52,7 @@
     },
   },
   {
+    'report_type':'TV_CROSSTAB',
     'report_subtype': 'NAT_TV_CHANNELS_ATV', # по месяцам
     'data_lang': 'ru', # задаем язык выгрузки
     'folder': 'channels_tva_m',
@@ -97,6 +100,7 @@
     ],
   },
   {
+    'report_type':'TV_CROSSTAB',
     'report_subtype': 'NAT_TV_CHANNELS_ATV', # по неделям
     'data_lang': 'ru', # задаем язык выгрузки
     'folder': 'channels_tvr_w',
@@ -143,6 +147,7 @@
     ],
   },
   {
+    'report_type':'TV_CROSSTAB',
     'report_subtype': 'NAT_TV_CHANNELS_BA', # тип отчета
     'data_lang': 'ru', # задаем язык выгрузки
     'folder': 'channels_ba_m',
@@ -175,6 +180,7 @@
     ],
   },
   {
+    'report_type':'TV_TIMEBAND',
     'report_subtype': 'NAT_TV_CHANNELS_SOC_DEM', # тип отчета
     'data_lang': 'ru', # задаем язык выгрузки
     'folder': 'soc_dem_age',
@@ -206,6 +212,7 @@
 
   },
   {
+    'report_type':'TV_TIMEBAND',
     'report_subtype': 'NAT_TV_CHANNELS_SOC_DEM', # тип отчета
     'data_lang': 'ru', # задаем язык выгрузки
     'folder': 'soc_dem_sex',

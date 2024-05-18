@@ -41,8 +41,7 @@ def slice_period(period: tuple, period_type: str = 'm'):
     if period_type is None:
         if isinstance(period, list):
             period = tuple(period)
-        yield period
-        return
+        return [period]
     # добавить проверку на дату старта интервала - начало недели, начало месяца и т.д.
     allowed_periods = {'y': 'years', 'm': 'months', 'w': 'weeks'}
     if period_type not in allowed_periods:
@@ -54,17 +53,18 @@ def slice_period(period: tuple, period_type: str = 'm'):
     delta_day = relativedelta(days=-1)
 
     start_next = first
-
+    date_list = []
     while start_next + delta_period <= last:
         start = start_next
         # adding the required period (week or month, vs 1 day, so the end - is an and of a month or week)
         start_next = start + delta_period
         end = start_next + delta_day
-        yield f'{start:%Y-%m-%d}', f'{end:%Y-%m-%d}'
+        date_list.append((f'{start:%Y-%m-%d}', f'{end:%Y-%m-%d}'))
 
     # if last date is earlier vs last date of new interval, we set the last day as last
     if start_next <= last:
-        yield f'{start_next:%Y-%m-%d}', f'{last:%Y-%m-%d}'
+        date_list.append((f'{start_next:%Y-%m-%d}', f'{last:%Y-%m-%d}'))
+    return date_list
 
 
 def check_period(period: tuple[str], available_period: list | None):

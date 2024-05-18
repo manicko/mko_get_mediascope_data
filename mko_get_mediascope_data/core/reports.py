@@ -8,12 +8,6 @@ from mediascope_api.mediavortex import tasks as cwt
 from mediascope_api.mediavortex import catalogs as cwc
 from mediascope_api.core.errors import HTTP404Error
 
-# from urllib3.exceptions import (
-#     ConnectTimeoutError,
-#     MaxRetryError,
-#     TimeoutError
-# )
-
 from mko_get_mediascope_data.core.utils import (
     en_to_ru,
     slice_period,
@@ -183,10 +177,13 @@ class MediaReport(Report):
             #     print('urllib', err)
             #     count_errors += 1
             except (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError) as err:
-                await log_to_file(self.log_file, f'\n request err: {err} \n')
+                await log_to_file(self.log_file, f'\n request err: {err}')
                 count_errors += 1
             except Exception as hz:
-                await log_to_file(self.log_file, f'\n Unexpected err: {hz}    of type    {type(hz)}\n')
+                await log_to_file(self.log_file, f'\n Unexpected err: "{hz}" of type "{type(hz)}" '
+                                                 f'\n in function "{func}" '
+                                                 f'\n with args= "{args}" '
+                                                 f'and \n kwargs= {kwargs} ')
                 count_errors += 1
             else:
                 return result
@@ -235,7 +232,7 @@ class TVMediaReport(MediaReport):
         # getting path corresponding to the current report subtype and combine settings
         if defaults_file is None:
             defaults_file = yaml_to_dict(PATHS_TO_DEFAULTS)
-        defaults_file = Path.joinpath(ROOT_DIR, defaults_file[self.subtype])
+        defaults_file = Path.joinpath(ROOT_DIR, defaults_file[self.type])
         data = yaml_to_dict(defaults_file)
         data_settings = data['DATA_DEFAULTS']
         if self.subtype in data:
@@ -287,6 +284,7 @@ class TVMediaReport(MediaReport):
         :param task: task object
         :return: Nothing
         """
+        # print(f'debug task.settings = {task.settings}')
         task_json = await self.network_handler(
             self.builder, 2, **task.settings)
         if task_json is not False:
@@ -540,8 +538,57 @@ class TVGetDictCrossTab(TVCrossTab):
         return df
 
 
-class RegTVReport(TVMediaReport):
-    pass
+class RegTVCrossTab(TVCrossTab):
+    def __init__(self, *args, **kwargs):
+        super(RegTVCrossTab, self).__init__(*args, **kwargs)
+        self.available_regions = self.get_available_regions()
+        self.regions_list = self.set_regions_list()
+        # print(f' debug self.regions_list ={self.regions_list }')
+        # base settings
+        self.data_settings['options']['kitId'] = self.get_base_id()
+        if 'regionName' not in self.data_settings['slices']:
+            self.data_settings['slices'].append('regionName')
+        self.data_settings['add_city_to_basedemo_from_region'] = True
+        self.data_settings['add_city_to_targetdemo_from_region'] = True
+
+    def get_base_id(self):
+        return 3  # base id in mediascope API
+
+    def set_regions_list(self):
+        if 'regions' in self.settings:
+            return self.settings['regions']
+        return self.available_regions['id'].to_list()
+
+    def get_available_regions(self) -> DataFrame:
+        return self.catalogs.get_tv_region()
+
+    async def generate_tasks(self):
+        """
+        Generator function returning task objects with
+        report settings sliced by intervals and demographic profiles
+        :return: generator
+        """
+        settings = self.data_settings.copy()
+        company_filter = ''
+        if isinstance(['company_filter'], str):
+            company_filter = settings['company_filter'] + ' AND '
+        company_filter += 'regionId IN ({reg_id})'
+        regions_names = dict(zip(self.available_regions['id'], self.available_regions['ename']))
+        for reg_id in self.regions_list:
+            if int(reg_id) == 99:  # skip Network broadcasting
+                continue
+            settings['company_filter'] = company_filter.format(reg_id=reg_id)
+            for interval in self.period:
+                settings['date_filter'] = [interval]
+                name = "_".join(interval)
+                for t_name, t_filter in self.targets.items():
+                    settings['basedemo_filter'] = t_filter
+                    task = TVTask(name, settings.copy(), self.subtype)
+                    if t_filter:
+                        task.name += '_' + unidecode(t_name) + '_' + regions_names[int(reg_id)]
+                    task.interval = interval
+                    task.target = t_name
+                    yield task
 
 
 class BudgetMediaReport(MediaReport):
