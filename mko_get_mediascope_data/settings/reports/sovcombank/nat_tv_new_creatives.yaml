@@ -1,5 +1,6 @@
 [
   {
+    'report_type':'TV_CROSSTAB',
     'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
     'category_name': 'sovcombank',
     'compression': {'method': 'gzip'},

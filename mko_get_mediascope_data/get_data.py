@@ -1,7 +1,8 @@
 from mko_get_mediascope_data.core.reports import (
-    NatCrossTabDict,
-    NatTVCrossTab,
-    NatTVTimeBand
+    TVCrossTab,
+    TVTimeBand,
+    TVSimple,
+    TVGetDictCrossTab
 )
 from os import PathLike
 from mko_get_mediascope_data.core.utils import (yaml_to_dict)
@@ -15,14 +16,10 @@ def get_data(
         connection_settings_file: [str, PathLike] = None
 ):
     REPORT_TYPES = {
-        'DYNAMICS_BY_SPOTS': NatTVCrossTab,
-        'DYNAMICS_BY_SPOTS_DICT': NatCrossTabDict,
-        'TOP_NAT_TV_ADVERTISERS': NatTVCrossTab,
-        'TOP_NAT_TV_PROGRAMS': NatTVCrossTab,
-        'NAT_TV_CHANNELS_BA': NatTVCrossTab,
-        'NAT_TV_CHANNELS_ATV': NatTVCrossTab,
-        'NAT_TV_CHANNELS_TVR': NatTVTimeBand,
-        'NAT_TV_CHANNELS_SOC_DEM': NatTVTimeBand
+        'TV_CROSSTAB': TVCrossTab,
+        'TV_TIMEBAND': TVTimeBand,
+        'TV_SIMPLE': TVSimple,
+        'TV_DICT_CROSSTAB': TVGetDictCrossTab,
     }
     if not Path.is_file(report_settings_file):
         raise FileNotFoundError(f'The system cannot '
@@ -41,7 +38,7 @@ def get_data(
     print(f'Обработка стартовала {str(start_time)}. Количество отчетов: {len(tasks)}.')
     for i, task_settings in enumerate(tasks, start=1):
         print(f'Приступаем к отчету {i}')
-        rep = task_settings['report_subtype']
+        rep = task_settings['report_type']
         t = REPORT_TYPES[rep](settings=task_settings,
                               output_path=output_path,
                               connection_settings_file=connection_settings_file

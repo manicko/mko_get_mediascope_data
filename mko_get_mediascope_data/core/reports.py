@@ -42,16 +42,16 @@ class Report:
     def __init__(self, settings, output_path: [str | bytes | PathLike | None] = None,
                  defaults_file: str | bytes | PathLike | None = None):
         # print('init Report')
-
-        self.type = settings['report_subtype']
+        self.type = settings['report_type']
+        self.subtype = settings['report_subtype']
         self.settings = settings
 
         # get default settings for the report
         self.data_settings = self.get_data_settings(defaults_file)
 
-        # use report type or category_name from settings as a name for the report
+        # use report subtype or category_name from settings as a name for the report
         # will be used as extract folder
-        self.name = self.type
+        self.name = self.subtype
         if 'category_name' in self.settings:
             self.name = unidecode(self.settings['category_name']).lower()
 
@@ -204,9 +204,12 @@ class MediaReport(Report):
 
 
 class TVMediaReport(MediaReport):
+
     def __init__(self, *args, **kwargs):
         super(TVMediaReport, self).__init__(*args, **kwargs)
         # print('init TVMediaReport')
+        self.task_intervals = {}  # переменная для хранения интервалов
+        self.temp_tasks = []
         self.targets = self.settings.get('target_audiences', None)
         if self.targets is None:
             self.targets = {'not_set': None}
@@ -224,19 +227,19 @@ class TVMediaReport(MediaReport):
 
     def get_data_settings(self, defaults_file: str | bytes | PathLike | None = None):
         """ reads default settings yaml file and returns dictionary with
-        default settings basing on the self report type
+        default settings basing on the self report subtype
 
         :param defaults_file: str or path, absolute path to yaml file
         :return: dict, dictionary with default settings
         """
-        # getting path corresponding to the current report type and combine settings
+        # getting path corresponding to the current report subtype and combine settings
         if defaults_file is None:
             defaults_file = yaml_to_dict(PATHS_TO_DEFAULTS)
-        defaults_file = Path.joinpath(ROOT_DIR, defaults_file[self.type])
+        defaults_file = Path.joinpath(ROOT_DIR, defaults_file[self.subtype])
         data = yaml_to_dict(defaults_file)
         data_settings = data['DATA_DEFAULTS']
-        if self.type in data:
-            data_settings.update(data[self.type])
+        if self.subtype in data:
+            data_settings.update(data[self.subtype])
         for k, v in self.settings.items():
             if k in data_settings:
                 data_settings[k] = v
@@ -387,14 +390,6 @@ class TVMediaReport(MediaReport):
             columns = ['targetAudience'] + columns
         return columns
 
-
-class NatTVReport(TVMediaReport):
-    def __init__(self, *args, **kwargs):
-        super(NatTVReport, self).__init__(*args, **kwargs)
-        # print('init NatTVReport')
-        self.task_intervals = {}  # переменная для хранения интервалов
-        self.temp_tasks = []
-
     async def generate_tasks(self):
         """
         Generator function returning task objects with
@@ -407,7 +402,7 @@ class NatTVReport(TVMediaReport):
             name = "_".join(interval)
             for t_name, t_filter in self.targets.items():
                 settings['basedemo_filter'] = t_filter
-                task = TVTask(name, settings.copy(), self.type)
+                task = TVTask(name, settings.copy(), self.subtype)
                 if t_filter:
                     task.name += '_' + unidecode(t_name)
                 task.interval = interval
@@ -415,9 +410,9 @@ class NatTVReport(TVMediaReport):
                 yield task
 
 
-class NatTVCrossTab(NatTVReport):
+class TVCrossTab(TVMediaReport):
     def __init__(self, *args, **kwargs):
-        super(NatTVCrossTab, self).__init__(*args, **kwargs)
+        super(TVCrossTab, self).__init__(*args, **kwargs)
 
     def get_builder(self):
         return self.connection.build_crosstab_task
@@ -426,14 +421,42 @@ class NatTVCrossTab(NatTVReport):
         return self.connection.send_crosstab_task
 
 
-class NatCrossTabDict(NatTVCrossTab):
+class TVSimple(TVMediaReport):
+    def __init__(self, *args, **kwargs):
+        super(TVSimple, self).__init__(*args, **kwargs)
+
+    def get_builder(self):
+        return self.connection.build_simple_task
+
+    def get_sender(self):
+        return self.connection.send_simple_task
+
+
+class TVTimeBand(TVMediaReport):
+    def __init__(self, *args, **kwargs):
+        super(TVTimeBand, self).__init__(*args, **kwargs)
+
+    def get_builder(self):
+        return self.connection.build_timeband_task
+
+    def get_sender(self):
+        return self.connection.send_timeband_task
+
+
+class NatTVReport(TVMediaReport):
+    def __init__(self, *args, **kwargs):
+        super(NatTVReport, self).__init__(*args, **kwargs)
+        # print('init NatTVReport')
+
+
+class TVGetDictCrossTab(TVCrossTab):
     """
     Methods to load data for dictionary to clean the main report data
     """
 
     def __init__(self, *args, **kwargs):
-        super(NatCrossTabDict, self).__init__(*args, **kwargs)
-        # print('init NatCrossTabDict')
+        super(TVGetDictCrossTab, self).__init__(*args, **kwargs)
+        # print('init TVGetDictCrossTab')
 
     async def prepare_extract_columns(self, df=None):
         columns = self.data_settings['slices']
@@ -515,22 +538,6 @@ class NatCrossTabDict(NatTVCrossTab):
         )
         df = df[d_col_names]
         return df
-
-
-class NatTVSimple(NatTVReport):
-    def get_builder(self):
-        return self.connection.build_simple_task
-
-    def get_sender(self):
-        return self.connection.send_simple_task
-
-
-class NatTVTimeBand(NatTVReport):
-    def get_builder(self):
-        return self.connection.build_timeband_task
-
-    def get_sender(self):
-        return self.connection.send_timeband_task
 
 
 class RegTVReport(TVMediaReport):

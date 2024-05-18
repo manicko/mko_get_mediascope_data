@@ -1,5 +1,6 @@
 [
   {
+    'report_type':'TV_CROSSTAB',
     'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
     'category_name': 'finance',
     'compression': {'method': 'gzip'},
@@ -23,6 +24,7 @@
     },
   },
   {
+    'report_type':'TV_DICT_CROSSTAB',
     'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # тип отчета
     'category_name': 'finance',
     'data_lang': 'ru', # задаем язык выгрузки
