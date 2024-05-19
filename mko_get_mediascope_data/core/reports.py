@@ -5,7 +5,6 @@ from pathlib import Path
 import asyncio
 from requests.exceptions import (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError)
 from mediascope_api.mediavortex import tasks as cwt
-from mediascope_api.mediavortex import catalogs as cwc
 from mediascope_api.core.errors import HTTP404Error
 
 import mko_get_mediascope_data.core.utils as utils
@@ -75,11 +74,8 @@ class MediaReport(Report):
         # get connection to Mediascope API
         self.connection_settings_file = connection_settings_file
         self.connection = asyncio.run(self.network_handler(self.connect_to_base))
-        self.catalogs = asyncio.run(
-            self.network_handler(
-                cwc.MediaVortexCats, settings_filename=self.connection_settings_file
-            )
-        )
+        self.catalogs = self.connection.cats
+
         self.builder = self.get_builder()
         self.sender = self.get_sender()
 
@@ -214,10 +210,9 @@ class TVMediaReport(MediaReport):
         return available_period
 
     def get_defaults_file(self):
-        media_default_settings_dir = Path.joinpath(PATHS_TO_DEFAULTS, self.media)
-        media_defaults_files_dict = utils.dir_content_to_dict(utils.get_dir_content(media_default_settings_dir, 'yaml'))
-        print(media_default_settings_dir,media_defaults_files_dict, self.type)
-        return media_defaults_files_dict.get(self.type, None)
+        defaults_dir = Path.joinpath(PATHS_TO_DEFAULTS, self.media)
+        defaults_files_dic = utils.dir_content_to_dict(utils.get_dir_content(defaults_dir, 'yaml'))
+        return defaults_files_dic.get(self.type, None)
 
     # defaults_file[self.type])
 

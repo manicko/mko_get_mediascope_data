@@ -37,7 +37,7 @@ def get_data(
     start_time = datetime.now().replace(microsecond=0)
     tasks = yaml_to_dict(report_settings_file)
 
-    print(f'\nОбработка стартовала {str(start_time)}. Количество отчетов: {len(tasks)}.')
+    print(f'\nОбработка стартовала {str(start_time)}.\nКоличество отчетов: {len(tasks)}.')
     for i, task_settings in enumerate(tasks, start=1):
         print(f'\nПриступаем к отчету {i}\n')
         rep = task_settings['report_type']
@@ -48,13 +48,13 @@ def get_data(
         t.create_report()
         folders.add(t.name)
 
-    print(f'\n Подготовка отчета заняла {str(datetime.now().replace(microsecond=0) - start_time)}')
+    print(f'\nПодготовка отчетов заняла {str(datetime.now().replace(microsecond=0) - start_time)}')
 
     return list(folders)
 
 
 if __name__ == '__main__':
-    REPORT_SETTINGS = 'sovcombank/nat_tv_tvreport.yaml'
+    REPORT_SETTINGS = 'sovcombank/nat_tv_brands_finance.yaml'
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
     rep_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
     out_path = Path.joinpath(root_dir.parent, "data/output")
