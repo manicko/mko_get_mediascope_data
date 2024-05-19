@@ -203,3 +203,19 @@ def yaml_to_dict(file: str | PathLike):
             print(exc)
         else:
             return data
+
+
+def get_dir_content(path: str | PathLike, ext: str = 'yaml', subfolders=True):
+    try:
+        subfolders = '**/' if subfolders else ''
+        files = Path(path).glob(f'{subfolders}*.{ext}')
+    except Exception as err:
+        raise err
+    else:
+        return files
+
+
+def dir_content_to_dict(files):
+    return {file.stem.upper(): file for file in files}
+
+

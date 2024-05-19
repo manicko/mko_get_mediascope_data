@@ -8,25 +8,14 @@ from mediascope_api.mediavortex import tasks as cwt
 from mediascope_api.mediavortex import catalogs as cwc
 from mediascope_api.core.errors import HTTP404Error
 
-from mko_get_mediascope_data.core.utils import (
-    en_to_ru,
-    slice_period,
-    csv_to_file,
-    yaml_to_dict,
-    get_frequency,
-    get_last_period,
-    str_to_date,
-    log_to_file,
-    get_output_path,
-    check_period
-)
+import mko_get_mediascope_data.core.utils as utils
 
 from mko_get_mediascope_data.core.tasks import TVTask
 
 ROOT_DIR = Path(__file__).absolute().parent.parent
 
 MEDIASCOPE_CONNECTION_SETTINGS = 'settings/connections/mediascope.json'
-PATHS_TO_DEFAULTS = 'settings/defaults/navigation.yaml'
+PATHS_TO_DEFAULTS = 'settings/defaults/media'
 
 MEDIASCOPE_CONNECTION_SETTINGS = Path.joinpath(ROOT_DIR, MEDIASCOPE_CONNECTION_SETTINGS)
 PATHS_TO_DEFAULTS = Path.joinpath(ROOT_DIR, PATHS_TO_DEFAULTS)
@@ -36,6 +25,8 @@ class Report:
     def __init__(self, settings, output_path: [str | bytes | PathLike | None] = None,
                  defaults_file: str | bytes | PathLike | None = None):
         # print('init Report')
+
+        self.media = settings.get('media', 'TV').lower()
         self.type = settings['report_type']
         self.subtype = settings['report_subtype']
         self.settings = settings
@@ -50,7 +41,7 @@ class Report:
             self.name = unidecode(self.settings['category_name']).lower()
 
         self.path = self.get_subpath()
-        self.path = get_output_path(output_path, self.path)
+        self.path = utils.get_output_path(output_path, self.path)
         # log file will be used to report connection errors
         self.log_file = Path.joinpath(self.path, 'error.log')
 
@@ -171,19 +162,19 @@ class MediaReport(Report):
                     *args,
                     **kwargs)
             except HTTP404Error as err:
-                await log_to_file(self.log_file, f'\n mtask err : {err} \n')
+                await utils.log_to_file(self.log_file, f'\n mtask err : {err} \n')
                 count_errors += 1
             # except (ConnectTimeoutError, MaxRetryError, TimeoutError) as err:
             #     print('urllib', err)
             #     count_errors += 1
             except (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError) as err:
-                await log_to_file(self.log_file, f'\n request err: {err}')
+                await utils.log_to_file(self.log_file, f'\n request err: {err}')
                 count_errors += 1
             except Exception as hz:
-                await log_to_file(self.log_file, f'\n Unexpected err: "{hz}" of type "{type(hz)}" '
-                                                 f'\n in function "{func}" '
-                                                 f'\n with args= "{args}" '
-                                                 f'and \n kwargs= {kwargs} ')
+                await utils.log_to_file(self.log_file, f'\n Unexpected err: "{hz}" of type "{type(hz)}" '
+                                                       f'\n in function "{func}" '
+                                                       f'\n with args= "{args}" '
+                                                       f'and \n kwargs= {kwargs} ')
                 count_errors += 1
             else:
                 return result
@@ -219,8 +210,16 @@ class TVMediaReport(MediaReport):
         """
         df = asyncio.run(self.network_handler(self.catalogs.get_availability_period))
         available_period = df.loc[df['id'] == str(self.base_id)][['periodFrom', 'periodTo']].values.tolist()
-        available_period = list(map(str_to_date, available_period[0]))
+        available_period = list(map(utils.str_to_date, available_period[0]))
         return available_period
+
+    def get_defaults_file(self):
+        media_default_settings_dir = Path.joinpath(PATHS_TO_DEFAULTS, self.media)
+        media_defaults_files_dict = utils.dir_content_to_dict(utils.get_dir_content(media_default_settings_dir, 'yaml'))
+        print(media_default_settings_dir,media_defaults_files_dict, self.type)
+        return media_defaults_files_dict.get(self.type, None)
+
+    # defaults_file[self.type])
 
     def get_data_settings(self, defaults_file: str | bytes | PathLike | None = None):
         """ reads default settings yaml file and returns dictionary with
@@ -231,9 +230,9 @@ class TVMediaReport(MediaReport):
         """
         # getting path corresponding to the current report subtype and combine settings
         if defaults_file is None:
-            defaults_file = yaml_to_dict(PATHS_TO_DEFAULTS)
-        defaults_file = Path.joinpath(ROOT_DIR, defaults_file[self.type])
-        data = yaml_to_dict(defaults_file)
+            defaults_file = self.get_defaults_file()
+
+        data = utils.yaml_to_dict(defaults_file)
         data_settings = data['DATA_DEFAULTS']
         if self.subtype in data:
             data_settings.update(data[self.subtype])
@@ -241,7 +240,7 @@ class TVMediaReport(MediaReport):
             if k in data_settings:
                 data_settings[k] = v
         if self.settings['data_lang'] == 'ru':
-            data_settings['slices'] = en_to_ru(data_settings['slices'])
+            data_settings['slices'] = utils.en_to_ru(data_settings['slices'])
         return data_settings
 
     def get_base_id(self):
@@ -259,17 +258,17 @@ class TVMediaReport(MediaReport):
         # задаем период выгрузки и частоту для разбивки периода на интервалы
         period = self.settings['period']['date_filter']
 
-        frequency = get_frequency(self.settings)
+        frequency = utils.get_frequency(self.settings)
         # проверяем, если фильтр дат не задан явно, задаем его
         base_available_dates = self.get_available_period()
         if period is None:
-            period = get_last_period(
+            period = utils.get_last_period(
                 today=base_available_dates[1],
                 **self.settings['period']['last_time']
             )  # ('2023-02-01', '2023-03-22')  #
         # разбиваем период на интервалы и выгружаем в отдельные файлы
-        period = check_period(period, base_available_dates)
-        intervals = slice_period(period, frequency)
+        period = utils.check_period(period, base_available_dates)
+        intervals = utils.slice_period(period, frequency)
         return intervals
 
     def connect_to_base(self):
@@ -352,7 +351,7 @@ class TVMediaReport(MediaReport):
                     task.log_error = False
                 else:
                     await asyncio.to_thread(
-                        csv_to_file,
+                        utils.csv_to_file,
                         df,
                         sub_folder=None,
                         file_prefix=task.name,

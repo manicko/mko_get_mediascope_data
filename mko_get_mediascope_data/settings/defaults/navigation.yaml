@@ -1,7 +1,0 @@
-{#TODO: write function reading folded settings
-    'TV_CROSSTAB': 'settings/defaults/media/tv/tv_crosstab.yaml',
-    'TV_TIMEBAND': 'settings/defaults/media/tv/tv_timeband.yaml',
-    'TV_DICT_CROSSTAB': 'settings/defaults/media/tv/tv_crosstab.yaml',
-    'REG_TV_CROSSTAB': 'settings/defaults/media/tv/reg_tv_crosstab.yaml',
-}
-
