@@ -1,10 +1,4 @@
-from mko_get_mediascope_data.core.reports import (
-    TVCrossTab,
-    TVTimeBand,
-    TVSimple,
-    TVGetDictCrossTab,
-    RegTVCrossTab
-)
+import mko_get_mediascope_data.core.reports as reports
 from os import PathLike
 from mko_get_mediascope_data.core.utils import (yaml_to_dict)
 from datetime import datetime
@@ -17,11 +11,12 @@ def get_data(
         connection_settings_file: [str, PathLike] = None
 ):
     REPORT_TYPES = {
-        'TV_CROSSTAB': TVCrossTab,
-        'TV_TIMEBAND': TVTimeBand,
-        'TV_SIMPLE': TVSimple,
-        'TV_DICT_CROSSTAB': TVGetDictCrossTab,
-        'REG_TV_CROSSTAB': RegTVCrossTab,
+        'TV_CROSSTAB': reports.TVCrossTab,
+        'TV_TIMEBAND': reports.TVTimeBand,
+        'TV_SIMPLE': reports.TVSimple,
+        'TV_DICT_CROSSTAB': reports.TVGetDictCrossTab,
+        'REG_TV_CROSSTAB': reports.RegTVCrossTab,
+        'REG_TV_DICT_CROSSTAB': reports.RegTVGetDictCrossTab,
     }
     if not Path.is_file(report_settings_file):
         raise FileNotFoundError(f'The system cannot '
@@ -48,13 +43,14 @@ def get_data(
         t.create_report()
         folders.add(t.name)
 
-    print(f'\nПодготовка отчетов заняла {str(datetime.now().replace(microsecond=0) - start_time)}')
+    end_time = datetime.now().replace(microsecond=0)
+    print(f'\nПодготовка отчетов завершена в {str(end_time)}. \nПодготовка заняла {str(end_time - start_time)}.')
 
     return list(folders)
 
 
 if __name__ == '__main__':
-    REPORT_SETTINGS = 'sovcombank/nat_tv_brands_finance.yaml'
+    REPORT_SETTINGS = 'sovcombank/nat_tv_by_spots.yaml'
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
     rep_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
     out_path = Path.joinpath(root_dir.parent, "data/output")

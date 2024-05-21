@@ -326,6 +326,7 @@ class TVMediaReport(MediaReport):
         if res_json is False:
             task.status = False
             task.log_error = True
+            task.error = 'Task json is not returned'
         if task.status is True:
             df = await self.network_handler(
                 self.connection.result2table,
@@ -338,6 +339,7 @@ class TVMediaReport(MediaReport):
             elif df is None:
                 task.status = False
                 task.log_error = True
+                task.error = 'Empty dataframe'
             else:
                 columns = await self.prepare_extract_columns(df)
                 df = await self.prepare_data(df, columns)
@@ -394,8 +396,8 @@ class TVMediaReport(MediaReport):
             name = "_".join(interval)
             for t_name, t_filter in self.targets.items():
                 settings['basedemo_filter'] = t_filter
-                task = TVTask(name, settings.copy(), self.subtype)
-                if t_filter:
+                task = TVTask(name, settings.copy(), self.subtype, self.type)
+                if t_name:
                     task.name += '_' + unidecode(t_name)
                 task.interval = interval
                 task.target = t_name
@@ -500,30 +502,6 @@ class TVGetDictCrossTab(TVCrossTab):
         for i, col_name in enumerate(d_col_names[start:end]):
             df[col_name] = None
             df.loc[df['search_column_idx'] == shift + i, col_name] = df['value']
-
-        # Альтернативный вариант, через массивы:
-        # col_number = len(df.columns)
-        # data = [[search_id, v, f'"col_{search_id}":"{v}"'] for search_id, rows in data.items() for v in rows]
-        #
-        # # помещаем значение в соответствующую колонку
-        # for row in data:
-        #     row.extend([None] * col_number)
-        #     search_id, value = row[:2]
-        #     row[search_id + 1] = value
-        #
-        # df = DataFrame(
-        #     data,
-        #     columns=[
-        #         'search_column_idx',
-        #         'value',
-        #         'term',
-        #         'adv',
-        #         'bra',
-        #         'sbr',
-        #         'mdl'
-        #     ]
-        # )
-        # # print(df)
         df = await asyncio.to_thread(
             concat,
             [df, DataFrame(columns=[col for col in d_col_names if col not in df.columns])]
@@ -583,6 +561,10 @@ class RegTVCrossTab(TVCrossTab):
                     task.interval = interval
                     task.target = t_name
                     yield task
+
+
+class RegTVGetDictCrossTab(RegTVCrossTab, TVGetDictCrossTab):
+    pass
 
 
 class BudgetMediaReport(MediaReport):

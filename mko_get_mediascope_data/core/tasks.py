@@ -8,14 +8,16 @@ class Task:
 
 
 class TVTask(Task):
-    def __init__(self, name, settings, report_subtype):
+    def __init__(self, name, settings, report_subtype, report_type):
         self.name = name
         self.settings = settings
         self.key = None
         self.status = True
         self.log_error = False
+        self.error = ''
         self.interval = None
         self.target = None
+        self.report_type = report_type
         self.report_subtype = report_subtype
 
     def to_yaml(self, folder: str | bytes | PathLike = None):
@@ -27,8 +29,10 @@ class TVTask(Task):
             export_file = Path.joinpath(folder, self.name + '.yaml')
             dump_settings = {
                 'name': self.name,
+                'report_type': self.report_type,
                 'report_subtype': self.report_subtype,
                 'target': self.target,
+                'error': self.error,
                 'settings': self.settings
             }
             # print(f'Сохраняю настройки задачи {self.name}: {dump_settings} в файл {export_file}')
