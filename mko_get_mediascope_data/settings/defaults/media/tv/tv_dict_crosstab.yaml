@@ -1,0 +1,134 @@
+{
+  # Задаем параметры по умолчанию для выгрузки из медиаскоп
+  'DATA_DEFAULTS': {
+    'date_filter': Null,  # Фильтр указывается в виде списка ('Начало', 'Конец'). Можно указать несколько периодов
+    'weekday_filter': Null,  # Задаем дни недели
+    'daytype_filter': Null,  # Задаем тип дня
+    'company_filter': Null,  # Задаем каналы
+    'location_filter': Null,  # Задаем место просмотра
+    'basedemo_filter': Null,  # Задаем ЦА
+    'targetdemo_filter': Null, # Доп фильтр ЦА, нужен только в случае расчета отношения между ЦА, например, при расчете Affinity Index
+    'program_filter': Null,  # Фильтр программ
+    'break_filter': Null,  # Фильтр блоков
+    'ad_filter': Null,  # Фильтр роликов:
+    'slices': Null,  # Указываем список срезов
+    'statistics': Null,  # Указываем список статистик для расчета
+    'sortings': Null,  # Задаем условия сортировки:
+    'options': Null  # Задаем опции расчета
+  },
+  'DYNAMICS_BY_SPOTS': {
+    # Указываем список срезов
+    'slices': [
+      'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
+      # 'researchMonth', # месяц разрешено указывать не более 1 временного среза на задачу.
+      # 'researchWeek', # неделя разрешено указывать не более 1 временного среза на задачу.
+      'articleList4EName',  # Список товарных категорий 4
+      'advertiserListEName',  # Список рекламодателей
+      # 'advertiserListId',  # Список рекламодателей id
+      'brandListEName',  # Список брендов
+      # 'brandListId',  # Список брендов id
+      'subbrandListEName',  # Список суббрендов
+      # 'subbrandListId',  # Список суббрендов id
+      'modelListEName',  # Список продуктов
+      # 'modelListId',  # Список продуктов id
+      'adEName',  # Ролик
+      'articleList2EName',  # Список товарных категорий 2
+      'articleList3EName',  # Список товарных категорий 3
+      'articleList4EName',  # Список товарных категорий 4
+      'adStandardDuration',  # Ролик ожидаемая длительность
+      'adDistributionTypeEName',  # Ролик распространение
+      'adTypeName',  # Ролик тип
+      'adPositionId',  # Ролик позиция в блоке
+      'adPositionTypeEName',  # Ролик позиционирование
+      'adPrimeTimeStatusId',  # Прайм/ОфПрайм роликов id' 1 - Prime-time, 2 - Off-prime
+      'adPrimeTimeStatusEName',  # Прайм/ОфПрайм роликов (англ.)
+      'adId',  # Ролик ID
+      'adNotes',  # Ролик описание
+      'adFirstIssueDate', # Ролик дата первого выхода
+      'tvCompanyEName',  # телекомпания
+      'programEName',  # Программа
+      'programCategoryEName',  # Программа категория (англ.)
+      'programCategoryShortEName',  # Программа короткая категория
+      'programTypeEName'  # Программа жанр
+    ],
+    # Задаем опции расчета
+    'options': {
+      # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      # Возможно указать только одно значение
+      'kitId': 1, #TV Index Russia all
+      'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      "standRtg": {
+        "useRealDuration": True,  # расчет по реальной длительности ролика.
+        "standardDuration": 20  # стандартная длительность 20 сек.
+      }
+    },
+    'statistics': [
+      'RtgPerSum',  # суммарный рейтинг группы событий в %
+      'StandRtgPerSum',
+      'QuantitySum'  # количество эфирных событий
+    ]
+  },
+  'DYNAMICS_BY_SPOTS_DICT': {
+    # Указываем список срезов
+    'slices': [
+      'articleLevel4EName',  # Список категорий 4 уровня
+      'advertiserEName',  # Список рекламодателей
+      'brandEName',  # Список брендов
+      'subbrandEName',  # Список суббрендов
+      'modelEName'  # Список продуктов
+    ],
+    # Задаем опции расчета
+    'options': {
+      # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      # Возможно указать только одно значение
+      'kitId': 1, #TV Index Russia all
+      'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      "standRtg": {
+        "useRealDuration": True,  # расчет по реальной длительности ролика.
+        "standardDuration": 20  # стандартная длительность 20 сек.
+      }
+    },
+    'statistics': [
+      'QuantitySum'  # количество эфирных событий
+    ]
+  },
+  'TOP_NAT_TV_ADVERTISERS': {
+    'company_filter': 'tvNetId IN (1,2,4,10,11,12,13,16,40,60,
+    83,84,86,204,205,206,255,257,258,259,260,286,326,329,340,356,376,393,502,545,348)',
+    'ad_filter': 'adIssueStatusId = R and adTypeId IN (1, 23, 25)',
+    'options': {
+      # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      # Возможно указать только одно значение
+      "kitId": 1, #TV Index Russia all
+      "issueType": "AD",   #Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      "standRtg": {
+        "useRealDuration": False,  # расчет по реальной длительности ролика.
+        "standardDuration": 20  # стандартная длительность 20 сек.
+      }
+    },
+    'slices': [
+      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
+      'advertiserEName'  # Список рекламодателей
+    ],
+    'statistics': [
+      'RtgPerSum',  # суммарный рейтинг группы событий в %
+      'StandRtgPerSum'
+    ],
+  },
+  'TOP_NAT_TV_PROGRAMS': {
+    'statistics': [
+      'RtgPerAvg',
+      'ShareAvg'
+    ],
+    'options': {
+      "kitId": 1, #TV Index Russia all
+      "issueType": "PROGRAM",   #Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+    },
+    'slices': [
+      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
+      'programEName', #Название программы
+      'tvCompanyEName', #Телекомпания
+      'programTypeEName', #Программа жанр
+    ]
+  }
+}

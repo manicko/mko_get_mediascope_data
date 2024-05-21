@@ -34,35 +34,35 @@
 #    ]
 #
 #  },
+#  {
+#    'report_type': 'TV_CROSSTAB',
+#    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+#    'category_name': 'sovcombank',
+#    'compression': { 'method': 'gzip' },
+#    'data_lang': 'ru', # задаем язык выгрузки
+#    'folder': 'raw_data',
+#    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+#    'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Финансовые услуги
+#    'target_audiences': {
+#      'BA': Null
+#    },
+#    'period': {
+#      'date_filter': ['2024-01-01', '2024-05-31'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+#      'last_time': { #если нужно последние несколько мес #
+#        'period_type': 'm',
+#        'period_num': '1',
+#        'include_current': False
+#      }
+#    },
+#    'statistics': [
+#      'SalesRtgPerSum',
+#      'SalesRtg000Sum',
+##      'SalesRtgPerAvg' # количество эфирных событий
+#    ]
+#
+#  },
   {
-    'report_type': 'TV_CROSSTAB',
-    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
-    'category_name': 'sovcombank',
-    'compression': { 'method': 'gzip' },
-    'data_lang': 'ru', # задаем язык выгрузки
-    'folder': 'raw_data',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Финансовые услуги
-    'target_audiences': {
-      'BA': Null
-    },
-    'period': {
-      'date_filter': ['2024-01-01', '2024-05-31'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
-        'period_type': 'm',
-        'period_num': '1',
-        'include_current': False
-      }
-    },
-    'statistics': [
-      'SalesRtgPerSum',
-      'SalesRtg000Sum',
-#      'SalesRtgPerAvg' # количество эфирных событий
-    ]
-
-  },
-  {
-    'report_type':'TV_CROSSTAB',
+    'report_type':'TV_DICT_CROSSTAB',
     'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # тип отчета
     'category_name': 'sovcombank',
     'data_lang': 'ru', # задаем язык выгрузки
