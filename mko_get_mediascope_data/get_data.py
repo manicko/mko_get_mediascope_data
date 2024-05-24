@@ -38,7 +38,8 @@ def get_data(
         rep = task_settings['report_type']
         t = REPORT_TYPES[rep](settings=task_settings,
                               output_path=output_path,
-                              connection_settings_file=connection_settings_file
+                              connection_settings_file=connection_settings_file,
+                              check_done=True
                               )
         t.create_report()
         folders.add(t.name)
@@ -50,11 +51,11 @@ def get_data(
 
 
 if __name__ == '__main__':
-    REPORT_SETTINGS = 'sovcombank/nat_tv_by_spots.yaml'
+    REPORT_SETTINGS = 'others/reg_tv_by_spots.yaml'
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
     rep_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
     out_path = Path.joinpath(root_dir.parent, "data/output")
-    connections = Path.joinpath(root_dir, "settings/connections/mediascope2.json")
+    connections = Path.joinpath(root_dir, "settings/connections/mediascope.json")
 
     get_data(
         report_settings_file=rep_settings_file,

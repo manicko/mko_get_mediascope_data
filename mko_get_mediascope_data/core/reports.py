@@ -22,7 +22,7 @@ PATHS_TO_DEFAULTS = Path.joinpath(ROOT_DIR, PATHS_TO_DEFAULTS)
 
 class Report:
     def __init__(self, settings, output_path: [str | bytes | PathLike | None] = None,
-                 defaults_file: str | bytes | PathLike | None = None):
+                 defaults_file: str | bytes | PathLike | None = None, check_done: bool = False):
         # print('init Report')
 
         self.media = settings.get('media', 'TV').lower()
@@ -44,6 +44,11 @@ class Report:
         # log file will be used to report connection errors
         self.log_file = Path.joinpath(self.path, 'error.log')
 
+        self.done_files = {}
+        self.check_done = check_done
+        if check_done:
+            self.done_files = self.get_done_files()
+
     def get_subpath(self):
         """makes relative path string to the report folder using
         name of the report and folder if it's specified in settings"""
@@ -53,6 +58,10 @@ class Report:
         if 'folder' in self.settings and self.settings['folder']:
             dir_name.append(unidecode(self.settings['folder']).lower())
         return '/'.join(dir_name)
+
+    def get_done_files(self):
+        ext = utils.get_files_extension(compression=self.settings.get('compression', None))
+        return utils.dir_content_to_dict(utils.get_dir_content(self.path, ext=ext), ext)
 
     def get_data_settings(self, defaults_file: str | bytes | PathLike | None = None):
         pass
@@ -122,7 +131,7 @@ class MediaReport(Report):
             if item.status is True:
                 await self.extract_data(item)
             if item.status is False:
-                print(f"Расчет: '{item.name} будет пропущен.'")
+                print(f"Расчет: '{item.name}' будет пропущен.")
                 await asyncio.to_thread(item.to_yaml, self.path)
             else:
                 print(f'Задача {item.name} готова.')
@@ -212,7 +221,7 @@ class TVMediaReport(MediaReport):
     def get_defaults_file(self):
         defaults_dir = Path.joinpath(PATHS_TO_DEFAULTS, self.media)
         defaults_files_dic = utils.dir_content_to_dict(utils.get_dir_content(defaults_dir, 'yaml'))
-        return defaults_files_dic.get(self.type, None)
+        return defaults_files_dic.get(self.type.lower(), None)
 
     # defaults_file[self.type])
 
@@ -289,6 +298,7 @@ class TVMediaReport(MediaReport):
         if not task.key:
             task.status = False
             task.log_error = True
+            task.error = 'Task.key is not received from API.'
 
     async def wait_task(self, task):
         """
@@ -305,7 +315,8 @@ class TVMediaReport(MediaReport):
             if status is False:
                 task.status = False
                 task.log_error = True
-                print('wait problem')
+                task.error = 'Max retries exceeded'
+                print('Max retries exceeded')
                 break
             elif isinstance(status, dict):
                 # print(f'\n Статус расчета задачи {task.name}:
@@ -339,7 +350,7 @@ class TVMediaReport(MediaReport):
             elif df is None:
                 task.status = False
                 task.log_error = True
-                task.error = 'Empty dataframe'
+                task.error = 'Got empty dataframe'
             else:
                 columns = await self.prepare_extract_columns(df)
                 df = await self.prepare_data(df, columns)
@@ -401,6 +412,9 @@ class TVMediaReport(MediaReport):
                     task.name += '_' + unidecode(t_name)
                 task.interval = interval
                 task.target = t_name
+                if task.name in self.done_files:
+                    print(f"Файл с расчетом: '{task.name}' уже есть "
+                          f"в папке, расчет будет пропущен.")
                 yield task
 
 
@@ -555,11 +569,15 @@ class RegTVCrossTab(TVCrossTab):
                 name = "_".join(interval)
                 for t_name, t_filter in self.targets.items():
                     settings['basedemo_filter'] = t_filter
-                    task = TVTask(name, settings.copy(), self.subtype)
+                    task = TVTask(name, settings.copy(), self.subtype, self.type)
                     if t_filter:
                         task.name += '_' + unidecode(t_name) + '_' + regions_names[int(reg_id)]
                     task.interval = interval
                     task.target = t_name
+                    if task.name in self.done_files:
+                        print(f"Файл с расчетом: '{task.name}' уже есть "
+                              f"в папке, расчет будет пропущен.")
+                        continue
                     yield task
 
 

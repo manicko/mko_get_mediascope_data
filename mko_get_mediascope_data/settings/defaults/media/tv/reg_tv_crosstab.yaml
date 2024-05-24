@@ -45,13 +45,13 @@
       'adPrimeTimeStatusId',  # Прайм/ОфПрайм роликов id' 1 - Prime-time, 2 - Off-prime
       'adPrimeTimeStatusEName',  # Прайм/ОфПрайм роликов (англ.)
       'adId',  # Ролик ID
-      'adNotes',  # Ролик описание
+#      'adNotes',  # Ролик описание
       'adFirstIssueDate', # Ролик дата первого выхода
       'tvCompanyEName',  # телекомпания
-      'programEName',  # Программа
-      'programCategoryEName',  # Программа категория (англ.)
-      'programCategoryShortEName',  # Программа короткая категория
-      'programTypeEName',  # Программа жанр
+#      'programEName',  # Программа
+#      'programCategoryEName',  # Программа категория (англ.)
+#      'programCategoryShortEName',  # Программа короткая категория
+#      'programTypeEName',  # Программа жанр
       'regionName', #Регион
     ],
     # Задаем опции расчета

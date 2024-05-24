@@ -151,9 +151,18 @@ def get_output_path(root_dir: [str | PathLike] = None, path: [str | PathLike] = 
 
 
 async def log_to_file(log_file, data):
+    time_stamp = datetime.now().replace(microsecond=0)
     async with aiof.open(log_file, 'a', encoding="utf-8") as outfile:
-        await outfile.write(f"{data}\r\n")
+        await outfile.write(f"{time_stamp}  {data}\r\n")
         await outfile.flush()
+
+
+def get_files_extension(**kwargs):
+    ext = '.csv'
+    if 'compression' in kwargs and isinstance(kwargs['compression'], dict) and 'method' in kwargs['compression']:
+        ext += '.' + kwargs['compression']['method']
+        ext = ext.replace('.gzip', '.gz')
+    return ext
 
 
 def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, file_prefix: str = None,
@@ -166,19 +175,12 @@ def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, fi
         csv_path_out = Path.joinpath(csv_path_out, sub_folder)
     # creating sub_folder with subfolder
     csv_path_out.mkdir(parents=True, exist_ok=True)
-    # try:
-    #     csv_path_out.mkdir(parents=True)  # could use flag exist_ok=True to skip check for sub_folder exists
-    # except FileExistsError:
-    #     print(f"sub_folder: {csv_path_out} already exists")
-    # finally:
     time_str = ''
     if add_time is True:
         time_str = '_' + time.strftime("%Y%m%d_%H%M%S")
-    out_file = Path(csv_path_out, f'{file_prefix}{time_str}.csv')
-    if 'compression' in kwargs and isinstance(kwargs['compression'], dict) and 'method' in kwargs['compression']:
-        suffix = '.' + kwargs['compression']['method']
-        suffix = suffix.replace('.gzip', '.gz')
-        out_file = Path(out_file).with_suffix(out_file.suffix + suffix)
+    ext = get_files_extension(**kwargs)
+    out_file = Path(csv_path_out, f'{file_prefix}{time_str}{ext}')
+
     try:
         data_frame.to_csv(path_or_buf=out_file, index=False, mode='x', decimal=',', sep=';', *args, **kwargs)
     except FileExistsError:
@@ -208,14 +210,12 @@ def yaml_to_dict(file: str | PathLike):
 def get_dir_content(path: str | PathLike, ext: str = 'yaml', subfolders=True):
     try:
         subfolders = '**/' if subfolders else ''
-        files = Path(path).glob(f'{subfolders}*.{ext}')
+        files = Path(path).glob(f'{subfolders}*.{ext.strip('.')}')
     except Exception as err:
         raise err
     else:
         return files
 
 
-def dir_content_to_dict(files):
-    return {file.stem.upper(): file for file in files}
-
-
+def dir_content_to_dict(files, ext: str = 'yaml'):
+    return {file.name.removesuffix(ext).rstrip('.'): file for file in files}
