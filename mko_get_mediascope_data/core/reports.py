@@ -223,8 +223,6 @@ class TVMediaReport(MediaReport):
         defaults_files_dic = utils.dir_content_to_dict(utils.get_dir_content(defaults_dir, 'yaml'))
         return defaults_files_dic.get(self.type.lower(), None)
 
-    # defaults_file[self.type])
-
     def get_data_settings(self, defaults_file: str | bytes | PathLike | None = None):
         """ reads default settings yaml file and returns dictionary with
         default settings basing on the self report subtype
@@ -310,7 +308,7 @@ class TVMediaReport(MediaReport):
             await asyncio.sleep(2)
             status = await self.network_handler(
                 self.connection.get_status,
-                20,
+                60,
                 task.key)
             if status is False:
                 task.status = False
@@ -527,6 +525,7 @@ class TVGetDictCrossTab(TVCrossTab):
 class RegTVCrossTab(TVCrossTab):
     def __init__(self, *args, **kwargs):
         super(RegTVCrossTab, self).__init__(*args, **kwargs)
+        # print('init RegTVCrossTab')
         self.available_regions = self.get_available_regions()
         self.regions_list = self.set_regions_list()
         # print(f' debug self.regions_list ={self.regions_list }')
@@ -582,7 +581,8 @@ class RegTVCrossTab(TVCrossTab):
 
 
 class RegTVGetDictCrossTab(RegTVCrossTab, TVGetDictCrossTab):
-    pass
+    def __init__(self, *args, **kwargs):
+        super(RegTVGetDictCrossTab, self).__init__(*args, **kwargs)
 
 
 class BudgetMediaReport(MediaReport):
