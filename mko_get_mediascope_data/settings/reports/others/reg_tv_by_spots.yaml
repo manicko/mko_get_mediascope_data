@@ -50,13 +50,12 @@
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
     'ad_filter': 'articleLevel4Id IN (279,282,283,288,289,301,2594,4494,4495,4973,4974,4984) AND adIssueStatusId = R', #Мясо
     'target_audiences': { Null: Null },
-    'regions': [ 6 ],
     'period': {
-      'date_filter': ['2024-03-01', '2024-04-30'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+      'date_filter':['2023-01-01', '2024-04-30'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
       'last_time': { #если нужно последние несколько мес #
-        'period_type': 'm',
+        'period_type': 'y',
         'period_num': '1',
-        'include_current': False
+        'include_current': True
       }
     },
       'options': {

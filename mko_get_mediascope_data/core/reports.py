@@ -565,12 +565,11 @@ class RegTVCrossTab(TVCrossTab):
             settings['company_filter'] = company_filter.format(reg_id=reg_id)
             for interval in self.period:
                 settings['date_filter'] = [interval]
-                name = "_".join(interval)
                 for t_name, t_filter in self.targets.items():
                     settings['basedemo_filter'] = t_filter
+                    name = map(unidecode, filter(None, (*interval, t_name, regions_names[int(reg_id)])))
+                    name = '_'.join(name)
                     task = TVTask(name, settings.copy(), self.subtype, self.type)
-                    if t_filter:
-                        task.name += '_' + unidecode(t_name) + '_' + regions_names[int(reg_id)]
                     task.interval = interval
                     task.target = t_name
                     if task.name in self.done_files:
@@ -580,7 +579,7 @@ class RegTVCrossTab(TVCrossTab):
                     yield task
 
 
-class RegTVGetDictCrossTab(RegTVCrossTab, TVGetDictCrossTab):
+class RegTVGetDictCrossTab(TVGetDictCrossTab, RegTVCrossTab):
     def __init__(self, *args, **kwargs):
         super(RegTVGetDictCrossTab, self).__init__(*args, **kwargs)
 
