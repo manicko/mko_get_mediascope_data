@@ -18,10 +18,10 @@
     'add_city_to_basedemo_from_region': True,  # Необходимо для расчета регионов
     'add_city_to_targetdemo_from_region': True, # Необходимо для расчета регионов
   },
-  'DYNAMICS_BY_SPOTS': {
+  'DYNAMICS_BY_SPOTS_M': {
     # Указываем список срезов
     'slices': [
-      'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
+      'researchMonth', # день разрешено указывать не более 1 временного среза на задачу.
       # 'researchMonth', # месяц разрешено указывать не более 1 временного среза на задачу.
       # 'researchWeek', # неделя разрешено указывать не более 1 временного среза на задачу.
       'articleList4EName',  # Список товарных категорий 4
@@ -45,9 +45,62 @@
       'adPrimeTimeStatusId',  # Прайм/ОфПрайм роликов id' 1 - Prime-time, 2 - Off-prime
       'adPrimeTimeStatusEName',  # Прайм/ОфПрайм роликов (англ.)
       'adId',  # Ролик ID
-#      'adNotes',  # Ролик описание
+      #      'adNotes',  # Ролик описание
       'adFirstIssueDate', # Ролик дата первого выхода
       'tvCompanyEName',  # телекомпания
+      #      'programEName',  # Программа
+      #      'programCategoryEName',  # Программа категория (англ.)
+      #      'programCategoryShortEName',  # Программа короткая категория
+      #      'programTypeEName',  # Программа жанр
+      'regionName', #Регион
+    ],
+    # Задаем опции расчета
+    'options': {
+      # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      # Возможно указать только одно значение
+      'kitId': 3, #TV Index Russia all
+      'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      "standRtg": {
+        "useRealDuration": True,  # расчет по реальной длительности ролика.
+        "standardDuration": 20  # стандартная длительность 20 сек.
+      }
+    },
+    'statistics': [
+      'RtgPerSum',  # суммарный рейтинг группы событий в %
+      'StandRtgPerSum',
+      'QuantitySum'  # количество эфирных событий
+    ]
+  },
+  'DYNAMICS_BY_SPOTS_D': {
+    # Указываем список срезов
+    'slices': [
+      'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
+      # 'researchMonth', # месяц разрешено указывать не более 1 временного среза на задачу.
+      # 'researchWeek', # неделя разрешено указывать не более 1 временного среза на задачу.
+      'articleList4EName',  # Список товарных категорий 4
+      'advertiserListEName',  # Список рекламодателей
+      # 'advertiserListId',  # Список рекламодателей id
+      'brandListEName',  # Список брендов
+      # 'brandListId',  # Список брендов id
+      'subbrandListEName',  # Список суббрендов
+      # 'subbrandListId',  # Список суббрендов id
+      'modelListEName',  # Список продуктов
+      # 'modelListId',  # Список продуктов id
+      'adEName',  # Ролик
+      'articleList2EName',  # Список товарных категорий 2
+      'articleList3EName',  # Список товарных категорий 3
+      'articleList4EName',  # Список товарных категорий 4
+      'adStandardDuration',  # Ролик ожидаемая длительность
+      'adDistributionTypeEName',  # Ролик распространение
+      'adTypeName',  # Ролик тип
+#      'adPositionId',  # Ролик позиция в блоке
+#      'adPositionTypeEName',  # Ролик позиционирование
+#      'adPrimeTimeStatusId',  # Прайм/ОфПрайм роликов id' 1 - Prime-time, 2 - Off-prime
+#      'adPrimeTimeStatusEName',  # Прайм/ОфПрайм роликов (англ.)
+      'adId',  # Ролик ID
+#      'adNotes',  # Ролик описание
+#      'adFirstIssueDate', # Ролик дата первого выхода
+#      'tvCompanyEName',  # телекомпания
 #      'programEName',  # Программа
 #      'programCategoryEName',  # Программа категория (англ.)
 #      'programCategoryShortEName',  # Программа короткая категория
