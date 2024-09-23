@@ -342,13 +342,13 @@ class TVMediaReport(MediaReport):
                 2,
                 res_json,
                 project_name=task.target)
-            if df.empty:
-                task.status = False
-                task.log_error = False
-            elif df is None:
+            if df is None:
                 task.status = False
                 task.log_error = True
                 task.error = 'Got empty dataframe'
+            elif df.empty:
+                task.status = False
+                task.log_error = False
             else:
                 columns = await self.prepare_extract_columns(df)
                 df = await self.prepare_data(df, columns)
