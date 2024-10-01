@@ -18,36 +18,32 @@ def get_data(
         'REG_TV_CROSSTAB': reports.RegTVCrossTab,
         'REG_TV_DICT_CROSSTAB': reports.RegTVGetDictCrossTab,
     }
-    if not Path.is_file(report_settings_file):
-        raise FileNotFoundError(f'The system cannot '
-                                f'find the file specified:"{report_settings_file}"')
-    if not Path.is_file(connection_settings_file):
-        raise FileNotFoundError(f'The system cannot '
-                                f'find the file specified:"{report_settings_file}"')
-    if not Path.is_dir(output_path):
-        raise FileNotFoundError(f'The system cannot '
-                                f'find the directory specified: "{report_settings_file}"')
 
-    folders = set()
-    start_time = datetime.now().replace(microsecond=0)
-    tasks = yaml_to_dict(report_settings_file)
+    try:
+        report_settings_file, output_path, connection_settings_file = map(Path, [report_settings_file, output_path,
+                                                                                 connection_settings_file])
+        folders = set()
+        start_time = datetime.now().replace(microsecond=0)
+        tasks = yaml_to_dict(report_settings_file)
 
-    print(f'\nОбработка стартовала {str(start_time)}.\nКоличество отчетов: {len(tasks)}.')
-    for i, task_settings in enumerate(tasks, start=1):
-        print(f'\nПриступаем к отчету {i}\n')
-        rep = task_settings['report_type']
-        t = REPORT_TYPES[rep](settings=task_settings,
-                              output_path=output_path,
-                              connection_settings_file=connection_settings_file,
-                              check_done=True
-                              )
-        t.create_report()
-        folders.add(t.name)
+        print(f'\nОбработка стартовала {str(start_time)}.\nКоличество отчетов: {len(tasks)}.')
+        for i, task_settings in enumerate(tasks, start=1):
+            print(f'\nПриступаем к отчету {i}\n')
+            rep = task_settings['report_type']
+            t = REPORT_TYPES[rep](settings=task_settings,
+                                  output_path=output_path,
+                                  connection_settings_file=connection_settings_file,
+                                  check_done=True
+                                  )
+            t.create_report()
+            folders.add(t.name)
 
-    end_time = datetime.now().replace(microsecond=0)
-    print(f'\nПодготовка отчетов завершена в {str(end_time)}. \nПодготовка заняла {str(end_time - start_time)}.')
+        end_time = datetime.now().replace(microsecond=0)
+        print(f'\nПодготовка отчетов завершена в {str(end_time)}. \nПодготовка заняла {str(end_time - start_time)}.')
 
-    return list(folders)
+        return list(folders)
+    except FileNotFoundError as err:
+        print(err)
 
 
 if __name__ == '__main__':
