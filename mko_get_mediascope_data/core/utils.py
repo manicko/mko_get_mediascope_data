@@ -210,7 +210,7 @@ def yaml_to_dict(file: str | PathLike):
 def get_dir_content(path: str | PathLike, ext: str = 'yaml', subfolders=True):
     try:
         subfolders = '**/' if subfolders else ''
-        files = Path(path).glob(f'{subfolders}*.{ext.strip('.')}')
+        files = Path(path).glob(f'{subfolders}*.{ext.strip(".")}')
     except Exception as err:
         raise err
     else:

@@ -5,9 +5,9 @@
     'category_name': 'sovcombank',
     'compression': {'method': 'gzip'},
     'data_lang': 'ru', # задаем язык выгрузки
-    'folder':'nat_tv_new_creatives',
+    'folder':'msk_tv_new_creatives',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'ad_filter': 'articleLevel2Id = 2272 and adIssueStatusId = R', #Финансовые услуги
+    'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Финансовые услуги
     'target_audiences': {
       'all 18+': 'age >= 18',
       'all 30+': 'age >= 30',
@@ -21,6 +21,16 @@
         'period_type': 'w',
         'period_num': '1',
         'include_current': True
+      }
+    },
+    'options': {
+      # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      # Возможно указать только одно значение
+      'kitId': 6, #TV Index Russia all
+      'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      "standRtg": {
+        "useRealDuration": True,  # расчет по реальной длительности ролика.
+        "standardDuration": 20  # стандартная длительность 20 сек.
       }
     },
   }
