@@ -1,0 +1,26 @@
+[
+  {
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'category_name': 'sovcombank',
+    'compression': {'method': 'gzip'},
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder':'nat_tv_new_creatives',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'ad_filter': 'articleLevel2Id = 2272 and adIssueStatusId = R', #Финансовые услуги
+    'target_audiences': {
+      'all 18+': 'age >= 18',
+      'all 30+': 'age >= 30',
+      'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
+      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+      'all 45-60 BC': 'age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)'
+    },
+    'period': {
+      'date_filter': Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'w',
+        'period_num': '1',
+        'include_current': True
+      }
+    },
+  }
+ ]

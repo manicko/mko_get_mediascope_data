@@ -1,18 +1,15 @@
 [
   {
-    'report_type':'TV_CROSSTAB',
+    'report_type': 'TV_CROSSTAB',
     'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
     'category_name': 'sovcombank',
     'compression': {'method': 'gzip'},
     'data_lang': 'ru', # задаем язык выгрузки
-    'folder':'msk_tv_new_creatives',
+    'folder': 'msk_tv_new_creatives',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
     'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Финансовые услуги
     'target_audiences': {
       'all 30+': 'age >= 30',
-#      'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
-#      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
-#      'all 45-60 BC': 'age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)'
     },
     'period': {
       'date_filter': Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
@@ -25,12 +22,28 @@
     'options': {
       # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
       # Возможно указать только одно значение
-      'kitId': 6, #TV Index Russia all
+      'kitId': 6, #6-Moscow
       'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
       "standRtg": {
         "useRealDuration": True,  # расчет по реальной длительности ролика.
         "standardDuration": 20  # стандартная длительность 20 сек.
       }
     },
+
+    'slices': [
+      'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
+      'tvCompanyEName', #Телекомпания
+      'brandListEName',  # Список брендов
+      'modelListEName',  # Список продуктов
+      'articleList4EName',  # Список товарных категорий 4
+      'adEName',  # Ролик
+      'adId',  # Ролик ID
+      'adNotes',  # Ролик описание
+      'adFirstIssueDate', # Ролик дата первого выхода
+    ],
+    'statistics': [
+      'RtgPerSum',  # суммарный рейтинг группы событий в %
+      'QuantitySum'  # количество эфирных событий
+    ],
   }
- ]
+]

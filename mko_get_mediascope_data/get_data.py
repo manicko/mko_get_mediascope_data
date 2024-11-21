@@ -47,12 +47,11 @@ def get_data(
 
 
 if __name__ == '__main__':
-    REPORT_SETTINGS = 'sovcombank/tv_msk_new_creatives.yaml'
+    REPORT_SETTINGS = 'sovcombank/nat_tv_tvreport.yaml'
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
     rep_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
     out_path = Path.joinpath(root_dir.parent, "data/output")
     connections = Path.joinpath(root_dir, "settings/connections/mediascope.json")
-
     get_data(
         report_settings_file=rep_settings_file,
         output_path=out_path,
