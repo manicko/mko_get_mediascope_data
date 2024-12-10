@@ -413,6 +413,7 @@ class TVMediaReport(MediaReport):
                 if task.name in self.done_files:
                     print(f"Файл с расчетом: '{task.name}' уже есть "
                           f"в папке, расчет будет пропущен.")
+                    continue
                 yield task
 
 

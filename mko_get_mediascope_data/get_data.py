@@ -4,21 +4,21 @@ from mko_get_mediascope_data.core.utils import (yaml_to_dict)
 from datetime import datetime
 from pathlib import Path
 
+REPORT_TYPES = {
+    'TV_CROSSTAB': reports.TVCrossTab,
+    'TV_TIMEBAND': reports.TVTimeBand,
+    'TV_SIMPLE': reports.TVSimple,
+    'TV_DICT_CROSSTAB': reports.TVGetDictCrossTab,
+    'REG_TV_CROSSTAB': reports.RegTVCrossTab,
+    'REG_TV_DICT_CROSSTAB': reports.RegTVGetDictCrossTab,
+}
+
 
 def get_data(
         report_settings_file: [str, PathLike] = None,
         output_path: [str, PathLike] = None,
         connection_settings_file: [str, PathLike] = None
 ):
-    REPORT_TYPES = {
-        'TV_CROSSTAB': reports.TVCrossTab,
-        'TV_TIMEBAND': reports.TVTimeBand,
-        'TV_SIMPLE': reports.TVSimple,
-        'TV_DICT_CROSSTAB': reports.TVGetDictCrossTab,
-        'REG_TV_CROSSTAB': reports.RegTVCrossTab,
-        'REG_TV_DICT_CROSSTAB': reports.RegTVGetDictCrossTab,
-    }
-
     try:
         report_settings_file, output_path, connection_settings_file = map(Path, [report_settings_file, output_path,
                                                                                  connection_settings_file])
@@ -47,7 +47,7 @@ def get_data(
 
 
 if __name__ == '__main__':
-    REPORT_SETTINGS = 'sovcombank/nat_tv_tvreport.yaml'
+    REPORT_SETTINGS = 'nat_tv_brands_last.yaml'
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
     rep_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
     out_path = Path.joinpath(root_dir.parent, "data/output")
