@@ -48,8 +48,9 @@ def get_data(
 
 if __name__ == '__main__':
     REPORT_SETTINGS = 'nat_tv_brands_last.yaml'
+
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
-    rep_settings_file = Path.joinpath(root_dir, 'settings/reports/', REPORT_SETTINGS)
+    rep_settings_file = Path.joinpath(root_dir, 'settings/reports/last_category', REPORT_SETTINGS)
     out_path = Path.joinpath(root_dir.parent, "data/output")
     connections = Path.joinpath(root_dir, "settings/connections/mediascope.json")
     get_data(

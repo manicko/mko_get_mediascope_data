@@ -60,7 +60,7 @@
       'kitId': 1, #TV Index Russia all
       'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
       "standRtg": {
-        "useRealDuration": True,  # расчет по реальной длительности ролика.
+        "useRealDuration": False,  # расчет по реальной длительности ролика.
         "standardDuration": 20  # стандартная длительность 20 сек.
       }
     },
@@ -86,7 +86,7 @@
       'kitId': 1, #TV Index Russia all
       'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
       "standRtg": {
-        "useRealDuration": True,  # расчет по реальной длительности ролика.
+        "useRealDuration": False,  # расчет по реальной длительности ролика.
         "standardDuration": 20  # стандартная длительность 20 сек.
       }
     },

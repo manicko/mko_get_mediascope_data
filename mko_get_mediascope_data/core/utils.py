@@ -182,7 +182,15 @@ def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, fi
     out_file = Path(csv_path_out, f'{file_prefix}{time_str}{ext}')
 
     try:
-        data_frame.to_csv(path_or_buf=out_file, index=False, mode='x', decimal=',', sep=';', *args, **kwargs)
+        encoding = kwargs.pop('encoding', 'utf-8-sig')
+        data_frame.to_csv(
+            path_or_buf=out_file,
+            index=False, mode='x',
+            decimal=',',
+            sep=';',
+            encoding=encoding,
+            *args,
+            **kwargs)
     except FileExistsError:
         print(f'File {out_file} already exists. Skip it.')
 

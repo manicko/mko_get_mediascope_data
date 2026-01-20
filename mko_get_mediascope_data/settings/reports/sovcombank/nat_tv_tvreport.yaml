@@ -19,7 +19,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 1,
+        'period_num': 4,
         'include_current': False
       }
     },
@@ -46,7 +46,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 1,
+        'period_num': 4,
         'include_current': False
       }
     },
@@ -81,7 +81,7 @@
       'date_filter': Null, #[ '2023-01-01', '2023-12-31' ], #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 1,
+        'period_num': 4,
         'include_current': False
       }
     },
@@ -128,7 +128,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'w',
-        'period_num': 6,
+        'period_num': 26,
         'include_current': False
       }
     },
@@ -163,7 +163,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 1,
+        'period_num': 4,
         'include_current': False
       }
     },
@@ -193,7 +193,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 1,
+        'period_num': 4,
         'include_current': False
       }
     },
@@ -225,12 +225,12 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 1,
+        'period_num': 4,
         'include_current': False
       }
     },
     'options': {
-      "kitId": 1, #TV Index Russia all
+      "kitId": 2, #TV Index Russia all
       "totalType": "TotalTVSet" #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
     },
     'slices': [

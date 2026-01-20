@@ -5,7 +5,7 @@ from pathlib import Path
 import asyncio
 from requests.exceptions import (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError)
 from mediascope_api.mediavortex import tasks as cwt
-from mediascope_api.core.errors import HTTP404Error
+from mediascope_api.core.errors import BadRequestError
 
 import mko_get_mediascope_data.core.utils as utils
 
@@ -166,7 +166,7 @@ class MediaReport(Report):
                     func,
                     *args,
                     **kwargs)
-            except HTTP404Error as err:
+            except BadRequestError as err:
                 await utils.log_to_file(self.log_file, f'\n mtask err : {err} \n')
                 count_errors += 1
             # except (ConnectTimeoutError, MaxRetryError, TimeoutError) as err:
