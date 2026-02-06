@@ -1,0 +1,47 @@
+[
+  {
+    'report_type':'TV_CROSSTAB',
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'category_name': 'sovcom_reach',
+    'compression': {'method': 'gzip'},
+    'data_lang': 'ru', # задаем язык выгрузки
+    'folder':'raw_data',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) AND adIssueStatusId = R', #bit
+    'target_audiences': {
+      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+      'all 18+': 'age >= 18',
+    },
+    'period': {
+      'date_filter': ['2024-10-01', '2026-12-31'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'period_type': 'w',
+        'period_num': '1',
+        'include_current': True
+      }
+    },
+    'slices': [
+      'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
+    ],
+    # Задаем опции расчета
+    'options': {
+      # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      # Возможно указать только одно значение
+      'kitId': 7, #TV Index Russia all
+      'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      "standRtg": {
+        "useRealDuration": False,  # расчет по реальной длительности ролика.
+        "standardDuration": 20  # стандартная длительность 20 сек.
+      }
+    },
+    'statistics': [
+      'RtgPerSum',  # суммарный рейтинг группы событий в %
+      'StandRtgPerSum',
+      'QuantitySum'  # количество эфирных событий
+    ],
+
+  },
+#  {
+
+#  }
+ ]

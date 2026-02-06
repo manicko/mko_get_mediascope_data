@@ -57,7 +57,7 @@
     'options': {
       # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
       # Возможно указать только одно значение
-      'kitId': 1, #TV Index Russia all
+      'kitId': 7, #TV Index Russia all
       'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
       "standRtg": {
         "useRealDuration": False,  # расчет по реальной длительности ролика.
@@ -83,7 +83,7 @@
     'options': {
       # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
       # Возможно указать только одно значение
-      'kitId': 1, #TV Index Russia all
+      'kitId': 7, #TV Index Russia all
       'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
       "standRtg": {
         "useRealDuration": False,  # расчет по реальной длительности ролика.
@@ -101,7 +101,7 @@
     'options': {
       # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
       # Возможно указать только одно значение
-      "kitId": 1, #TV Index Russia all
+      "kitId": 7, #TV Index Russia all
       "issueType": "AD",   #Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
       "standRtg": {
         "useRealDuration": False,  # расчет по реальной длительности ролика.
@@ -123,7 +123,7 @@
       'ShareAvg'
     ],
     'options': {
-      "kitId": 1, #TV Index Russia all
+      "kitId": 7, #TV Index Russia all
       "issueType": "PROGRAM",   #Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
     },
     'slices': [
