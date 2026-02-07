@@ -203,11 +203,10 @@ class TVMediaReport(MediaReport):
         # print('init TVMediaReport')
         self.task_intervals = {}  # переменная для хранения интервалов
         self.temp_tasks = []
-        self.targets = self.settings.get('target_audiences', None)
-        if self.targets is None:
-            self.targets = {'not_set': None}
+        self.targets = self.settings.get('target_audiences', {'not_set': None})
         self.base_id = self.get_base_id()
         self.period = self.get_period()
+        self.output_columns = self.set_output_columns()
 
     def get_available_period(self):
         """
@@ -244,6 +243,23 @@ class TVMediaReport(MediaReport):
         if self.settings['data_lang'] == 'ru':
             data_settings['slices'] = utils.en_to_ru(data_settings['slices'])
         return data_settings
+
+    def set_output_columns(self) -> dict[str, list[str]]:
+        """Prepare columns to be used in the report
+        :return: dict of columns for the report
+        """
+        output_columns = {
+            'slices': list(self.data_settings.get('slices', [])),
+            'statistics': list(self.data_settings.get('statistics', []))
+        }
+
+        if 'frequency_dist_conditions' in self.data_settings:
+            output_columns['statistics'].append('frequencyDistInterval')
+
+        if 'target_audiences' in self.settings:
+            output_columns['statistics'].append('targetAudience')
+
+        return output_columns
 
     def get_base_id(self):
         if 'options' in self.data_settings and 'kitId' in self.data_settings['options']:
@@ -337,7 +353,7 @@ class TVMediaReport(MediaReport):
             task.log_error = True
             task.error = 'Task json is not returned'
         if task.status is True:
-            df = await self.network_handler(
+            df: DataFrame = await self.network_handler(
                 self.connection.result2table,
                 2,
                 res_json,
@@ -350,8 +366,7 @@ class TVMediaReport(MediaReport):
                 task.status = False
                 task.log_error = False
             else:
-                columns = await self.prepare_extract_columns(df)
-                df = await self.prepare_data(df, columns)
+                df = await self.prepare_data(df)
                 if df is None:
                     task.status = False
                     task.log_error = False
@@ -367,7 +382,7 @@ class TVMediaReport(MediaReport):
                     )
                     # print(f'\n сохраняю {task.name} в файл')
 
-    async def prepare_data(self, df, columns):
+    async def prepare_data(self, df: DataFrame) -> DataFrame | None:
         """
         Prepare DataFrame with data
         :param df: pandas DataFrame
@@ -375,23 +390,17 @@ class TVMediaReport(MediaReport):
         :return: pandas DataFrame
         """
         try:
-            df = df[columns]
+
+            if 'prj_name' in df.columns:
+                df.rename(columns={'prj_name': 'targetAudience'}, inplace=True)
+            df = df[[col for col_list in self.output_columns.values() for col in col_list]]
+            if 'frequencyDistInterval' in self.output_columns['statistics']:
+                df = utils.pivot_df_frequency(df, self.output_columns['slices'])
         except KeyError as err:
             print(f"Ошибка '{err}' при выгрузке интервала.", end=" ")
             return None
         else:
             return df
-
-    async def prepare_extract_columns(self, df):
-        """ Prepare columns to be used in the report
-        :param df: pandas DataFrame
-        :return: list, list of columns for the report
-        """
-        columns = self.data_settings['slices'] + self.data_settings['statistics']
-        if 'prj_name' in df:
-            df.rename(columns={'prj_name': 'targetAudience'}, inplace=True)
-            columns = ['targetAudience'] + columns
-        return columns
 
     async def generate_tasks(self):
         """

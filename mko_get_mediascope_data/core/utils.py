@@ -5,6 +5,7 @@ from dateutil.relativedelta import relativedelta
 import yaml
 import time
 import aiofiles as aiof
+from pandas import DataFrame
 
 
 def str_to_date(date_string: str):
@@ -227,3 +228,45 @@ def get_dir_content(path: str | PathLike, ext: str = 'yaml', subfolders=True):
 
 def dir_content_to_dict(files, ext: str = 'yaml'):
     return {file.name.removesuffix(ext).rstrip('.'): file for file in files}
+
+
+def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
+    if 'frequencyDistInterval' not in df.columns:
+        return df
+
+    try:
+        #  Берем колонки, где одно значение в строке
+        base_df = (
+            df[df['frequencyDistInterval'] == '-']
+            .drop(columns='frequencyDistInterval')
+            .dropna(axis=1, how='all')
+            .groupby(dim_cols, as_index=False)
+            .first()
+        )
+        # Частоты - тут набор значений в строки их приводим в pivot
+        freq_df = (
+            df[df['frequencyDistInterval'] != '-']
+            .pivot_table(
+                index=dim_cols,
+                columns='frequencyDistInterval',
+                values='FrequencyDistPer',
+                aggfunc='first'
+            )
+            .reset_index()
+        )
+        # сортировка частотных интервалов
+        freq_df = freq_df.reindex(
+            sorted(
+                freq_df.columns,
+                key=lambda x: int(x[1:-2]) if x.startswith('[') else -1
+            ),
+            axis=1
+        )
+
+        # Склейка двух массивов
+        result = base_df.merge(freq_df, on=dim_cols, how='left')
+
+        return result
+    except Exception as err:
+        print(f"Ошибка '{err}' при обработке частот.", end=" ")
+        return df

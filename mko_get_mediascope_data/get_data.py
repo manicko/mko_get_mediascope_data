@@ -47,7 +47,7 @@ def get_data(
 
 
 if __name__ == '__main__':
-    REPORT_SETTINGS = 'nat_tv_brands_last.yaml'
+    REPORT_SETTINGS = 'nat_tv_brands_weekly_reach.yaml'
 
     root_dir = Path(__file__).absolute().parent  # root_dir = Path().absolute()
     rep_settings_file = Path.joinpath(root_dir, 'settings/reports/last_category', REPORT_SETTINGS)

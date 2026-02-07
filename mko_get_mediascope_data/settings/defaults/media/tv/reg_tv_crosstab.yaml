@@ -17,6 +17,7 @@
     'options': Null,  # Задаем опции расчета
     'add_city_to_basedemo_from_region': True,  # Необходимо для расчета регионов
     'add_city_to_targetdemo_from_region': True, # Необходимо для расчета регионов
+    'frequency_dist_conditions': Null, # Задает распределение по частоте
   },
   'DYNAMICS_BY_SPOTS_M': {
     # Указываем список срезов

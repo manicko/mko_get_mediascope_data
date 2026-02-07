@@ -1,19 +1,20 @@
 [
   {
-    'report_type':'TV_CROSSTAB',
+    'report_type': 'TV_CROSSTAB',
     'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
     'category_name': 'sovcom_reach',
-    'compression': {'method': 'gzip'},
+    'compression': { 'method': 'gzip' },
     'data_lang': 'ru', # задаем язык выгрузки
-    'folder':'raw_data',
+    'folder': 'raw_data',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) AND adIssueStatusId = R', #bit
+    'ad_filter': 'adId IN (4645269, 4707759, 4642934) AND adIssueStatusId = R', #bit
     'target_audiences': {
-      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
-      'all 18+': 'age >= 18',
+#      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
+#      'all 18+': 'age >= 18',
+      'all 45-60 BC': 'age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)',
     },
     'period': {
-      'date_filter': ['2024-10-01', '2026-12-31'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+      'date_filter': [ '2024-01-01', '2026-12-31' ], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'w',
         'period_num': '1',
@@ -21,7 +22,7 @@
       }
     },
     'slices': [
-      'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
+      'researchWeek', # день разрешено указывать не более 1 временного среза на задачу.
     ],
     # Задаем опции расчета
     'options': {
@@ -29,19 +30,39 @@
       # Возможно указать только одно значение
       'kitId': 7, #TV Index Russia all
       'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
-      "standRtg": {
-        "useRealDuration": False,  # расчет по реальной длительности ролика.
-        "standardDuration": 20  # стандартная длительность 20 сек.
+      'baseDate': Null, #Базовый день
+      'baseDateCalcType': "BY_RESEARCH_PERIOD", #Автоматический базовый день - по периоду
+      'oneBaseDatePerEachDateRange': False, #для всех периодов-срезов базовый день - средний день периода, заданного в календаре
+      'useNbd': True, #НБД коррекция
+      'standRtg': {
+        'useRealDuration': False,  # расчет по реальной длительности ролика.
+        'standardDuration': 20  # стандартная длительность 20 сек.
       }
     },
     'statistics': [
+      'CumReach000', #CumReach000
+#      'OTS000Sum', #  суммарное значение Reach(000) эфирных событий, входящих в группу
       'RtgPerSum',  # суммарный рейтинг группы событий в %
-      'StandRtgPerSum',
-      'QuantitySum'  # количество эфирных событий
+      'StandRtgPerSum', # суммарный рейтинг группы событий в %, рассчитанный с учетом стандартной длительности ролика.
+      'Rtg000Sum', # суммарный рейтинг группы событий в %, рассчитанный с учетом стандартной длительности ролика.
+#      'Frequency', # частота.
+      'FrequencyDistPer',
     ],
+    'frequency_dist_conditions': {
+      "intervals": [
+        { 'from': 1 },
+        { 'from': 2 },
+        { 'from': 3 },
+        { 'from': 5 },
+        { 'from': 7 },
+        { 'from': 10 },
+        { 'from': 15 },
+        { 'from': 20 },
+      ]
+    }
 
   },
-#  {
+  #  {
 
-#  }
- ]
+  #  }
+]

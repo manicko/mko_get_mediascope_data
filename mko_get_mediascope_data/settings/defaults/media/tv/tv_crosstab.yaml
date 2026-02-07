@@ -14,7 +14,8 @@
     'slices': Null,  # Указываем список срезов
     'statistics': Null,  # Указываем список статистик для расчета
     'sortings': Null,  # Задаем условия сортировки:
-    'options': Null  # Задаем опции расчета
+    'options': Null,  # Задаем опции расчета
+    'frequency_dist_conditions': Null, # Задает распределение по частоте
   },
   'DYNAMICS_BY_SPOTS': {
     'company_filter': 'tvNetId IN (1,2,4,10,11,12,13,16,40,60,
