@@ -253,7 +253,7 @@ class TVMediaReport(MediaReport):
             'statistics': list(self.data_settings.get('statistics', []))
         }
 
-        if 'frequency_dist_conditions' in self.data_settings:
+        if self.data_settings.get('frequency_dist_conditions', None):
             output_columns['statistics'].append('frequencyDistInterval')
 
         if 'target_audiences' in self.settings:
@@ -386,7 +386,6 @@ class TVMediaReport(MediaReport):
         """
         Prepare DataFrame with data
         :param df: pandas DataFrame
-        :param columns: list, columns to be used in a report
         :return: pandas DataFrame
         """
         try:
@@ -472,13 +471,9 @@ class TVGetDictCrossTab(TVCrossTab):
 
     def __init__(self, *args, **kwargs):
         super(TVGetDictCrossTab, self).__init__(*args, **kwargs)
-        # print('init TVGetDictCrossTab')
+        self.output_columns = self.data_settings.get('slices', None)
 
-    async def prepare_extract_columns(self, df=None):
-        columns = self.data_settings['slices']
-        return columns
-
-    async def prepare_data(self, df, columns):
+    async def prepare_data(self, df):
         shift = 2  # номер колонки с рекламодателем advertiser в выгрузке
         action = 'upd'  # действие по умолчанию
         d_col_names = [
@@ -499,7 +494,7 @@ class TVGetDictCrossTab(TVCrossTab):
             'cln_5'
         ]
         try:
-            df = df[columns]
+            df = df[self.output_columns]
         except KeyError as err:
             print(f"Ошибка '{err}' при выгрузке интервала.", end=" ")
             return None
