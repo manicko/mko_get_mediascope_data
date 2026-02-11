@@ -15,9 +15,9 @@ REPORT_TYPES = {
 
 
 def get_data(
-        report_settings_file: [str, PathLike] = None,
-        output_path: [str, PathLike] = None,
-        connection_settings_file: [str, PathLike] = None
+        report_settings_file: str| PathLike  = None,
+        output_path: str | PathLike = None,
+        connection_settings_file: str| PathLike = None
 ):
     try:
         report_settings_file, output_path, connection_settings_file = map(Path, [report_settings_file, output_path,

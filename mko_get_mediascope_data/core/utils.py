@@ -47,7 +47,7 @@ def slice_period(period: tuple, period_type: str = 'm'):
     allowed_periods = {'y': 'years', 'm': 'months', 'w': 'weeks'}
     if period_type not in allowed_periods:
         print(f'wrong period type {period_type} should be either "y" - years, "m" -months, "w" - weeks')
-        return
+        return None
     period_type = allowed_periods[period_type]
     first, last = map(str_to_date, period)
     delta_period = relativedelta(**{period_type: 1})
@@ -119,18 +119,18 @@ def get_last_period(period_type: str = 'w',
     if period_type == 'y':
         start_year = today.year - period_num
         first_day_of_period = today.replace(day=1, month=1, year=start_year)
-        if include_current is False:
+        if not include_current:
             last_day_of_period = today.replace(day=1, month=1) + relativedelta(days=-1)
 
     if period_type == 'm':
         first_day_of_period = today.replace(day=1) + relativedelta(months=-period_num)
-        if include_current is False:
+        if not include_current:
             last_day_of_period = today.replace(day=1) + relativedelta(days=-1)
 
     if period_type == 'w':
         weekday = today.weekday()
         first_day_of_period = today + relativedelta(days=-weekday, weeks=-period_num)
-        if include_current is False:
+        if not include_current:
             last_day_of_period = first_day_of_period + relativedelta(days=6, weeks=period_num - 1)
 
     output = (first_day_of_period, last_day_of_period)
@@ -139,7 +139,7 @@ def get_last_period(period_type: str = 'w',
     return output
 
 
-def get_output_path(root_dir: [str | PathLike] = None, path: [str | PathLike] = None):
+def get_output_path(root_dir: str | PathLike = None, path: str | PathLike = None):
     root_dir = Path(root_dir)
     if root_dir is None or not root_dir.exists():
         # absolute path to sub_folder
@@ -177,7 +177,7 @@ def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, fi
     # creating sub_folder with subfolder
     csv_path_out.mkdir(parents=True, exist_ok=True)
     time_str = ''
-    if add_time is True:
+    if add_time:
         time_str = '_' + time.strftime("%Y%m%d_%H%M%S")
     ext = get_files_extension(**kwargs)
     out_file = Path(csv_path_out, f'{file_prefix}{time_str}{ext}')

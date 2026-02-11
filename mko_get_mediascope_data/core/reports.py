@@ -21,7 +21,7 @@ PATHS_TO_DEFAULTS = Path.joinpath(ROOT_DIR, PATHS_TO_DEFAULTS)
 
 
 class Report:
-    def __init__(self, settings, output_path: [str | bytes | PathLike | None] = None,
+    def __init__(self, settings, output_path: str | bytes | PathLike | None = None,
                  defaults_file: str | bytes | PathLike | None = None, check_done: bool = False):
         # print('init Report')
 
@@ -352,7 +352,7 @@ class TVMediaReport(MediaReport):
             task.status = False
             task.log_error = True
             task.error = 'Task json is not returned'
-        if task.status is True:
+        if task.status:
             df: DataFrame = await self.network_handler(
                 self.connection.result2table,
                 2,
@@ -385,8 +385,7 @@ class TVMediaReport(MediaReport):
     async def prepare_data(self, df: DataFrame) -> DataFrame | None:
         """
         Prepare DataFrame with data
-        :param df: pandas DataFrame
-        :return: pandas DataFrame
+        :param df: pandas DataFrame        :return:
         """
         try:
 
@@ -493,11 +492,13 @@ class TVGetDictCrossTab(TVCrossTab):
             'cln_4',
             'cln_5'
         ]
-        try:
-            df = df[self.output_columns]
-        except KeyError as err:
-            print(f"Ошибка '{err}' при выгрузке интервала.", end=" ")
+        missing = set(self.output_columns) - set(df.columns)
+        if missing:
+            print(f"Ошибка: отсутствуют колонки {missing}")
             return None
+
+        df = df[self.output_columns]
+
         # формируем словарь с уникальными значениями колонок
         data = {}
         for search_id, col in enumerate(df, start=shift):
