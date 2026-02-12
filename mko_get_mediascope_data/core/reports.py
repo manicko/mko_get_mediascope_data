@@ -252,12 +252,11 @@ class TVMediaReport(MediaReport):
             'slices': list(self.data_settings.get('slices', [])),
             'statistics': list(self.data_settings.get('statistics', []))
         }
+        if 'target_audiences' in self.settings:
+            output_columns['slices'].insert(0, 'targetAudience')
 
         if self.data_settings.get('frequency_dist_conditions', None):
             output_columns['statistics'].append('frequencyDistInterval')
-
-        if 'target_audiences' in self.settings:
-            output_columns['statistics'].append('targetAudience')
 
         return output_columns
 
