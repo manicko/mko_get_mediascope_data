@@ -53,6 +53,7 @@ if __name__ == '__main__':
     rep_settings_file = Path.joinpath(root_dir, 'settings/reports/last_category', REPORT_SETTINGS)
     out_path = Path.joinpath(root_dir.parent, "data/output")
     connections = Path.joinpath(root_dir, "settings/connections/mediascope.json")
+
     get_data(
         report_settings_file=rep_settings_file,
         output_path=out_path,

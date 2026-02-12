@@ -158,42 +158,39 @@ class MediaReport(Report):
         :param kwargs: any, named params of a passed function
         :return: result of a function request
         """
-        count_errors = 0
-        while True:
-            await asyncio.sleep(sleep_time)
+
+        max_attempts = self.connection_errors_limit
+
+        for attempt in range(max_attempts):
             try:
-                result = await asyncio.to_thread(
-                    func,
-                    *args,
-                    **kwargs)
+                return await asyncio.to_thread(func, *args, **kwargs)
+
             except BadRequestError as err:
                 await utils.log_to_file(self.log_file, f'\n mtask err : {err} \n')
-                count_errors += 1
-            # except (ConnectTimeoutError, MaxRetryError, TimeoutError) as err:
-            #     print('urllib', err)
-            #     count_errors += 1
+
             except (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError) as err:
                 await utils.log_to_file(self.log_file, f'\n request err: {err}')
-                count_errors += 1
-            except Exception as hz:
-                await utils.log_to_file(self.log_file, f'\n Unexpected err: "{hz}" of type "{type(hz)}" '
-                                                       f'\n in function "{func}" '
-                                                       f'\n with args= "{args}" '
-                                                       f'and \n kwargs= {kwargs} ')
-                count_errors += 1
-            else:
-                return result
-            finally:
-                if count_errors >= self.connection_errors_limit:
-                    print(
-                        f'\n Не удалось получить расчет задачи. '
-                        f'Превышен лимит неуспешных соединений '
-                        f'{self.connection_errors_limit}')
-                    ask = input("Press 'y' to continue, 'n' to break ")
-                    if ask == 'n':
-                        return False
-                    else:
-                        count_errors = 0
+
+            except FileNotFoundError as err:
+                await utils.log_to_file(self.log_file,
+                                        f'\n File not found err: "{err}" of type "{type(err)}"'
+                                        f'\n in function "{func}"'
+                                        f'\n with args="{args}"'
+                                        f'\n kwargs={kwargs}'
+                                        )
+                raise FileNotFoundError
+
+            except Exception as err:
+                await utils.log_to_file(
+                    self.log_file,
+                    f'\n Unexpected err: "{err}" of type "{type(err)}"'
+                    f'\n in function "{func}"'
+                    f'\n with args="{args}"'
+                    f'\n kwargs={kwargs}'
+                )
+            await asyncio.sleep(sleep_time)
+
+        raise RuntimeError("Network retry limit exceeded")
 
 
 class TVMediaReport(MediaReport):
@@ -293,7 +290,7 @@ class TVMediaReport(MediaReport):
         :return: Mediascope API task object providing methods to
         request and receive data from the Mediascope TV database
         """
-        return cwt.MediaVortexTask(settings_filename=self.connection_settings_file)
+        return cwt.MediaVortexTask(settings_filename=self.connection_settings_file, check_version=False)
 
     async def send_task(self, task):
         """Sends request based on task settings to Mediascope database using API
@@ -491,6 +488,10 @@ class TVGetDictCrossTab(TVCrossTab):
             'cln_4',
             'cln_5'
         ]
+
+        if not self.output_columns:
+            return None
+
         missing = set(self.output_columns) - set(df.columns)
         if missing:
             print(f"Ошибка: отсутствуют колонки {missing}")
@@ -498,33 +499,34 @@ class TVGetDictCrossTab(TVCrossTab):
 
         df = df[self.output_columns]
 
-        # формируем словарь с уникальными значениями колонок
-        data = {}
-        for search_id, col in enumerate(df, start=shift):
-            data[search_id] = df[col].unique().tolist()
-
-        # переносим словарь в Dataframe и добавляем индекс
-        df = DataFrame.from_dict(data, orient='index')
-        df = df.T.unstack().dropna().reset_index(level=1, drop=True).reset_index()
-        # переименовываем колонки
-        df.columns = ['search_column_idx', 'value']
-        # добавляем колонку с поисковыми условиями и колонку с action
-        # df['term'] = '"col_' + df['search_column_idx'].astype(str) + '":"' + df['value'].astype(str) + '"'
-        df['term'] = '"' + df['value'].astype(str) + '"'
-        df['action'] = action
-
-        # заполняем колонки с 'cat' или 'adv'по 'mdl'
-        start = d_col_names.index('cat')
-        end = d_col_names.index('mdl') + 1
-        for i, col_name in enumerate(d_col_names[start:end]):
-            df[col_name] = None
-            df.loc[df['search_column_idx'] == shift + i, col_name] = df['value']
-        df = await asyncio.to_thread(
-            concat,
-            [df, DataFrame(columns=[col for col in d_col_names if col not in df.columns])]
+        df_long = (
+            df.melt(var_name="column", value_name="value")
+            .dropna(subset=["value"])
+            .drop_duplicates()
         )
-        df = df[d_col_names]
-        return df
+
+        col_position_map = {
+            col: idx
+            for idx, col in enumerate(self.output_columns, start=shift)
+        }
+
+        df_long["search_column_idx"] = df_long["column"].map(col_position_map)
+
+        df_long["term"] = '"' + df_long["value"].astype(str) + '"'
+        df_long["action"] = action
+
+        start = d_col_names.index("cat")
+        end = d_col_names.index("mdl") + 1
+        target_cols = d_col_names[start:end]
+
+        for i, col_name in enumerate(target_cols):
+            df_long[col_name] = None
+            mask = df_long["search_column_idx"] == shift + i
+            df_long.loc[mask, col_name] = df_long["value"]
+
+        df_final = df_long.reindex(columns=d_col_names)
+
+        return df_final
 
 
 class RegTVCrossTab(TVCrossTab):
