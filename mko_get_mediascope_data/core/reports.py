@@ -1,15 +1,20 @@
-from pandas import (concat, DataFrame)
+from pandas import DataFrame
 from unidecode import unidecode
+import logging
 from os import PathLike
 from pathlib import Path
 import asyncio
 from requests.exceptions import (ConnectTimeout, HTTPError, ConnectionError, Timeout, RetryError)
 from mediascope_api.mediavortex import tasks as cwt
 from mediascope_api.core.errors import BadRequestError
-
+from mko_get_mediascope_data.core.errors import NoReportFoundError
 import mko_get_mediascope_data.core.utils as utils
+from typing import Type
 
 from mko_get_mediascope_data.core.tasks import TVTask
+from mko_get_mediascope_data.get_data import REPORT_TYPES
+
+logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).absolute().parent.parent
 
@@ -18,6 +23,30 @@ PATHS_TO_DEFAULTS = 'settings/defaults/media'
 
 MEDIASCOPE_CONNECTION_SETTINGS = Path.joinpath(ROOT_DIR, MEDIASCOPE_CONNECTION_SETTINGS)
 PATHS_TO_DEFAULTS = Path.joinpath(ROOT_DIR, PATHS_TO_DEFAULTS)
+
+
+class ReportFactory:
+    REPORT_TYPES: dict[str, Type] = {}
+
+    @classmethod
+    def register_report(cls, report_name: str):
+        def inner(report_cls: Type) -> Type:
+            cls.REPORT_TYPES[report_name] = report_cls
+            return report_cls
+
+        return inner
+
+    @classmethod
+    def run(cls, report_name: str):
+        try:
+            return REPORT_TYPES[report_name]
+        except KeyError:
+            logger.error(
+                "Report type '%s' not found. Available types: %s",
+                report_name,
+                list(cls.REPORT_TYPES.keys())
+            )
+            raise NoReportFoundError(f"Report '{report_name}' not registered") from None
 
 
 class Report:
@@ -420,6 +449,7 @@ class TVMediaReport(MediaReport):
                 yield task
 
 
+@ReportFactory.register_report("TV_CROSSTAB")
 class TVCrossTab(TVMediaReport):
     def __init__(self, *args, **kwargs):
         super(TVCrossTab, self).__init__(*args, **kwargs)
@@ -431,6 +461,7 @@ class TVCrossTab(TVMediaReport):
         return self.connection.send_crosstab_task
 
 
+@ReportFactory.register_report("TV_SIMPLE")
 class TVSimple(TVMediaReport):
     def __init__(self, *args, **kwargs):
         super(TVSimple, self).__init__(*args, **kwargs)
@@ -442,6 +473,7 @@ class TVSimple(TVMediaReport):
         return self.connection.send_simple_task
 
 
+@ReportFactory.register_report("TV_TIMEBAND")
 class TVTimeBand(TVMediaReport):
     def __init__(self, *args, **kwargs):
         super(TVTimeBand, self).__init__(*args, **kwargs)
@@ -453,19 +485,20 @@ class TVTimeBand(TVMediaReport):
         return self.connection.send_timeband_task
 
 
-class NatTVReport(TVMediaReport):
-    def __init__(self, *args, **kwargs):
-        super(NatTVReport, self).__init__(*args, **kwargs)
-        # print('init NatTVReport')
+#
+# class NatTVReport(TVMediaReport):
+#     def __init__(self, *args, **kwargs):
+#         super(NatTVReport, self).__init__(*args, **kwargs)
+#         # print('init NatTVReport')
 
-
-class TVGetDictCrossTab(TVCrossTab):
+@ReportFactory.register_report("TV_DICT_CROSSTAB")
+class TVDictCrossTab(TVCrossTab):
     """
     Methods to load data for dictionary to clean the main report data
     """
 
     def __init__(self, *args, **kwargs):
-        super(TVGetDictCrossTab, self).__init__(*args, **kwargs)
+        super(TVDictCrossTab, self).__init__(*args, **kwargs)
         self.output_columns = self.data_settings.get('slices', None)
 
     async def prepare_data(self, df):
@@ -529,6 +562,7 @@ class TVGetDictCrossTab(TVCrossTab):
         return df_final
 
 
+@ReportFactory.register_report("REG_TV_CROSSTAB")
 class RegTVCrossTab(TVCrossTab):
     def __init__(self, *args, **kwargs):
         super(RegTVCrossTab, self).__init__(*args, **kwargs)
@@ -586,9 +620,10 @@ class RegTVCrossTab(TVCrossTab):
                     yield task
 
 
-class RegTVGetDictCrossTab(TVGetDictCrossTab, RegTVCrossTab):
+@ReportFactory.register_report("REG_TV_DICT_CROSSTAB")
+class RegTVDictCrossTab(TVDictCrossTab, RegTVCrossTab):
     def __init__(self, *args, **kwargs):
-        super(RegTVGetDictCrossTab, self).__init__(*args, **kwargs)
+        super(RegTVDictCrossTab, self).__init__(*args, **kwargs)
 
 
 class BudgetMediaReport(MediaReport):

@@ -8,9 +8,9 @@ REPORT_TYPES = {
     'TV_CROSSTAB': reports.TVCrossTab,
     'TV_TIMEBAND': reports.TVTimeBand,
     'TV_SIMPLE': reports.TVSimple,
-    'TV_DICT_CROSSTAB': reports.TVGetDictCrossTab,
+    'TV_DICT_CROSSTAB': reports.TVDictCrossTab,
     'REG_TV_CROSSTAB': reports.RegTVCrossTab,
-    'REG_TV_DICT_CROSSTAB': reports.RegTVGetDictCrossTab,
+    'REG_TV_DICT_CROSSTAB': reports.RegTVDictCrossTab,
 }
 
 

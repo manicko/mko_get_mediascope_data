@@ -1,0 +1,2 @@
+class NoReportFoundError(Exception):
+    pass
