@@ -1,16 +1,16 @@
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 import time
-import aiofiles as aiof
 from pandas import DataFrame
 import logging
 from os import PathLike
 from pathlib import Path
-from typing import Any
-
+from typing import Any, Literal, Iterator
+from mko_get_mediascope_data.core.models import LastTimeModel
 import yaml
 
 logger = logging.getLogger(__name__)
+
 
 def str_to_date(date_string: str):
     """
@@ -21,126 +21,113 @@ def str_to_date(date_string: str):
     try:
         date_string = datetime.strptime(date_string, '%Y-%m-%d').date()
     except (ValueError, TypeError) as err:
-        print(f'wrong format of date_string {date_string}')
-        print(err)
+        logger.error(f'wrong format of date_string {date_string}: {err}')
+        raise err
     else:
         return date_string
 
 
-def get_frequency(settings: dict) -> str | None:
+def iter_period_slices(overall_start: date,
+                       overall_end: date,
+                       frequency: Literal["d", "w", "m", "y"]
+                       ) -> Iterator[tuple[date, date]]:
     """
-    Read settings to get frequency for slicing date intervals 'y': 'years', 'm': 'months', 'w': 'weeks'
-    :param settings: dict, settings of the report
-    :return: str, string 'y', 'm' or 'w'
+    Генерирует последовательные интервалы внутри [overall_start, overall_end]
+    с шагом, соответствующим frequency.
     """
-    if 'multiple_files' not in settings or settings['multiple_files'] is False:
-        return None
-    if 'last_time' not in settings['period']:
-        return None
-    if 'period_type' not in settings['period']['last_time']:
-        return None
-    return settings['period']['last_time']['period_type']
+    if overall_start > overall_end:
+        return
+
+    current = overall_start
+    delta = current
+    match frequency:
+        case "d":
+            delta = relativedelta(days=1)
+        case "w":
+            delta = relativedelta(weeks=1)
+        case "m":
+            delta = relativedelta(months=1)
+        case "y":
+            delta = relativedelta(years=1)
+        case _:
+            raise ValueError(f"Неизвестная частота: {frequency}")
+
+    while current <= overall_end:
+        next_start = current + delta
+        # конец текущего среза = день перед следующим началом
+        slice_end = next_start - relativedelta(days=1)
+        # но не выходим за overall_end
+        slice_end = min(slice_end, overall_end)
+
+        yield current, slice_end
+
+        current = next_start
 
 
-def slice_period(period: tuple, period_type: str = 'm'):
-    if period_type is None:
-        if isinstance(period, list):
-            period = tuple(period)
-        return [period]
-    # добавить проверку на дату старта интервала - начало недели, начало месяца и т.д.
-    allowed_periods = {'y': 'years', 'm': 'months', 'w': 'weeks'}
-    if period_type not in allowed_periods:
-        print(f'wrong period type {period_type} should be either "y" - years, "m" -months, "w" - weeks')
-        return None
-    period_type = allowed_periods[period_type]
-    first, last = map(str_to_date, period)
-    delta_period = relativedelta(**{period_type: 1})
-    delta_day = relativedelta(days=-1)
-
-    start_next = first
-    date_list = []
-    while start_next + delta_period <= last:
-        start = start_next
-        # adding the required period (week or month, vs 1 day, so the end - is an and of a month or week)
-        start_next = start + delta_period
-        end = start_next + delta_day
-        date_list.append((f'{start:%Y-%m-%d}', f'{end:%Y-%m-%d}'))
-
-    # if last date is earlier vs last date of new interval, we set the last day as last
-    if start_next <= last:
-        date_list.append((f'{start_next:%Y-%m-%d}', f'{last:%Y-%m-%d}'))
-    return date_list
-
-
-def check_period(period: tuple[str], available_period: list | None):
+def slice_period(period: list[date] | tuple[date, date],
+                 frequency: Literal["d", "w", "m", "y"],
+                 as_strings: bool = True,
+                 ) -> list[tuple[str, str]] | list[tuple[date, date]]:
     """
-    Adjust the report period with available dates accordingly
-    :param available_period: list,
-    :param period: tuple of dates in format of strings, ('2023-02-01', '2023-03-22')
-
-    :return: tuple, example: ('2023-02-01', '2023-03-22')
+    Splits a period into sub-intervals according to frequency.
     """
-    # проверяем доступный период в каталоге
-    test_period = list(map(str_to_date, period))
-    output = max(available_period[0], test_period[0]), min(available_period[1], test_period[1])
-    return tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
+
+    start, end = period
+
+    slices = list(iter_period_slices(start, end, frequency))
+
+    if as_strings:
+        return [
+            (s.strftime("%Y-%m-%d"), e.strftime("%Y-%m-%d"))
+            for s, e in slices
+        ]
+
+    return slices
 
 
-def get_last_period(period_type: str = 'w',
-                    period_num: int = 2,
-                    include_current: bool = False,
-                    today: datetime = None) -> tuple:
+def get_last_period(settings: LastTimeModel, today: datetime | None = None, as_strings: bool = False) \
+        -> tuple[str, ...] | tuple[date, date]:
     """
-    Returns period as a tuple for last 'period_num' months, weeks or years starting from now
-    :param period_type: str, 'y' for years, 'm' for months, 'w' for weeks
-    :param period_num: int, number of periods ago in terms of 'period_type'
-    :param include_current: bool, set to True to set period until today
-    :param today: date from which to get calculation
-    :return:
+    Возвращает начало и конец периода за последние N периодов (дни/недели/месяцы/годы).
+    include_current=False → до конца предыдущего периода
     """
-    allowed_types = {'y', 'm', 'w'}
 
-    if period_type not in allowed_types:
-        print('Period should be either "y" - years, "m" -months, "w" - weeks')
-        return '', ''
-    if type(period_num) is not int:
-        try:
-            period_num = int(period_num)
-        except TypeError:
-            print('period_num should be num')
-            return '', ''
+    today = date.today() if today is None else today
+    end = start = today
 
-    if period_num <= 0:
-        print('period_num should be > 0')
-        return '', ''
+    start_of_month = today.replace(day=1)
+    start_of_year = today.replace(month=1, day=1)
+    start_of_week = today - relativedelta(days=today.weekday())
 
-    if today is None:
-        today = date.today()
+    match settings.frequency:
+        case "y":
+            start = start_of_year.replace(year=today.year - settings.period_num)
+        case "m":
+            start = start_of_month - relativedelta(months=settings.period_num)
+        case "w":
+            start = start_of_week - relativedelta(weeks=settings.period_num)
+        case "d":
+            start = today - relativedelta(days=settings.period_num)
+        case _:
+            raise ValueError(f"Unknown frequency: {settings.frequency}")
 
-    first_day_of_period = None
-    last_day_of_period = today
+    if not settings.include_current:
+        match settings.frequency:
+            case "y":
+                end = start_of_year - relativedelta(days=1)
+            case "m":
+                end = start_of_month - relativedelta(days=1)
+            case "w":
+                end = start + relativedelta(weeks=settings.period_num - 1, days=6)
+            case "d":
+                end = today - relativedelta(days=1)
 
-    if period_type == 'y':
-        start_year = today.year - period_num
-        first_day_of_period = today.replace(day=1, month=1, year=start_year)
-        if not include_current:
-            last_day_of_period = today.replace(day=1, month=1) + relativedelta(days=-1)
+    result = (start, end)
 
-    if period_type == 'm':
-        first_day_of_period = today.replace(day=1) + relativedelta(months=-period_num)
-        if not include_current:
-            last_day_of_period = today.replace(day=1) + relativedelta(days=-1)
+    if as_strings:
+        return tuple(d.strftime("%Y-%m-%d") for d in result)
 
-    if period_type == 'w':
-        weekday = today.weekday()
-        first_day_of_period = today + relativedelta(days=-weekday, weeks=-period_num)
-        if not include_current:
-            last_day_of_period = first_day_of_period + relativedelta(days=6, weeks=period_num - 1)
-
-    output = (first_day_of_period, last_day_of_period)
-    output = tuple(map(lambda x: f'{x:%Y-%m-%d}', output))
-
-    return output
+    return result
 
 
 def get_output_path(root_dir: str | PathLike = None, path: str | PathLike = None):
@@ -155,35 +142,50 @@ def get_output_path(root_dir: str | PathLike = None, path: str | PathLike = None
     return path
 
 
-async def log_to_file(log_file, data):
-    time_stamp = datetime.now().replace(microsecond=0)
-    async with aiof.open(log_file, 'a', encoding="utf-8") as outfile:
-        await outfile.write(f"{time_stamp}  {data}\r\n")
-        await outfile.flush()
+
+def get_files_extension(compression: str | dict = None):
+    """Возвращает полное расширение файла с учётом сжатия.
+    Всегда нормализует gzip → .gz (стандартное и надёжное расширение).
+    """
+    base = '.csv'
+
+    if compression is None or compression == 'infer' or not compression:
+        return base
+
+    # Получаем метод сжатия
+    if isinstance(compression, dict):
+        method = compression.get('method', '').lower().strip()
+    else:
+        method = str(compression).lower().strip()
+
+    # Нормализация gzip (самая частая проблема)
+    if method in ('gzip', '.gzip', 'gz', '.gz'):
+        return base + '.gz'
+
+    # Другие популярные сжатия
+    elif method in ('bz2', 'bzip2'):
+        return base + '.bz2'
+    elif method in ('xz',):
+        return base + '.xz'
+    elif method in ('zip',):
+        return base + '.zip'
+    elif method in ('zstd',):
+        return base + '.zst'
+
+    else:
+        clean = method.strip('.')
+        return base + '.' + clean
 
 
-def get_files_extension(**kwargs):
-    ext = '.csv'
-    if 'compression' in kwargs and isinstance(kwargs['compression'], dict) and 'method' in kwargs['compression']:
-        ext += '.' + kwargs['compression']['method']
-        ext = ext.replace('.gzip', '.gz')
-    return ext
-
-
-def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, file_prefix: str = None,
+def csv_to_file(data_frame, csv_path_out: PathLike,
+                file_prefix: str = '',
+                compression: Literal["infer", "gzip", "bz2", "zip", "xz", "zstd", "tar"] | None | dict[
+                    str, Any] = "infer",
                 add_time: bool = True, *args, **kwargs):
-    if csv_path_out is None:
-        csv_path_out = get_output_path()
-    if file_prefix is None:
-        file_prefix = 'out'
-    if sub_folder is not None:
-        csv_path_out = Path.joinpath(csv_path_out, sub_folder)
-    # creating sub_folder with subfolder
-    csv_path_out.mkdir(parents=True, exist_ok=True)
     time_str = ''
     if add_time:
         time_str = '_' + time.strftime("%Y%m%d_%H%M%S")
-    ext = get_files_extension(**kwargs)
+    ext = get_files_extension(compression)
     out_file = Path(csv_path_out, f'{file_prefix}{time_str}{ext}')
 
     try:
@@ -194,32 +196,34 @@ def csv_to_file(data_frame, sub_folder: str = None, csv_path_out: str = None, fi
             decimal=',',
             sep=';',
             encoding=encoding,
+            compression=compression,
             *args,
             **kwargs)
     except FileExistsError:
-        print(f'File {out_file} already exists. Skip it.')
+        logger.warning(f'File report {out_file} already exists. Skip it.')
 
 
 def en_to_ru(slices_en: list) -> list:
-    if type(slices_en) is not list:
-        print(f'parameter should be list {type(slices_en)} is given')
-        return slices_en
-    slices_ru = [[] for _ in range(len(slices_en))]
-    for i, param in enumerate(slices_en):
-        slices_ru[i] = param.replace('EName', 'Name')
-    return slices_ru
+    try:
+        slices_ru = [[] for _ in range(len(slices_en))]
+        for i, param in enumerate(slices_en):
+            slices_ru[i] = param.replace('EName', 'Name')
+        return slices_ru
+    except TypeError as err:
+        logger.error(f'parameter should be list {type(slices_en)} is given')
+        raise err
 
 
 def yaml_to_dict(file: str | PathLike):
-        try:
-            with open(file, "r", encoding="utf8") as cfg:
-                data = yaml.safe_load(cfg)
-        except yaml.YAMLError as err:
-            logger.error(err)
-        except FileNotFoundError as err:
-            logger.error(f"No such file or directory{file} {err}")
-        else:
-            return data
+    try:
+        with open(file, "r", encoding="utf8") as cfg:
+            data = yaml.safe_load(cfg)
+    except yaml.YAMLError as err:
+        logger.error(err)
+    except FileNotFoundError as err:
+        logger.error(f"No such file or directory{file} {err}")
+    else:
+        return data
 
 
 def get_dir_content(path: str | PathLike, ext: str = 'yaml', subfolders=True):
@@ -274,15 +278,14 @@ def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
 
         return result
     except Exception as err:
-        print(f"Ошибка '{err}' при обработке частот.", end=" ")
+        logger.error(f"Ошибка '{err}' при обработке частот.")
         return df
 
 
-
 def list_files_in_directory(
-    path: str | PathLike[str],
-    extensions: tuple[str, ...] = ("yaml", "json"),
-    include_subfolders: bool = False,
+        path: str | PathLike[str],
+        extensions: tuple[str, ...] = ("yaml", "json"),
+        include_subfolders: bool = False,
 ) -> list[Path]:
     """
     Lists files in a directory with specific extensions.
@@ -314,6 +317,7 @@ def get_path(path: str | Path, base_dir: Path | None = None) -> Path:
         path = (base_dir / path).resolve()
 
     return path
+
 
 def ensure_path_exists(path: Path) -> None:
     """

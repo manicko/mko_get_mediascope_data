@@ -1,14 +1,15 @@
 from yaml import dump
 from os import PathLike
 from pathlib import Path
-
+import logging
+logger = logging.getLogger(__name__)
 
 class Task:
     pass
 
 
 class TVTask(Task):
-    def __init__(self, name, settings, report_subtype, report_type):
+    def __init__(self, name:str, settings:dict, report_subtype:str, report_type:str):
         self.name = name
         self.settings = settings
         self.key = None
@@ -29,12 +30,12 @@ class TVTask(Task):
             export_file = Path.joinpath(folder, self.name + '.yaml')
             dump_settings = {
                 'name': self.name,
-                'report_type': self.report_type,
-                'report_subtype': self.report_subtype,
+                'report_type': self.report_type.value,
+                'report_subtype': self.report_subtype.value,
                 'target': self.target,
                 'error': self.error,
                 'settings': self.settings
             }
-            # print(f'Сохраняю настройки задачи {self.name}: {dump_settings} в файл {export_file}')
+            logger.info(f'Сохраняю настройки задачи {self.name}: {dump_settings} в файл {export_file}')
             with open(export_file, 'w', encoding="utf-8") as outfile:
                 dump(dump_settings, outfile, default_flow_style=False, allow_unicode=True, encoding=None)

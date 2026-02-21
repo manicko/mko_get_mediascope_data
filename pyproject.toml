@@ -23,6 +23,8 @@ dependencies = [
     "python-dateutil>=2.8.0",
     "PyYAML>=6.0.1",
     "requests>=2.30.0",
+    "rich>=14.3.3",
+    "typer>=0.24.0",
     "Unidecode>=1.3.8",
     "urllib3>=2.1.0",
 ]
@@ -39,6 +41,9 @@ classifiers = [
 Homepage = "https://github.com/manicko/mko_get_mediascope_data"
 Issues = "https://github.com/manicko/mko_get_mediascope_data"
 
+[project.scripts]
+mko-get-mediascope = "mko_get_mediascope_data.app:app"
+
 
 [tool.setuptools]
 # https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html
@@ -46,7 +51,7 @@ platforms = ["Linux", "Windows"]
 include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["mko_get_mediascope_data", "mko_get_mediascope_data.*"]
 exclude = ["tests/.pytest_cache*"]
 namespaces = false

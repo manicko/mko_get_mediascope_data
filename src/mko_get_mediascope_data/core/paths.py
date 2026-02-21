@@ -35,6 +35,9 @@ class AppPaths(BaseModel):
     @property
     def user_settings_dir(self) -> Path:
         return Path(self.user_dir / 'settings')
+    @property
+    def app_settings_dir(self) -> Path:
+        return Path(self.app_dir / 'settings')
 
     @property
     def app_config(self) -> Path:
@@ -49,7 +52,7 @@ class AppPaths(BaseModel):
         return Path(self.user_settings_dir, 'log_config.yaml')
 
     @property
-    def connection(self) -> Path:
+    def connection_config(self) -> Path:
         return Path(self.user_settings_dir, 'connections/mediascope.json')
 
     @property
@@ -58,7 +61,7 @@ class AppPaths(BaseModel):
 
 
 
-PATHS = AppPaths(
+APP_PATHS = AppPaths(
     app_dir=APP_DIR,
     app_name=APP_NAME,
     user_dir=USER_DIR

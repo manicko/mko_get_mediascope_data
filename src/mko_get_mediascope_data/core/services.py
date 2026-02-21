@@ -1,0 +1,132 @@
+from pathlib import Path
+from typing import Type
+from functools import cached_property
+from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths
+import mko_get_mediascope_data.core.utils as utils
+from mko_get_mediascope_data.core.paths import PathResolver
+from mko_get_mediascope_data.core.models import AppConfig, DataDefaults, ReportSettings, Data, LoggingSettings, \
+    AppSettings, MediaType
+import logging.config
+from datetime import datetime
+from mko_get_mediascope_data.core.network_handler import network_handler
+from mediascope_api.mediavortex.tasks import MediaVortexTask
+import asyncio
+from mko_get_mediascope_data.core.reports import TVMediaReport
+
+_CONNECTION_MAP: dict[MediaType, Type] = {
+    MediaType.TV: MediaVortexTask,
+    MediaType.TV_REG: MediaVortexTask,
+}
+
+
+class AppService:
+    def __init__(self, app_paths: AppPaths, resolver: PathResolver):
+        self.app_paths = app_paths
+        self.resolver = resolver
+        self.prepare_app()
+
+    @cached_property
+    def app_config(self) -> AppConfig:
+        logging_settings = LoggingSettings(**utils.yaml_to_dict(self.app_paths.log_config))
+        app_settings = AppSettings(**utils.yaml_to_dict(self.app_paths.app_config))
+
+        return AppConfig(
+            logging_settings=logging_settings,
+            app_settings=app_settings
+        )
+
+    def prepare_app(self):
+        for handler in self.app_config.logging_settings.handlers.values():
+            if isinstance(handler, dict) and "filename" in handler:
+                file_path = self.resolver.resolve(handler["filename"])
+                self.resolver.ensure_file_parent(file_path)
+                handler["filename"] = file_path
+
+    @cached_property
+    def export_folder(self) -> Path:
+        _path = self.resolver.resolve(self.app_config.app_settings.export_folder)
+        self.resolver.ensure_dir(_path)
+        return _path
+
+    @staticmethod
+    def get_report_settings(report_settings_path: Path) -> ReportSettings:
+        return ReportSettings(**utils.yaml_to_dict(report_settings_path))
+
+    def get_default_data_settings(self, report_settings: ReportSettings) -> DataDefaults:
+        data_default_settings_path = Path(
+            self.app_paths.defaults_dir,
+            report_settings.media.lower(),
+            report_settings.report_type.lower()
+        ).with_suffix('.yaml')
+        return DataDefaults(**utils.yaml_to_dict(data_default_settings_path))
+
+    @staticmethod
+    def merge_data_settings(defaults: DataDefaults, report_settings: ReportSettings) -> dict:
+        data_settings = defaults.DATA_DEFAULTS.copy()
+
+        subtype = report_settings.report_subtype
+        if subtype and hasattr(defaults, subtype):
+            data_settings.update(getattr(defaults, subtype))
+
+        for k, v in report_settings.model_dump().items():
+            if k in data_settings:
+                data_settings[k] = v
+
+        if report_settings.data_lang == 'ru':
+            data_settings['slices'] = utils.en_to_ru(data_settings['slices'])
+
+        return data_settings
+
+    def get_data_settings(self, report_settings: ReportSettings) -> Data:
+        defaults: DataDefaults = self.get_default_data_settings(report_settings)
+        data_settings: dict = self.merge_data_settings(defaults, report_settings)
+        return Data(**data_settings)
+
+    def get_connection(self, media_type: MediaType) -> MediaVortexTask:
+
+        # TODO: #asyncio.run(self.network_handler(self.connect_to_base))
+        try:
+            connection_service = _CONNECTION_MAP[media_type]
+        except KeyError:
+            raise ValueError(f"Unsupported media type: {media_type}")
+        return connection_service(
+            settings_filename=self.app_paths.connection_config,
+            check_version=False,
+        )
+
+    def run_report(self, report_settings_path: Path) -> Path:
+        report_settings: ReportSettings = self.get_report_settings(report_settings_path)
+        export_path: Path = Path(self.export_folder / report_settings.relative_path)
+        self.resolver.ensure_dir(export_path)
+
+        data_settings: Data = self.get_data_settings(report_settings)
+
+        report_service: MediaVortexTask = asyncio.run(
+            network_handler(
+                self.get_connection,
+                report_settings.media,
+                sleep_time=3,
+            )
+        )
+
+        rep = TVMediaReport(
+            report_settings=report_settings,
+            data_settings=data_settings,
+            export_path=export_path,
+            report_service=report_service,
+        )
+
+        start_time = datetime.now().replace(microsecond=0)
+        print(f'\nОбработка стартовала {str(start_time)}.\n', flush=True)
+        rep.create_report()
+        end_time = datetime.now().replace(microsecond=0)
+        print(f'\nПодготовка отчетов завершена в {str(end_time)}. '
+              f'\nПодготовка заняла {str(end_time - start_time)}.', flush=True)
+
+        return export_path
+
+
+app_service = AppService(app_paths=APP_PATHS, resolver=PathResolver(APP_PATHS.user_dir))
+log_config = app_service.app_config.logging_settings
+
+logging.config.dictConfig(log_config.model_dump())
