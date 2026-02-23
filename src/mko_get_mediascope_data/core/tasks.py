@@ -30,12 +30,12 @@ class TVTask(Task):
             export_file = Path.joinpath(folder, self.name + '.yaml')
             dump_settings = {
                 'name': self.name,
-                'report_type': self.report_type.value,
-                'report_subtype': self.report_subtype.value,
+                'report_type': self.report_type,
+                'report_subtype': self.report_subtype,
                 'target': self.target,
                 'error': self.error,
                 'settings': self.settings
             }
-            logger.info(f'Сохраняю настройки задачи {self.name}: {dump_settings} в файл {export_file}')
+            logger.info(f'Сохраняю настройки задачи {self.name}')
             with open(export_file, 'w', encoding="utf-8") as outfile:
                 dump(dump_settings, outfile, default_flow_style=False, allow_unicode=True, encoding=None)

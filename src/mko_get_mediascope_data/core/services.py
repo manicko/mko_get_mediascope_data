@@ -8,10 +8,10 @@ from mko_get_mediascope_data.core.models import AppConfig, DataDefaults, ReportS
     AppSettings, MediaType
 import logging.config
 from datetime import datetime
-from mko_get_mediascope_data.core.network_handler import network_handler
+from mko_get_mediascope_data.core.network import NetworkClient
 from mediascope_api.mediavortex.tasks import MediaVortexTask
 import asyncio
-from mko_get_mediascope_data.core.reports import TVMediaReport
+from mko_get_mediascope_data.core.reports import TVMediaReport, ReportFactory
 
 _CONNECTION_MAP: dict[MediaType, Type] = {
     MediaType.TV: MediaVortexTask,
@@ -102,30 +102,37 @@ class AppService:
         export_paths: list[Path] = []
 
         start_time = datetime.now().replace(microsecond=0)
-        print(f'Обработка отчетов стартовала {start_time}.\n', flush=True)
+        print(
+            f'"\n{'-' * 10}  Обработка стартовала: {start_time} {'-' * 10}\n',
+            flush=True
+        )
 
         idx = 1
         for report_settings in report_settings_sequence:
-            print(f"{'*' * 60}\n", flush=True)
-            print(f"Отчёт {idx} → {report_settings.report_subtype}")
+            print(f"\nОтчёт {idx} → {report_settings.report_subtype}\n")
             export_path: Path = Path(self.export_folder / report_settings.relative_path)
             self.resolver.ensure_dir(export_path)
 
             data_settings: Data = self.get_data_settings(report_settings)
 
+            network_client: NetworkClient = NetworkClient()
             report_service: MediaVortexTask = asyncio.run(
-                network_handler(
+                network_client.call(
                     self.get_connection,
                     report_settings.media,
-                    sleep_time=3,
                 )
             )
+            report_strategies = ReportFactory(report_settings)
 
             rep = TVMediaReport(
                 report_settings=report_settings,
                 data_settings=data_settings,
                 export_path=export_path,
                 report_service=report_service,
+                network_client = network_client,
+                task_strategy=report_strategies.task_strategy(),
+                data_strategy=report_strategies.data_strategy(),
+                check_done=report_settings.check_done,
             )
 
             rep.create_report()
@@ -133,8 +140,11 @@ class AppService:
             idx += 1
 
         end_time = datetime.now().replace(microsecond=0)
-        print(f'Подготовка отчётов завершена в {end_time}. '
-              f'Заняло {end_time - start_time}.', flush=True)
+        print(
+            f'"\n{'-' * 10}  Обработка завершена: {end_time}. '
+            f'Общее время: {end_time - start_time} {'-' * 10}\n',
+            flush=True
+        )
 
         return export_paths
 

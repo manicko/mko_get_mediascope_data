@@ -24,7 +24,8 @@
       }
     },
   },
-  { 'media': 'TV',
+  {
+    'media': 'TV',
     'report_type': 'crosstab',
     'report_subtype': 'TOP_NAT_TV_PROGRAMS', # тип отчета
     'data_lang': 'ru', # задаем язык выгрузки
@@ -49,7 +50,15 @@
         'include_current': False
       }
     },
-  },
+    'options': {
+      'kitId': 1, #TV Index Russia all
+      'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      "standRtg": {
+        "useRealDuration": False,  # расчет по реальной длительности ролика.
+        "standardDuration": 20  # стандартная длительность 20 сек.
+      }
+      }
+    },
   {
     'media': 'TV',
     'report_type': 'crosstab',
@@ -167,7 +176,7 @@
       }
     },
     'options': {
-      "kitId": 1, #TV Index Russia all
+      "kitId": 7, #TV Index Russia all
       "issueType": "BREAKS",   #Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
     },
     'slices': [
@@ -217,8 +226,7 @@
     'data_lang': 'ru', # задаем язык выгрузки
     'relative_path': 'tv_report/soc_dem_sex',
     'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
-       255,257,258,259,260,326,329,348,348,348)',
+    'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,255,257,258,259,260,326,329,348,348,348)',
     'targetdemo_filter': 'sex = 2',
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
@@ -229,7 +237,7 @@
       }
     },
     'options': {
-      "kitId": 2, #TV Index Russia all
+      "kitId": 1, #TV Index Russia all
       "totalType": "TotalTVSet" #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
     },
     'slices': [

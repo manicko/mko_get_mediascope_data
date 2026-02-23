@@ -132,7 +132,7 @@ def get_last_period(
     return result
 
 
-def get_files_extension(compression: str | dict = None):
+def get_files_suffix(compression: str | dict = None):
     """Возвращает полное расширение файла с учётом сжатия.
     Всегда нормализует gzip → .gz (стандартное и надёжное расширение).
     """
@@ -178,7 +178,7 @@ def csv_to_file(
     time_str = ''
     if add_time:
         time_str = '_' + time.strftime("%Y%m%d_%H%M%S")
-    ext = get_files_extension(compression)
+    ext = get_files_suffix(compression)
     out_file = Path(csv_path_out, f'{file_prefix}{time_str}{ext}')
 
     try:
@@ -245,12 +245,12 @@ def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
 
         return result
     except Exception as err:
-        logger.error(f"Ошибка '{err}' при обработке частот.")
+        logger.exception(f"Ошибка '{err}' при обработке частот.")
         return df
 
 
-def dir_content_to_dict(files, ext: str = 'yaml'):
-    return {file.name.removesuffix(ext).rstrip('.'): file for file in files}
+def dir_content_to_dict(files, suffix: str = 'yaml'):
+    return {file.name.removesuffix(suffix): file for file in files}
 
 
 def list_files_in_directory(
@@ -276,7 +276,7 @@ def list_files_in_directory(
             files.extend(Path(path).glob(f'{subfolder_pattern}*.{ext.strip(".")}'))
         return files
     except Exception as err:
-        logger.error(f"Error reading directory {path}: {err}")
+        logger.exception(f"Error reading directory {path}: {err}")
         return []
 
 

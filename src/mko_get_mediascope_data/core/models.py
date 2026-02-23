@@ -42,6 +42,12 @@ class ReportType(str, Enum):
 class ReportSubtype(str, Enum):
     default_value = ''
     DYNAMICS_BY_SPOTS = "DYNAMICS_BY_SPOTS"
+    TOP_NAT_TV_ADVERTISERS = 'TOP_NAT_TV_ADVERTISERS'
+    TOP_NAT_TV_PROGRAMS = 'TOP_NAT_TV_PROGRAMS'
+    NAT_TV_CHANNELS_ATV = 'NAT_TV_CHANNELS_ATV'
+    NAT_TV_CHANNELS_BA = "NAT_TV_CHANNELS_BA"
+    NAT_TV_CHANNELS_SOC_DEM = "NAT_TV_CHANNELS_SOC_DEM"
+
 
 
 class LastTimeModel(BaseModel):
@@ -67,6 +73,7 @@ class PeriodModel(BaseModel):
 
 class ReportSettings(BaseModel):
     model_config = ConfigDict(extra="allow")
+    check_done: bool | None = True
     report_type: ReportType
     report_subtype: ReportSubtype = ReportSubtype.default_value
     media: MediaType

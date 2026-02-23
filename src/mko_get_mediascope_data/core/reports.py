@@ -1,41 +1,41 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
 from pandas import DataFrame
 from unidecode import unidecode
 import logging
 from os import PathLike
 import asyncio
 from mediascope_api.mediavortex.tasks import MediaVortexTask
-from mko_get_mediascope_data.core.errors import NoReportFoundError
 import mko_get_mediascope_data.core.utils as utils
-from typing import Type
-from mko_get_mediascope_data.core.network_handler import network_handler
+from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.tasks import TVTask
-from mko_get_mediascope_data.core.models import ReportType, ReportSettings, Data
+from mko_get_mediascope_data.core.models import ReportSettings, Data, MediaType
 
 logger = logging.getLogger(__name__)
 
 
 class ReportFactory:
-    REPORT_TYPES: dict[ReportType, Type["Report"]] = {}
+    def __init__(self, report_settings: ReportSettings):
+        self.report_media: str = report_settings.media.upper()
+        self.report_subtype: str = report_settings.report_subtype.upper()
 
-    @classmethod
-    def register_report(cls, report_type: ReportType):
-        def inner(report_cls: Type) -> Type:
-            cls.REPORT_TYPES[report_type] = report_cls
-            return report_cls
+        self._task_strategy: type[TaskGenerationStrategy] = DefaultTVTaskStrategy
+        self._data_strategy: type[DataPreparationStrategy] = DefaultDataStrategy
 
-        return inner
+    @property
+    def task_strategy(self):
+        if self.report_media == MediaType.TV_REG:
+            return TVRegTaskStrategy
+        else:
+            return self._task_strategy
 
-    @classmethod
-    def run(cls, report_type: ReportType):
-        try:
-            return cls.REPORT_TYPES[report_type]
-        except KeyError:
-            logger.error(
-                "Report type '%s' not found. Available types: %s",
-                report_type,
-                list(cls.REPORT_TYPES.keys())
-            )
-            raise NoReportFoundError(f"Report '{report_type}' not registered") from None
+    @property
+    def data_strategy(self):
+        if "DICT" in self.report_subtype:
+            return TVRegTaskStrategy
+        else:
+            return self._data_strategy
 
 
 class Report:
@@ -43,7 +43,7 @@ class Report:
                  report_settings: ReportSettings,
                  data_settings: Data,
                  export_path: PathLike,
-                 check_done: bool = False
+                 check_done: bool = True
                  ):
         # print('init Report')
 
@@ -63,8 +63,9 @@ class Report:
             self.done_files = self.get_done_files()
 
     def get_done_files(self):
-        ext = utils.get_files_extension(self.report_settings.compression)
-        return utils.dir_content_to_dict(utils.list_files_in_directory(self.export_path, extensions=tuple(ext)), ext)
+        sufix = utils.get_files_suffix(self.report_settings.compression)
+        return utils.dir_content_to_dict(utils.list_files_in_directory(self.export_path, extensions=(sufix,)),
+                                         suffix=sufix)
 
 
 class MediaReport(Report):
@@ -73,17 +74,18 @@ class MediaReport(Report):
                  data_settings: Data,
                  export_path: PathLike,
                  report_service: MediaVortexTask,
+                 network_client: NetworkClient,
                  max_tasks: int = 100,
-                 connection_errors_limit: int = 200,
                  **kwargs
                  ):
         super(MediaReport, self).__init__(*args, report_settings=report_settings, data_settings=data_settings,
                                           export_path=export_path, **kwargs)
         # print('init MediaReport')
         # helps to override Mediascope API connection errors limit in case of bad network
-        self.connection_errors_limit = connection_errors_limit
 
         self.report_service = report_service
+        self.network_client = network_client
+
         self.catalogs = self.report_service.cats
 
         self.builder = self.report_service.build_task
@@ -144,11 +146,19 @@ class MediaReport(Report):
 
 class TVMediaReport(MediaReport):
 
-    def __init__(self, *args, **kwargs):
-        super(TVMediaReport, self).__init__(*args, **kwargs)
-        # print('init TVMediaReport')
-        self.task_intervals = {}  # переменная для хранения интервалов
-        self.temp_tasks = []
+    def __init__(
+            self,
+            *args,
+            task_strategy: TaskGenerationStrategy | None = None,
+            data_strategy: DataPreparationStrategy | None = None,
+            **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+
+        self.task_strategy = task_strategy or DefaultTVTaskStrategy()
+        self.data_strategy = data_strategy or DefaultDataStrategy()
+
+        # общие поля (используются стратегиями)
         self.targets = self.report_settings.target_audiences
         self.base_id = self.data_settings.options.get('kitId', 1)
         self.period = self.get_period()
@@ -159,11 +169,9 @@ class TVMediaReport(MediaReport):
         Checks available dates in the Mediascope database using API
         """
         df: DataFrame = asyncio.run(
-            network_handler(
-                self.catalogs.get_availability_period,
-                max_attempts=self.connection_errors_limit
-            )
+            self.network_client.call(self.catalogs.get_availability_period)
         )
+
         available_period = df.loc[df['id'] == str(self.base_id)][['periodFrom', 'periodTo']].values.tolist()
         available_period = list(map(utils.str_to_date, available_period[0]))
         return available_period
@@ -193,19 +201,22 @@ class TVMediaReport(MediaReport):
         """
         # проверяем доступные даты в базе
         available_period = self.get_available_period()
-
-        if (period := self.report_settings.period.date_filter.copy()) is None:
-            # если период не задан явно, строим его на основе последней доступной даты
-            period = utils.get_last_period(
-                today=available_period[1],
-                settings=self.report_settings.period.last_time
-            )  # ('2023-02-01', '2023-03-22')  #
-        # разбиваем период на интервалы и выгружаем в отдельные файлы
-        frequency = self.report_settings.period.last_time.frequency
-        period = max(available_period[0], period[0]), min(available_period[1], period[1])
-        if self.report_settings.multiple_files:
-            return utils.slice_period(period, frequency)
-        return period
+        try:
+            if self.report_settings.period.date_filter is None:
+                # если период не задан явно, строим его на основе последней доступной даты
+                period = utils.get_last_period(
+                    today=available_period[1],
+                    settings=self.report_settings.period.last_time
+                )  # ('2023-02-01', '2023-03-22')  #
+            else:
+                period = self.report_settings.period.date_filter.copy()
+            frequency = self.report_settings.period.last_time.frequency
+            period = max(available_period[0], period[0]), min(available_period[1], period[1])
+            if self.report_settings.multiple_files:
+                return utils.slice_period(period, frequency)
+            return period
+        except Exception as e:
+            logger.exception(e)
 
     async def send_task(self, task: TVTask):
         """Sends request based on task settings to Mediascope database using API
@@ -213,20 +224,16 @@ class TVMediaReport(MediaReport):
         :return: Nothing
         """
         # print(f'debug task.settings = {task.settings}')
-        task_json = await network_handler(
+        task_json = await self.network_client.call(
             self.builder,
             task.report_type,
-            sleep_time=2,
-            max_attempts=self.connection_errors_limit,
             **task.settings
         )
         if task_json is not False:
             task.key = {}
-            task.key = await network_handler(
+            task.key = await self.network_client.call(
                 self.sender,
-                task_json,
-                sleep_time=2,
-                max_attempts=self.connection_errors_limit
+                task_json
             )
 
             print('=', end='', flush=True)
@@ -243,11 +250,10 @@ class TVMediaReport(MediaReport):
         """
         while True:
             await asyncio.sleep(2)
-            status = await network_handler(
+            status = await self.network_client.call(
                 self.report_service.get_status,
                 task.key,
-                sleep_time=60,
-                max_attempts=self.connection_errors_limit
+                sleep_time=60
             )
             if status is False:
                 task.status = False
@@ -267,22 +273,18 @@ class TVMediaReport(MediaReport):
         :return: Nothing
         """
         # Получаем результат
-        res_json = await network_handler(
+        res_json = await self.network_client.call(
             self.report_service.get_result,
-            task.key,
-            sleep_time=2,
-            max_attempts=self.connection_errors_limit
+            task.key
         )
         if res_json is False:
             task.status = False
             task.log_error = True
             task.error = 'Task json is not returned'
         if task.status:
-            df: DataFrame = await network_handler(
+            df: DataFrame = await self.network_client.call(
                 self.report_service.result2table,
                 res_json,
-                sleep_time=2,
-                max_attempts=self.connection_errors_limit,
                 project_name=task.target
             )
             if df is None:
@@ -308,158 +310,139 @@ class TVMediaReport(MediaReport):
                     )
                     # print(f'\n сохраняю {task.name} в файл')
 
-    async def prepare_data(self, df: DataFrame) -> DataFrame | None:
-        """
-        Prepare DataFrame with data
-        :param df: pandas DataFrame        :return:
-        """
-        try:
-
-            if 'prj_name' in df.columns:
-                df.rename(columns={'prj_name': 'targetAudience'}, inplace=True)
-            df = df[[col for col_list in self.output_columns.values() for col in col_list]]
-            if 'frequencyDistInterval' in self.output_columns['statistics']:
-                df = utils.pivot_df_frequency(df, self.output_columns['slices'])
-        except KeyError as err:
-            logger.error(f"Ошибка '{err}' при выгрузке интервала.")
-            return None
-        else:
-            return df
-
     async def generate_tasks(self):
+        async for task in self.task_strategy.generate(self):
+            yield task
+
+    async def prepare_data(self, df: DataFrame) -> DataFrame | None:
+        return await self.data_strategy.prepare(self, df)
+
+
+# ====================== STRATEGIES ======================
+
+class TaskGenerationStrategy(ABC):
+    @abstractmethod
+    async def generate(self, report: "TVMediaReport"):
+        """Генерирует задачи. Должен быть async generator."""
+
+
+class DataPreparationStrategy(ABC):
+    @abstractmethod
+    async def prepare(self, report: "TVMediaReport", df: DataFrame) -> DataFrame | None:
+        """Подготавливает DataFrame."""
+
+
+class DefaultTVTaskStrategy(TaskGenerationStrategy):
+    async def generate(self, report: "TVMediaReport"):
         """
         Generator function returning task objects with
         report settings sliced by intervals and demographic profiles
         :return: generator
         """
-        settings: dict = self.data_settings.model_dump()
-        for interval in self.period:
+        settings: dict = report.data_settings.model_dump()
+        for interval in report.period:
             settings['date_filter'] = [interval]
             name: str = "_".join(interval)
-            for t_name, t_filter in self.targets.items():
+            for t_name, t_filter in report.targets.items():
                 settings['basedemo_filter'] = t_filter
-                task = TVTask(name, settings.copy(), self.subtype.value, self.type.value)
+                task = TVTask(
+                    name, settings.copy(), report.subtype.value, report.type.value
+                )
                 if t_name:
                     task.name += '_' + unidecode(t_name)
                 task.interval = interval
                 task.target = t_name
-                if task.name in self.done_files:
-                    logger.warning(f"Файл с расчетом: '{task.name}' уже есть "
-                                   f"в папке, расчет будет пропущен.")
+                if task.name in report.done_files:
+                    logger.warning(f"Файл: '{task.name}' уже есть в папке, пропускаем.")
                     continue
                 yield task
 
 
-class TVMediaDictReport(TVMediaReport):
-    """
-    Methods to load data for dictionary to clean the main report data
-    """
+class TVRegTaskStrategy(TaskGenerationStrategy):
+    async def generate(self, report: "TVMediaReport"):
+        settings = report.data_settings.model_dump()
+        available_regions = report.catalogs.get_tv_region()
+        regions_list = report.report_settings.model_dump().get('regions') or available_regions['id'].to_list()
+        regions_names = dict(zip(available_regions['id'], available_regions['ename']))
 
-    def __init__(self, *args, **kwargs):
-        super(TVMediaDictReport, self).__init__(*args, **kwargs)
-        self.output_columns = self.data_settings.get('slices', None)
+        company_filter = ''
+        if isinstance(settings.get('company_filter'), str):
+            company_filter = settings['company_filter'] + ' AND '
+        company_filter += 'regionId IN ({reg_id})'
 
-    async def prepare_data(self, df):
-        shift = 2  # номер колонки с рекламодателем advertiser в выгрузке
-        action = 'upd'  # действие по умолчанию
-        d_col_names = [
-            'action',
-            'search_column_idx',
-            'value',
-            'term',
-            'cat',
-            'adv',
-            'bra',
-            'sbr',
-            'mdl',
-            'cln_0',
-            'cln_1',
-            'cln_2',
-            'cln_3',
-            'cln_4',
-            'cln_5'
-        ]
+        for reg_id in regions_list:
+            if int(reg_id) == 99:
+                continue
+            settings['company_filter'] = company_filter.format(reg_id=reg_id)
+            for interval in report.period:
+                settings['date_filter'] = [interval]
+                for t_name, t_filter in report.targets.items():
+                    settings['basedemo_filter'] = t_filter
+                    name = '_'.join(
+                        filter(None, map(unidecode, (*interval, t_name, regions_names[int(reg_id)])))
+                    )
+                    task = TVTask(name, settings.copy(), report.subtype.value, report.type.value)
+                    task.interval = interval
+                    task.target = t_name
+                    if task.name in report.done_files:
+                        continue
+                    yield task
 
-        if not self.output_columns:
+
+class DefaultDataStrategy(DataPreparationStrategy):
+    async def prepare(self, report: "TVMediaReport", df: DataFrame) -> DataFrame | None:
+        """
+        Prepare DataFrame with data
+        :param df: pandas DataFrame
+        :param report: TVMediaReport
+        :return:
+        """
+        try:
+            if 'prj_name' in df.columns:
+                df.rename(columns={'prj_name': 'targetAudience'}, inplace=True)
+            df = df[[col for col_list in report.output_columns.values() for col in col_list]]
+            if 'frequencyDistInterval' in report.output_columns.get('statistics', []):
+                df = utils.pivot_df_frequency(df, report.output_columns['slices'])
+            return df
+        except KeyError as err:
+            logger.error(f"Ошибка '{err}' при обработке данных.")
             return None
 
-        missing = set(self.output_columns) - set(df.columns)
+
+class DictDataStrategy(DataPreparationStrategy):
+    async def prepare(self, report: "TVMediaReport", df: DataFrame) -> DataFrame | None:
+        output_columns = getattr(report.data_settings, 'slices', None) or report.data_settings.get('slices', None)
+        if not output_columns:
+            return None
+        missing = set(output_columns) - set(df.columns)
         if missing:
-            logger.error(f"Ошибка: отсутствуют колонки {missing}")
+            logger.error(f"Отсутствуют колонки: {missing}")
             return None
 
-        df = df[self.output_columns]
-
+        df = df[output_columns]
         df_long = (
             df.melt(var_name="column", value_name="value")
             .dropna(subset=["value"])
             .drop_duplicates()
         )
 
-        col_position_map = {
-            col: idx
-            for idx, col in enumerate(self.output_columns, start=shift)
-        }
+        shift = 2
+        action = 'upd'
+        d_col_names = [
+            'action', 'search_column_idx', 'value', 'term', 'cat', 'adv', 'bra',
+            'sbr', 'mdl', 'cln_0', 'cln_1', 'cln_2', 'cln_3', 'cln_4', 'cln_5'
+        ]
 
+        col_position_map = {col: idx for idx, col in enumerate(output_columns, start=shift)}
         df_long["search_column_idx"] = df_long["column"].map(col_position_map)
-
         df_long["term"] = '"' + df_long["value"].astype(str) + '"'
         df_long["action"] = action
 
         start = d_col_names.index("cat")
         end = d_col_names.index("mdl") + 1
-        target_cols = d_col_names[start:end]
-
-        for i, col_name in enumerate(target_cols):
+        for i, col_name in enumerate(d_col_names[start:end]):
             df_long[col_name] = None
             mask = df_long["search_column_idx"] == shift + i
             df_long.loc[mask, col_name] = df_long["value"]
 
-        df_final = df_long.reindex(columns=d_col_names)
-
-        return df_final
-
-
-class TVRegMediaReport(TVMediaReport):
-    def __init__(self, *args, **kwargs):
-        super(TVRegMediaReport, self).__init__(*args, **kwargs)
-        self.available_regions = self.catalogs.get_tv_region()
-        self.regions_list = self.set_regions_list()
-
-    def set_regions_list(self):
-        if 'regions' in self.report_settings:
-            return self.report_settings['regions']
-        return self.available_regions['id'].to_list()
-
-    async def generate_tasks(self):
-        """
-        Generator function returning task objects with
-        report settings sliced by intervals and demographic profiles
-        :return: generator
-        """
-        settings = self.data_settings.model_dump()
-        company_filter = ''
-        if isinstance(settings['company_filter'], str):
-            company_filter = settings['company_filter'] + ' AND '
-        company_filter += 'regionId IN ({reg_id})'
-        regions_names = dict(zip(self.available_regions['id'], self.available_regions['ename']))
-        for reg_id in self.regions_list:
-            if int(reg_id) == 99:  # skip Network broadcasting
-                continue
-            settings['company_filter'] = company_filter.format(reg_id=reg_id)
-            for interval in self.period:
-                settings['date_filter'] = [interval]
-                for t_name, t_filter in self.targets.items():
-                    settings['basedemo_filter'] = t_filter
-                    name = map(unidecode, filter(None, (*interval, t_name, regions_names[int(reg_id)])))
-                    name = '_'.join(name)
-                    task = TVTask(name, settings.copy(), self.subtype, self.type)
-                    task.interval = interval
-                    task.target = t_name
-                    if task.name in self.done_files:
-                        logger.warning(f"Файл с расчетом: '{task.name}' уже есть "
-                                       f"в папке, расчет будет пропущен.")
-                        continue
-                    yield task
-
-
+        return df_long.reindex(columns=d_col_names)
