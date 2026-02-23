@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Type
+from typing import Type, Generator
 from functools import cached_property
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths
 import mko_get_mediascope_data.core.utils as utils
@@ -49,8 +49,13 @@ class AppService:
         return _path
 
     @staticmethod
-    def get_report_settings(report_settings_path: Path) -> ReportSettings:
-        return ReportSettings(**utils.yaml_to_dict(report_settings_path))
+    def get_report_settings(report_settings_path: Path) -> Generator[ReportSettings]:
+        try:
+            for rep in utils.yaml_to_dict(report_settings_path):
+                yield ReportSettings(**rep)
+        except Exception as e:
+            logging.exception(e)
+            raise e
 
     def get_default_data_settings(self, report_settings: ReportSettings) -> DataDefaults:
         data_default_settings_path = Path(
@@ -83,8 +88,6 @@ class AppService:
         return Data(**data_settings)
 
     def get_connection(self, media_type: MediaType) -> MediaVortexTask:
-
-        # TODO: #asyncio.run(self.network_handler(self.connect_to_base))
         try:
             connection_service = _CONNECTION_MAP[media_type]
         except KeyError:
@@ -94,36 +97,46 @@ class AppService:
             check_version=False,
         )
 
-    def run_report(self, report_settings_path: Path) -> Path:
-        report_settings: ReportSettings = self.get_report_settings(report_settings_path)
-        export_path: Path = Path(self.export_folder / report_settings.relative_path)
-        self.resolver.ensure_dir(export_path)
-
-        data_settings: Data = self.get_data_settings(report_settings)
-
-        report_service: MediaVortexTask = asyncio.run(
-            network_handler(
-                self.get_connection,
-                report_settings.media,
-                sleep_time=3,
-            )
-        )
-
-        rep = TVMediaReport(
-            report_settings=report_settings,
-            data_settings=data_settings,
-            export_path=export_path,
-            report_service=report_service,
-        )
+    def run_report(self, report_settings_path: Path) -> list[Path]:
+        report_settings_sequence: Generator[ReportSettings] = self.get_report_settings(report_settings_path)
+        export_paths: list[Path] = []
 
         start_time = datetime.now().replace(microsecond=0)
-        print(f'\nОбработка стартовала {str(start_time)}.\n', flush=True)
-        rep.create_report()
-        end_time = datetime.now().replace(microsecond=0)
-        print(f'\nПодготовка отчетов завершена в {str(end_time)}. '
-              f'\nПодготовка заняла {str(end_time - start_time)}.', flush=True)
+        print(f'Обработка отчетов стартовала {start_time}.\n', flush=True)
 
-        return export_path
+        idx = 1
+        for report_settings in report_settings_sequence:
+            print(f"{'*' * 60}\n", flush=True)
+            print(f"Отчёт {idx} → {report_settings.report_subtype}")
+            export_path: Path = Path(self.export_folder / report_settings.relative_path)
+            self.resolver.ensure_dir(export_path)
+
+            data_settings: Data = self.get_data_settings(report_settings)
+
+            report_service: MediaVortexTask = asyncio.run(
+                network_handler(
+                    self.get_connection,
+                    report_settings.media,
+                    sleep_time=3,
+                )
+            )
+
+            rep = TVMediaReport(
+                report_settings=report_settings,
+                data_settings=data_settings,
+                export_path=export_path,
+                report_service=report_service,
+            )
+
+            rep.create_report()
+            export_paths.append(export_path)
+            idx += 1
+
+        end_time = datetime.now().replace(microsecond=0)
+        print(f'Подготовка отчётов завершена в {end_time}. '
+              f'Заняло {end_time - start_time}.', flush=True)
+
+        return export_paths
 
 
 app_service = AppService(app_paths=APP_PATHS, resolver=PathResolver(APP_PATHS.user_dir))

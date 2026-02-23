@@ -85,12 +85,14 @@ def slice_period(period: list[date] | tuple[date, date],
     return slices
 
 
-def get_last_period(settings: LastTimeModel, today: datetime | None = None, as_strings: bool = False) \
-        -> tuple[str, ...] | tuple[date, date]:
+def get_last_period(
+        settings: LastTimeModel,
+        today: datetime | None = None,
+        as_strings: bool = False
+) -> tuple[str, ...] | tuple[date, date]:
     """
     Возвращает начало и конец периода за последние N периодов (дни/недели/месяцы/годы).
-    include_current=False → до конца предыдущего периода
-    """
+        """
 
     today = date.today() if today is None else today
     end = start = today
@@ -130,19 +132,6 @@ def get_last_period(settings: LastTimeModel, today: datetime | None = None, as_s
     return result
 
 
-def get_output_path(root_dir: str | PathLike = None, path: str | PathLike = None):
-    root_dir = Path(root_dir)
-    if root_dir is None or not root_dir.exists():
-        # absolute path to sub_folder
-        root_dir = Path(__file__).absolute().parent.parent
-        # sub_folder containing data for import export CSV
-        root_dir = Path.joinpath(root_dir, 'data', 'output')
-    path = Path.joinpath(root_dir, path)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-
 def get_files_extension(compression: str | dict = None):
     """Возвращает полное расширение файла с учётом сжатия.
     Всегда нормализует gzip → .gz (стандартное и надёжное расширение).
@@ -177,11 +166,15 @@ def get_files_extension(compression: str | dict = None):
         return base + '.' + clean
 
 
-def csv_to_file(data_frame, csv_path_out: PathLike,
-                file_prefix: str = '',
-                compression: Literal["infer", "gzip", "bz2", "zip", "xz", "zstd", "tar"] | None | dict[
-                    str, Any] = "infer",
-                add_time: bool = True, *args, **kwargs):
+def csv_to_file(
+        data_frame: DataFrame,
+        csv_path_out: PathLike,
+        file_prefix: str = '',
+        compression: Literal["infer", "gzip", "bz2", "zip", "xz", "zstd", "tar"] | None | dict[str, Any] = "infer",
+        add_time: bool = True,
+        *args,
+        **kwargs
+):
     time_str = ''
     if add_time:
         time_str = '_' + time.strftime("%Y%m%d_%H%M%S")
@@ -203,7 +196,7 @@ def csv_to_file(data_frame, csv_path_out: PathLike,
         logger.warning(f'File report {out_file} already exists. Skip it.')
 
 
-def en_to_ru(slices_en: list) -> list:
+def en_to_ru(slices_en: list[Any]) -> list[Any]:
     try:
         slices_ru = [[] for _ in range(len(slices_en))]
         for i, param in enumerate(slices_en):
@@ -212,32 +205,6 @@ def en_to_ru(slices_en: list) -> list:
     except TypeError as err:
         logger.error(f'parameter should be list {type(slices_en)} is given')
         raise err
-
-
-def yaml_to_dict(file: str | PathLike):
-    try:
-        with open(file, "r", encoding="utf8") as cfg:
-            data = yaml.safe_load(cfg)
-    except yaml.YAMLError as err:
-        logger.error(err)
-    except FileNotFoundError as err:
-        logger.error(f"No such file or directory{file} {err}")
-    else:
-        return data
-
-
-def get_dir_content(path: str | PathLike, ext: str = 'yaml', subfolders=True):
-    try:
-        subfolders = '**/' if subfolders else ''
-        files = Path(path).glob(f'{subfolders}*.{ext.strip(".")}')
-    except Exception as err:
-        raise err
-    else:
-        return files
-
-
-def dir_content_to_dict(files, ext: str = 'yaml'):
-    return {file.name.removesuffix(ext).rstrip('.'): file for file in files}
 
 
 def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
@@ -282,6 +249,10 @@ def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
         return df
 
 
+def dir_content_to_dict(files, ext: str = 'yaml'):
+    return {file.name.removesuffix(ext).rstrip('.'): file for file in files}
+
+
 def list_files_in_directory(
         path: str | PathLike[str],
         extensions: tuple[str, ...] = ("yaml", "json"),
@@ -307,16 +278,6 @@ def list_files_in_directory(
     except Exception as err:
         logger.error(f"Error reading directory {path}: {err}")
         return []
-
-
-def get_path(path: str | Path, base_dir: Path | None = None) -> Path:
-    path = Path(path).expanduser()
-
-    if not path.is_absolute():
-        base_dir = base_dir or Path.cwd()
-        path = (base_dir / path).resolve()
-
-    return path
 
 
 def ensure_path_exists(path: Path) -> None:
@@ -376,20 +337,23 @@ def resolve_path(path: str | Path, base_dir: Path | None = None) -> Path:
     return resolved_path
 
 
-def load_config(path: Path) -> dict[str, Any]:
+def yaml_to_dict(file: str | PathLike) -> dict[str, Any] | None:
     """
     Loads configuration from a YAML file.
 
     Args:
-        path (Path): Path to the YAML configuration file.
+        file (Path): Path to the YAML configuration file.
 
     Returns:
         Dict[str, Any]: Parsed configuration dictionary, or an empty dict if the file does not exist or is invalid.
     """
-    if path.exists():
-        with path.open("r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    return {}
+    try:
+        with open(file, "r", encoding="utf8") as cfg:
+            return yaml.safe_load(cfg) or {}
+    except yaml.YAMLError as err:
+        logger.error(err)
+    except FileNotFoundError as err:
+        logger.error(f"No such file or directory{file} {err}")
 
 
 def merge_dicts(dict1: dict[Any, Any], dict2: dict[Any, Any]) -> dict[Any, Any]:

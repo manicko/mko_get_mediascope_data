@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class ReportFactory:
-    REPORT_TYPES: dict[ReportType, Type] = {}
+    REPORT_TYPES: dict[ReportType, Type["Report"]] = {}
 
     @classmethod
     def register_report(cls, report_type: ReportType):
@@ -64,7 +64,7 @@ class Report:
 
     def get_done_files(self):
         ext = utils.get_files_extension(self.report_settings.compression)
-        return utils.dir_content_to_dict(utils.get_dir_content(self.export_path, ext=ext), ext)
+        return utils.dir_content_to_dict(utils.list_files_in_directory(self.export_path, extensions=tuple(ext)), ext)
 
 
 class MediaReport(Report):
@@ -349,180 +349,117 @@ class TVMediaReport(MediaReport):
                     continue
                 yield task
 
-# @ReportFactory.register_report(ReportType.crosstab)
-# class TVCrossTab(TVMediaReport):
-#     def __init__(self, *args, **kwargs):
-#         super(TVCrossTab, self).__init__(*args, **kwargs)
-#
-#     def get_builder(self):
-#         return self.connection.build_crosstab_task
-#
-#     def get_sender(self):
-#         return self.connection.send_crosstab_task
-#
-#
-# @ReportFactory.register_report(ReportType.simple)
-# class TVSimple(TVMediaReport):
-#     def __init__(self, *args, **kwargs):
-#         super(TVSimple, self).__init__(*args, **kwargs)
-#
-#     def get_builder(self):
-#         return self.connection.build_simple_task
-#
-#     def get_sender(self):
-#         return self.connection.send_simple_task
-#
-#
-# @ReportFactory.register_report(ReportType.timeband)
-# class TVTimeBand(TVMediaReport):
-#     def __init__(self, *args, **kwargs):
-#         super(TVTimeBand, self).__init__(*args, **kwargs)
-#
-#     def get_builder(self):
-#         return self.connection.build_timeband_task
-#
-#     def get_sender(self):
-#         return self.connection.send_timeband_task
+
+class TVMediaDictReport(TVMediaReport):
+    """
+    Methods to load data for dictionary to clean the main report data
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(TVMediaDictReport, self).__init__(*args, **kwargs)
+        self.output_columns = self.data_settings.get('slices', None)
+
+    async def prepare_data(self, df):
+        shift = 2  # номер колонки с рекламодателем advertiser в выгрузке
+        action = 'upd'  # действие по умолчанию
+        d_col_names = [
+            'action',
+            'search_column_idx',
+            'value',
+            'term',
+            'cat',
+            'adv',
+            'bra',
+            'sbr',
+            'mdl',
+            'cln_0',
+            'cln_1',
+            'cln_2',
+            'cln_3',
+            'cln_4',
+            'cln_5'
+        ]
+
+        if not self.output_columns:
+            return None
+
+        missing = set(self.output_columns) - set(df.columns)
+        if missing:
+            logger.error(f"Ошибка: отсутствуют колонки {missing}")
+            return None
+
+        df = df[self.output_columns]
+
+        df_long = (
+            df.melt(var_name="column", value_name="value")
+            .dropna(subset=["value"])
+            .drop_duplicates()
+        )
+
+        col_position_map = {
+            col: idx
+            for idx, col in enumerate(self.output_columns, start=shift)
+        }
+
+        df_long["search_column_idx"] = df_long["column"].map(col_position_map)
+
+        df_long["term"] = '"' + df_long["value"].astype(str) + '"'
+        df_long["action"] = action
+
+        start = d_col_names.index("cat")
+        end = d_col_names.index("mdl") + 1
+        target_cols = d_col_names[start:end]
+
+        for i, col_name in enumerate(target_cols):
+            df_long[col_name] = None
+            mask = df_long["search_column_idx"] == shift + i
+            df_long.loc[mask, col_name] = df_long["value"]
+
+        df_final = df_long.reindex(columns=d_col_names)
+
+        return df_final
 
 
-#
-# class NatTVReport(TVMediaReport):
-#     def __init__(self, *args, **kwargs):
-#         super(NatTVReport, self).__init__(*args, **kwargs)
-#         # print('init NatTVReport')
+class TVRegMediaReport(TVMediaReport):
+    def __init__(self, *args, **kwargs):
+        super(TVRegMediaReport, self).__init__(*args, **kwargs)
+        self.available_regions = self.catalogs.get_tv_region()
+        self.regions_list = self.set_regions_list()
 
-# @ReportFactory.register_report(ReportType.TV_DICT_CROSSTAB)
-# class TVDictCrossTab(TVCrossTab):
-#     """
-#     Methods to load data for dictionary to clean the main report data
-#     """
-#
-#     def __init__(self, *args, **kwargs):
-#         super(TVDictCrossTab, self).__init__(*args, **kwargs)
-#         self.output_columns = self.data_settings.get('slices', None)
-#
-#     async def prepare_data(self, df):
-#         shift = 2  # номер колонки с рекламодателем advertiser в выгрузке
-#         action = 'upd'  # действие по умолчанию
-#         d_col_names = [
-#             'action',
-#             'search_column_idx',
-#             'value',
-#             'term',
-#             'cat',
-#             'adv',
-#             'bra',
-#             'sbr',
-#             'mdl',
-#             'cln_0',
-#             'cln_1',
-#             'cln_2',
-#             'cln_3',
-#             'cln_4',
-#             'cln_5'
-#         ]
-#
-#         if not self.output_columns:
-#             return None
-#
-#         missing = set(self.output_columns) - set(df.columns)
-#         if missing:
-#             logger.error(f"Ошибка: отсутствуют колонки {missing}")
-#             return None
-#
-#         df = df[self.output_columns]
-#
-#         df_long = (
-#             df.melt(var_name="column", value_name="value")
-#             .dropna(subset=["value"])
-#             .drop_duplicates()
-#         )
-#
-#         col_position_map = {
-#             col: idx
-#             for idx, col in enumerate(self.output_columns, start=shift)
-#         }
-#
-#         df_long["search_column_idx"] = df_long["column"].map(col_position_map)
-#
-#         df_long["term"] = '"' + df_long["value"].astype(str) + '"'
-#         df_long["action"] = action
-#
-#         start = d_col_names.index("cat")
-#         end = d_col_names.index("mdl") + 1
-#         target_cols = d_col_names[start:end]
-#
-#         for i, col_name in enumerate(target_cols):
-#             df_long[col_name] = None
-#             mask = df_long["search_column_idx"] == shift + i
-#             df_long.loc[mask, col_name] = df_long["value"]
-#
-#         df_final = df_long.reindex(columns=d_col_names)
-#
-#         return df_final
-#
-#
-# @ReportFactory.register_report(ReportType.TV_REG_CROSSTAB)
-# class TVRegCrossTab(TVCrossTab):
-#     def __init__(self, *args, **kwargs):
-#         super(TVRegCrossTab, self).__init__(*args, **kwargs)
-#         self.available_regions = self.get_available_regions()
-#         self.regions_list = self.set_regions_list()
-#         # base settings
-#         self.data_settings['options']['kitId'] = self.get_base_id()
-#         if 'regionName' not in self.data_settings['slices']:
-#             self.data_settings['slices'].append('regionName')
-#         self.data_settings['add_city_to_basedemo_from_region'] = True
-#         self.data_settings['add_city_to_targetdemo_from_region'] = True
-#
-#     def get_base_id(self):
-#         return 3  # base id in mediascope API
-#
-#     def set_regions_list(self):
-#         if 'regions' in self.settings:
-#             return self.settings['regions']
-#         return self.available_regions['id'].to_list()
-#
-#     def get_available_regions(self) -> DataFrame:
-#         return self.catalogs.get_tv_region()
-#
-#     async def generate_tasks(self):
-#         """
-#         Generator function returning task objects with
-#         report settings sliced by intervals and demographic profiles
-#         :return: generator
-#         """
-#         settings = self.data_settings.copy()
-#         company_filter = ''
-#         if isinstance(['company_filter'], str):
-#             company_filter = settings['company_filter'] + ' AND '
-#         company_filter += 'regionId IN ({reg_id})'
-#         regions_names = dict(zip(self.available_regions['id'], self.available_regions['ename']))
-#         for reg_id in self.regions_list:
-#             if int(reg_id) == 99:  # skip Network broadcasting
-#                 continue
-#             settings['company_filter'] = company_filter.format(reg_id=reg_id)
-#             for interval in self.period:
-#                 settings['date_filter'] = [interval]
-#                 for t_name, t_filter in self.targets.items():
-#                     settings['basedemo_filter'] = t_filter
-#                     name = map(unidecode, filter(None, (*interval, t_name, regions_names[int(reg_id)])))
-#                     name = '_'.join(name)
-#                     task = TVTask(name, settings.copy(), self.subtype, self.type)
-#                     task.interval = interval
-#                     task.target = t_name
-#                     if task.name in self.done_files:
-#                         logger.warning(f"Файл с расчетом: '{task.name}' уже есть "
-#                                        f"в папке, расчет будет пропущен.")
-#                         continue
-#                     yield task
-#
-#
-# @ReportFactory.register_report(ReportType.TV_REG_DICT_CROSSTAB)
-# class RegTVDictCrossTab(TVDictCrossTab, TVRegCrossTab):
-#     def __init__(self, *args, **kwargs):
-#         super(RegTVDictCrossTab, self).__init__(*args, **kwargs)
-#
-#
-# class BudgetMediaReport(MediaReport):
-#     pass
+    def set_regions_list(self):
+        if 'regions' in self.report_settings:
+            return self.report_settings['regions']
+        return self.available_regions['id'].to_list()
+
+    async def generate_tasks(self):
+        """
+        Generator function returning task objects with
+        report settings sliced by intervals and demographic profiles
+        :return: generator
+        """
+        settings = self.data_settings.model_dump()
+        company_filter = ''
+        if isinstance(settings['company_filter'], str):
+            company_filter = settings['company_filter'] + ' AND '
+        company_filter += 'regionId IN ({reg_id})'
+        regions_names = dict(zip(self.available_regions['id'], self.available_regions['ename']))
+        for reg_id in self.regions_list:
+            if int(reg_id) == 99:  # skip Network broadcasting
+                continue
+            settings['company_filter'] = company_filter.format(reg_id=reg_id)
+            for interval in self.period:
+                settings['date_filter'] = [interval]
+                for t_name, t_filter in self.targets.items():
+                    settings['basedemo_filter'] = t_filter
+                    name = map(unidecode, filter(None, (*interval, t_name, regions_names[int(reg_id)])))
+                    name = '_'.join(name)
+                    task = TVTask(name, settings.copy(), self.subtype, self.type)
+                    task.interval = interval
+                    task.target = t_name
+                    if task.name in self.done_files:
+                        logger.warning(f"Файл с расчетом: '{task.name}' уже есть "
+                                       f"в папке, расчет будет пропущен.")
+                        continue
+                    yield task
+
+
