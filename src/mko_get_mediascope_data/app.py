@@ -6,18 +6,20 @@ mko_get_mediascope_data — основной публичный интерфей
 - Jupyter Notebook
 - Airflow (PythonOperator)
 """
-import sys
 
+import sys
+import asyncio
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
 
 from .core.init_service import init_project
 from .core.services import app_service
+from .core.utils import list_files_in_directory
 
 sys.stdout.reconfigure(line_buffering=True)
+
 console = Console()
 app = typer.Typer(
     name="mko_get_mediascope_data",
@@ -25,6 +27,10 @@ app = typer.Typer(
     add_completion=True,
 )
 
+
+# =========================
+# CLI COMMANDS
+# =========================
 
 @app.command()
 def init(
@@ -37,16 +43,18 @@ def init(
 
 @app.command()
 def run(
-        report: Path = typer.Argument(..., exists=True, dir_okay=False, help="Путь к yaml-файлу задания (reports/...)"),
-        verbose: bool = typer.Option(True, "--verbose", "-v"),
+    report: Path = typer.Argument(..., exists=True, dir_okay=False, help="Путь к yaml-файлу задания"),
+    verbose: bool = typer.Option(True, "--verbose", "-v"),
 ):
     """Запустить выгрузку отчёта"""
+
     if verbose:
         console.print(f"[blue]▶ Запуск отчёта:[/blue] {report.name}")
 
     try:
-        app_service.run_report(report)
+        asyncio.run(app_service.run_report(report))
         console.print("[green]✅ Отчёт успешно завершён[/green]")
+
     except Exception as e:
         console.print(f"[red]❌ Ошибка:[/red] {e}")
         raise typer.Exit(1)
@@ -55,42 +63,65 @@ def run(
 @app.command()
 def list_reports():
     """Показать все доступные файлы заданий"""
+
     reports_dir = app_service.app_paths.reports
-    files = list(reports_dir.glob("*.yaml"))
+
+    files = list_files_in_directory(
+        reports_dir,
+        extensions=("yaml",),
+        include_subfolders=True
+    )
+
     if not files:
         console.print("[yellow]Нет файлов в reports/[/yellow]")
         return
+
     for f in sorted(files):
-        console.print(f"• {f.name}")
+        console.print(f"• {f}")
 
 
-# Публичные функции для Jupyter и Airflow
+# =========================
+# PUBLIC API (Jupyter / Airflow)
+# =========================
 
-def run_report(report_path: str | Path) -> None:
+async def run_report_async(report_path: str | Path) -> None:
     """
-    Основная функция для Jupyter Notebook и Airflow.
-    Пример в Jupyter:
-        from mko_get_mediascope_data.app import run_report
-        run_report("settings/reports/nat_tv_brands_last.yaml")
+    Асинхронная версия для async-окружений (например, FastAPI).
     """
     path = Path(report_path)
     if not path.exists():
         raise FileNotFoundError(f"Файл не найден: {path}")
-    app_service.run_report(path)
+
+    await app_service.run_report(path)
+
+
+def run_report(report_path: str | Path) -> None:
+    """
+    Синхронная обёртка для Jupyter / Airflow.
+
+    Пример в Jupyter:
+        from mko_get_mediascope_data import run_report
+        run_report("settings/reports/nat_tv_brands_last.yaml")
+    """
+    asyncio.run(run_report_async(report_path))
 
 
 def initialize_settings(force: bool = False) -> Path:
-    """Удобная обёртка для Jupyter/Airflow"""
+    """Обёртка для Jupyter/Airflow"""
     return init_project(force=force)
 
 
-# Для прямого запуска как модуль (python -m mko_get_mediascope_data)
+# =========================
+# ENTRYPOINT
+# =========================
+
 if __name__ == "__main__":
     app()
 
-# Для удобства импорта
+
 __all__ = [
     "run_report",
+    "run_report_async",
     "initialize_settings",
     "init",
     "run",

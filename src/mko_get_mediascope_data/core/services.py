@@ -97,7 +97,7 @@ class AppService:
             check_version=False,
         )
 
-    def run_report(self, report_settings_path: Path) -> list[Path]:
+    async def run_report(self, report_settings_path: Path) -> list[Path]:
         report_settings_sequence: Generator[ReportSettings] = self.get_report_settings(report_settings_path)
         export_paths: list[Path] = []
 
@@ -116,12 +116,11 @@ class AppService:
             data_settings: Data = self.get_data_settings(report_settings)
 
             network_client: NetworkClient = NetworkClient()
-            report_service: MediaVortexTask = asyncio.run(
-                network_client.call(
-                    self.get_connection,
-                    report_settings.media,
-                )
+            report_service: MediaVortexTask = await network_client.call(
+                self.get_connection,
+                report_settings.media,
             )
+
             report_strategies = ReportFactory(report_settings)
 
             rep = TVMediaReport(
@@ -129,13 +128,13 @@ class AppService:
                 data_settings=data_settings,
                 export_path=export_path,
                 report_service=report_service,
-                network_client = network_client,
+                network_client=network_client,
                 task_strategy=report_strategies.task_strategy(),
                 data_strategy=report_strategies.data_strategy(),
                 check_done=report_settings.check_done,
             )
 
-            rep.create_report()
+            await rep.create_report()
             export_paths.append(export_path)
             idx += 1
 

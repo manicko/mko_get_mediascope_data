@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from datetime import date
 from abc import ABC, abstractmethod
 from pandas import DataFrame
 from unidecode import unidecode
@@ -95,6 +95,8 @@ class MediaReport(Report):
         self.max_tasks = max_tasks
         self.task_queue = asyncio.Queue(maxsize=self.max_tasks)
 
+        self.period: list[tuple[str, str]] | list[tuple[date, date]] | None = None
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
@@ -139,10 +141,15 @@ class MediaReport(Report):
         await self.task_queue.join()
         [t.cancel() for t in task_group]
 
-    def create_report(self):
+    async def create_report(self):
         """ sync function to run async part"""
-        asyncio.run(self.processing_tasks())
+        self.period = await self.get_period()
+        await self.processing_tasks()
 
+
+
+    async def get_period(self):
+        pass
 
 class TVMediaReport(MediaReport):
 
@@ -161,16 +168,14 @@ class TVMediaReport(MediaReport):
         # общие поля (используются стратегиями)
         self.targets = self.report_settings.target_audiences
         self.base_id = self.data_settings.options.get('kitId', 1)
-        self.period = self.get_period()
+
         self.output_columns = self.set_output_columns()
 
-    def get_available_period(self):
+    async def get_available_period(self):
         """
         Checks available dates in the Mediascope database using API
         """
-        df: DataFrame = asyncio.run(
-            self.network_client.call(self.catalogs.get_availability_period)
-        )
+        df: DataFrame = await self.network_client.call(self.catalogs.get_availability_period)
 
         available_period = df.loc[df['id'] == str(self.base_id)][['periodFrom', 'periodTo']].values.tolist()
         available_period = list(map(utils.str_to_date, available_period[0]))
@@ -192,7 +197,7 @@ class TVMediaReport(MediaReport):
 
         return output_columns
 
-    def get_period(self):
+    async def get_period(self) -> list[tuple[str, str]] | list[tuple[date, date]]:
         """ Prepare period to load data.
         Slice intervals based on frequency from settings
         Checks the latest available date in the Mediascope database using API
@@ -200,7 +205,7 @@ class TVMediaReport(MediaReport):
         :return: Generator with intervals in a format of tuple ('2023-02-01', '2023-03-22')
         """
         # проверяем доступные даты в базе
-        available_period = self.get_available_period()
+        available_period = await self.get_available_period()
         try:
             if self.report_settings.period.date_filter is None:
                 # если период не задан явно, строим его на основе последней доступной даты
@@ -214,9 +219,10 @@ class TVMediaReport(MediaReport):
             period = max(available_period[0], period[0]), min(available_period[1], period[1])
             if self.report_settings.multiple_files:
                 return utils.slice_period(period, frequency)
-            return period
+            return [period]
         except Exception as e:
             logger.exception(e)
+            raise
 
     async def send_task(self, task: TVTask):
         """Sends request based on task settings to Mediascope database using API
