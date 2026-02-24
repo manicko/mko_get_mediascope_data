@@ -1,15 +1,11 @@
 """
 mko_get_mediascope_data — основной публичный интерфейс
-
-Поддерживает:
-- CLI (uv run -m mko_get_mediascope_data run ...)
-- Jupyter Notebook
-- Airflow (PythonOperator)
 """
 
-import sys
 import asyncio
+import sys
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -28,26 +24,26 @@ app = typer.Typer(
 )
 
 
-# =========================
-# CLI COMMANDS
-# =========================
-
 @app.command()
 def init(
-        force: bool = typer.Option(False, "--force", "-f", help="Перезаписать существующие файлы")
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Перезаписать существующие файлы"
+    )
 ):
-    """Инициализировать пользовательские настройки (выгрузить шаблоны в ~/.../settings)"""
+    """Инициализировать пользовательские настройки"""
     path = init_project(force=force)
     console.print(f"[green]✅ Настройки инициализированы:[/green] {path}")
 
 
 @app.command()
 def run(
-    report: Path = typer.Argument(..., exists=True, dir_okay=False, help="Путь к yaml-файлу задания"),
+    report: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, help="Путь к yaml-файлу задания"),
+    ],
     verbose: bool = typer.Option(True, "--verbose", "-v"),
 ):
     """Запустить выгрузку отчёта"""
-
     if verbose:
         console.print(f"[blue]▶ Запуск отчёта:[/blue] {report.name}")
 
@@ -57,33 +53,24 @@ def run(
 
     except Exception as e:
         console.print(f"[red]❌ Ошибка:[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command()
 def list_reports():
     """Показать все доступные файлы заданий"""
-
     reports_dir = app_service.app_paths.reports
-
     files = list_files_in_directory(
-        reports_dir,
-        extensions=("yaml",),
-        include_subfolders=True
+        reports_dir, extensions=("yaml",), include_subfolders=True
     )
-
     if not files:
         console.print("[yellow]Нет файлов в reports/[/yellow]")
         return
-
     for f in sorted(files):
         console.print(f"• {f}")
 
 
-# =========================
-# PUBLIC API (Jupyter / Airflow)
-# =========================
-
+# Public API
 async def run_report_async(report_path: str | Path) -> None:
     """
     Асинхронная версия для async-окружений (например, FastAPI).
@@ -91,7 +78,6 @@ async def run_report_async(report_path: str | Path) -> None:
     path = Path(report_path)
     if not path.exists():
         raise FileNotFoundError(f"Файл не найден: {path}")
-
     await app_service.run_report(path)
 
 
@@ -110,10 +96,6 @@ def initialize_settings(force: bool = False) -> Path:
     """Обёртка для Jupyter/Airflow"""
     return init_project(force=force)
 
-
-# =========================
-# ENTRYPOINT
-# =========================
 
 if __name__ == "__main__":
     app()

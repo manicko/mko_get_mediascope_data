@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
+
 from mko_get_mediascope_data.core.models import (
-    ReportSettings, PeriodModel, MediaType, ReportType, ReportSubtype, LastTimeModel
+    LastTimeModel,
+    MediaType,
+    PeriodModel,
+    ReportSettings,
+    ReportType,
 )
 
 
@@ -11,7 +16,7 @@ def test_report_settings_valid():
         "report_type": "crosstab",
         "report_subtype": "TOP_NAT_TV_ADVERTISERS",
         "relative_path": "tv/test",
-        "period": {"last_time": {"period_num": 1, "frequency": "m"}}
+        "period": {"last_time": {"period_num": 1, "frequency": "m"}},
     }
     settings = ReportSettings(**data)
     assert settings.media == MediaType.TV

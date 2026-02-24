@@ -1,11 +1,9 @@
-import pytest
-import pandas as pd
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-from mko_get_mediascope_data.core.reports import (
-    TVMediaReport, DefaultTVTaskStrategy, TVRegTaskStrategy,
-    DefaultDataStrategy, DictDataStrategy
-)
+import pandas as pd
+import pytest
+
+from mko_get_mediascope_data.core.reports import DefaultTVTaskStrategy, DictDataStrategy
 
 
 @pytest.fixture

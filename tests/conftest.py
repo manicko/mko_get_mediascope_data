@@ -1,7 +1,7 @@
-import pytest
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
+
 import pandas as pd
+import pytest
 
 from mko_get_mediascope_data.core.network import NetworkClient
 
@@ -15,11 +15,9 @@ def mock_network_client():
 
 @pytest.fixture
 def dummy_df():
-    return pd.DataFrame({
-        'id': ['1'],
-        'periodFrom': ['2025-01-01'],
-        'periodTo': ['2025-12-31']
-    })
+    return pd.DataFrame(
+        {"id": ["1"], "periodFrom": ["2025-01-01"], "periodTo": ["2025-12-31"]}
+    )
 
 
 @pytest.fixture
@@ -27,7 +25,6 @@ def tmp_report_dir(tmp_path):
     reports = tmp_path / "reports"
     reports.mkdir()
     return reports
-
 
 
 @pytest.fixture

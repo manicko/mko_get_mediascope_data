@@ -1,7 +1,7 @@
-from pathlib import Path
 import shutil
-from mko_get_mediascope_data.core.paths import APP_PATHS
+from pathlib import Path
 
+from mko_get_mediascope_data.core.paths import APP_PATHS
 
 
 def _copy_templates(destination: Path, force: bool = False) -> None:
@@ -27,7 +27,7 @@ def _copy_templates(destination: Path, force: bool = False) -> None:
         shutil.copy2(item, target_path)
 
 
-def init_project(force: bool = False)-> Path:
+def init_project(force: bool = False) -> Path:
     """
     Initialize configuration directory with default templates.
 
@@ -40,7 +40,6 @@ def init_project(force: bool = False)-> Path:
 
     _copy_templates(APP_PATHS.user_settings_dir, force)
     return APP_PATHS.user_settings_dir
-
 
 
 if __name__ == "__main__":

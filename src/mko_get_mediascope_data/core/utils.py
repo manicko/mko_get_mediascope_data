@@ -1,13 +1,16 @@
-from datetime import date, datetime
-from dateutil.relativedelta import relativedelta
-import time
-from pandas import DataFrame
 import logging
+import time
+from collections.abc import Iterator
+from datetime import date, datetime
 from os import PathLike
 from pathlib import Path
-from typing import Any, Literal, Iterator
-from mko_get_mediascope_data.core.models import LastTimeModel
+from typing import Any, Literal
+
 import yaml
+from dateutil.relativedelta import relativedelta
+from pandas import DataFrame
+
+from mko_get_mediascope_data.core.models import LastTimeModel
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +22,17 @@ def str_to_date(date_string: str):
     :return: date
     """
     try:
-        date_string = datetime.strptime(date_string, '%Y-%m-%d').date()
+        date_string = datetime.strptime(date_string, "%Y-%m-%d").date()
     except (ValueError, TypeError) as err:
-        logger.error(f'wrong format of date_string {date_string}: {err}')
+        logger.error(f"wrong format of date_string {date_string}: {err}")
         raise err
     else:
         return date_string
 
 
-def iter_period_slices(overall_start: date,
-                       overall_end: date,
-                       frequency: Literal["d", "w", "m", "y"]
-                       ) -> Iterator[tuple[date, date]]:
+def iter_period_slices(
+    overall_start: date, overall_end: date, frequency: Literal["d", "w", "m", "y"]
+) -> Iterator[tuple[date, date]]:
     """
     Генерирует последовательные интервалы внутри [overall_start, overall_end]
     с шагом, соответствующим frequency.
@@ -64,10 +66,11 @@ def iter_period_slices(overall_start: date,
         current = next_start
 
 
-def slice_period(period: list[date] | tuple[date, date],
-                 frequency: Literal["d", "w", "m", "y"],
-                 as_strings: bool = True,
-                 ) -> list[tuple[str, str]] | list[tuple[date, date]]:
+def slice_period(
+    period: list[date] | tuple[date, date],
+    frequency: Literal["d", "w", "m", "y"],
+    as_strings: bool = True,
+) -> list[tuple[str, str]] | list[tuple[date, date]]:
     """
     Splits a period into sub-intervals according to frequency.
     """
@@ -77,22 +80,17 @@ def slice_period(period: list[date] | tuple[date, date],
     slices = list(iter_period_slices(start, end, frequency))
 
     if as_strings:
-        return [
-            (s.strftime("%Y-%m-%d"), e.strftime("%Y-%m-%d"))
-            for s, e in slices
-        ]
+        return [(s.strftime("%Y-%m-%d"), e.strftime("%Y-%m-%d")) for s, e in slices]
 
     return slices
 
 
 def get_last_period(
-        settings: LastTimeModel,
-        today: datetime | None = None,
-        as_strings: bool = False
+    settings: LastTimeModel, today: datetime | None = None, as_strings: bool = False
 ) -> tuple[str, ...] | tuple[date, date]:
     """
     Возвращает начало и конец периода за последние N периодов (дни/недели/месяцы/годы).
-        """
+    """
 
     today = date.today() if today is None else today
     end = start = today
@@ -136,112 +134,117 @@ def get_files_suffix(compression: str | dict = None):
     """Возвращает полное расширение файла с учётом сжатия.
     Всегда нормализует gzip → .gz (стандартное и надёжное расширение).
     """
-    base = '.csv'
+    base = ".csv"
 
-    if compression is None or compression == 'infer' or not compression:
+    if compression is None or compression == "infer" or not compression:
         return base
 
     # Получаем метод сжатия
     if isinstance(compression, dict):
-        method = compression.get('method', '').lower().strip()
+        method = compression.get("method", "").lower().strip()
     else:
         method = str(compression).lower().strip()
 
     # Нормализация gzip (самая частая проблема)
-    if method in ('gzip', '.gzip', 'gz', '.gz'):
-        return base + '.gz'
+    if method in ("gzip", ".gzip", "gz", ".gz"):
+        return base + ".gz"
 
     # Другие популярные сжатия
-    elif method in ('bz2', 'bzip2'):
-        return base + '.bz2'
-    elif method in ('xz',):
-        return base + '.xz'
-    elif method in ('zip',):
-        return base + '.zip'
-    elif method in ('zstd',):
-        return base + '.zst'
+    elif method in ("bz2", "bzip2"):
+        return base + ".bz2"
+    elif method in ("xz",):
+        return base + ".xz"
+    elif method in ("zip",):
+        return base + ".zip"
+    elif method in ("zstd",):
+        return base + ".zst"
 
     else:
-        clean = method.strip('.')
-        return base + '.' + clean
+        clean = method.strip(".")
+        return base + "." + clean
 
 
 def csv_to_file(
-        data_frame: DataFrame,
-        csv_path_out: PathLike,
-        file_prefix: str = '',
-        compression: Literal["infer", "gzip", "bz2", "zip", "xz", "zstd", "tar"] | None | dict[str, Any] = "infer",
-        add_time: bool = True,
-        *args,
-        **kwargs
+    data_frame: DataFrame,
+    csv_path_out: PathLike,
+    file_prefix: str = "",
+    compression: (
+        Literal["infer", "gzip", "bz2", "zip", "xz", "zstd", "tar"]
+        | None
+        | dict[str, Any]
+    ) = "infer",
+    add_time: bool = True,
+    *args,
+    **kwargs,
 ):
-    time_str = ''
+    time_str = ""
     if add_time:
-        time_str = '_' + time.strftime("%Y%m%d_%H%M%S")
+        time_str = "_" + time.strftime("%Y%m%d_%H%M%S")
     ext = get_files_suffix(compression)
-    out_file = Path(csv_path_out, f'{file_prefix}{time_str}{ext}')
+    out_file = Path(csv_path_out, f"{file_prefix}{time_str}{ext}")
 
     try:
-        encoding = kwargs.pop('encoding', 'utf-8-sig')
+        encoding = kwargs.pop("encoding", "utf-8-sig")
         data_frame.to_csv(
+            *args,
             path_or_buf=out_file,
-            index=False, mode='x',
-            decimal=',',
-            sep=';',
+            index=False,
+            mode="x",
+            decimal=",",
+            sep=";",
             encoding=encoding,
             compression=compression,
-            *args,
-            **kwargs)
+            **kwargs,
+        )
     except FileExistsError:
-        logger.warning(f'File report {out_file} already exists. Skip it.')
+        logger.warning(f"File report {out_file} already exists. Skip it.")
 
 
 def en_to_ru(slices_en: list[Any]) -> list[Any]:
     try:
         slices_ru = [[] for _ in range(len(slices_en))]
         for i, param in enumerate(slices_en):
-            slices_ru[i] = param.replace('EName', 'Name')
+            slices_ru[i] = param.replace("EName", "Name")
         return slices_ru
     except TypeError as err:
-        logger.error(f'parameter should be list {type(slices_en)} is given')
+        logger.error(f"parameter should be list {type(slices_en)} is given")
         raise err
 
 
 def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
-    if 'frequencyDistInterval' not in df.columns:
+    if "frequencyDistInterval" not in df.columns:
         return df
 
     try:
         #  Берем колонки, где одно значение в строке
         base_df = (
-            df[df['frequencyDistInterval'] == '-']
-            .drop(columns='frequencyDistInterval')
-            .dropna(axis=1, how='all')
+            df[df["frequencyDistInterval"] == "-"]
+            .drop(columns="frequencyDistInterval")
+            .dropna(axis=1, how="all")
             .groupby(dim_cols, as_index=False)
             .first()
         )
         # Частоты - тут набор значений в строки их приводим в pivot
         freq_df = (
-            df[df['frequencyDistInterval'] != '-']
+            df[df["frequencyDistInterval"] != "-"]
             .pivot_table(
                 index=dim_cols,
-                columns='frequencyDistInterval',
-                values='FrequencyDistPer',
-                aggfunc='first'
+                columns="frequencyDistInterval",
+                values="FrequencyDistPer",
+                aggfunc="first",
             )
             .reset_index()
         )
         # сортировка частотных интервалов
         freq_df = freq_df.reindex(
             sorted(
-                freq_df.columns,
-                key=lambda x: int(x[1:-2]) if x.startswith('[') else -1
+                freq_df.columns, key=lambda x: int(x[1:-2]) if x.startswith("[") else -1
             ),
-            axis=1
+            axis=1,
         )
 
         # Склейка двух массивов
-        result = base_df.merge(freq_df, on=dim_cols, how='left')
+        result = base_df.merge(freq_df, on=dim_cols, how="left")
 
         return result
     except Exception as err:
@@ -249,14 +252,14 @@ def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
         return df
 
 
-def dir_content_to_dict(files, suffix: str = 'yaml'):
+def dir_content_to_dict(files, suffix: str = "yaml"):
     return {file.name.removesuffix(suffix): file for file in files}
 
 
 def list_files_in_directory(
-        path: str | PathLike[str],
-        extensions: tuple[str, ...] = ("yaml", "json"),
-        include_subfolders: bool = False,
+    path: str | PathLike[str],
+    extensions: tuple[str, ...] = ("yaml", "json"),
+    include_subfolders: bool = False,
 ) -> list[Path]:
     """
     Lists files in a directory with specific extensions.
@@ -348,7 +351,7 @@ def yaml_to_dict(file: str | PathLike) -> dict[str, Any] | None:
         Dict[str, Any]: Parsed configuration dictionary, or an empty dict if the file does not exist or is invalid.
     """
     try:
-        with open(file, "r", encoding="utf8") as cfg:
+        with open(file, encoding="utf8") as cfg:
             return yaml.safe_load(cfg) or {}
     except yaml.YAMLError as err:
         logger.error(err)

@@ -73,7 +73,7 @@ exclude = '''
 # isort configuration (used by isort hook)
 [tool.isort]
 profile = "black"
-known_first_party = ["mko_telebot", "settings", "core"]
+known_first_party = ["mko_get_mediascope_data", "settings", "core"]
 combine_as_imports = true
 
 # Ruff top-level global settings

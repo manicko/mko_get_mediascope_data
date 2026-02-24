@@ -1,7 +1,11 @@
-import pytest
 import pandas as pd
+import pytest
+
 from mko_get_mediascope_data.core.utils import (
-    str_to_date, slice_period, get_files_suffix, csv_to_file
+    csv_to_file,
+    get_files_suffix,
+    slice_period,
+    str_to_date,
 )
 
 
@@ -18,7 +22,9 @@ def test_slice_period(freq, expected_len):
 
 def test_csv_to_file(tmp_path):
     df = pd.DataFrame({"col": [1, 2]})
-    csv_to_file(df, tmp_path, file_prefix="test", add_time=False, compression={"method": "gzip"})
+    csv_to_file(
+        df, tmp_path, file_prefix="test", add_time=False, compression={"method": "gzip"}
+    )
     files = list(tmp_path.glob("*.csv.gz"))
     assert len(files) == 1
 

@@ -2,16 +2,18 @@
 
 import asyncio
 import logging
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
+
+from mediascope_api.core.errors import BadRequestError
 from requests.exceptions import (
+    ChunkedEncodingError,
+    ConnectionError,
     ConnectTimeout,
     HTTPError,
-    ConnectionError,
-    Timeout,
     RetryError,
-    ChunkedEncodingError
+    Timeout,
 )
-from mediascope_api.core.errors import BadRequestError
 
 logger = logging.getLogger(__name__)
 
@@ -33,21 +35,21 @@ class NetworkClient:
     """
 
     def __init__(
-            self,
-            max_concurrent_requests: int = 10,
-            sleep_time: int = 2,
-            max_attempts: int = 10,
+        self,
+        max_concurrent_requests: int = 10,
+        sleep_time: int = 2,
+        max_attempts: int = 10,
     ):
         self._semaphore = asyncio.Semaphore(max_concurrent_requests)
         self._sleep_time = sleep_time
         self._max_attempts = max_attempts
 
     async def call(
-            self,
-            func: Callable[..., Any],
-            *args,
-            sleep_time: int = 2,
-            **kwargs,
+        self,
+        func: Callable[..., Any],
+        *args,
+        sleep_time: int = 2,
+        **kwargs,
     ) -> Any:
 
         for attempt in range(1, self._max_attempts + 1):

@@ -19,7 +19,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 4,
+        'period_num': 1,
         'include_current': False
       }
     },
@@ -46,7 +46,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 4,
+        'period_num': 1,
         'include_current': False
       }
     },
@@ -89,7 +89,7 @@
       'date_filter': Null, #[ '2023-01-01', '2023-12-31' ], #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 4,
+        'period_num': 1,
         'include_current': False
       }
     },
@@ -136,7 +136,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'w',
-        'period_num': 26,
+        'period_num': 12,
         'include_current': False
       }
     },
@@ -171,7 +171,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 4,
+        'period_num': 1,
         'include_current': False
       }
     },
@@ -201,7 +201,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 4,
+        'period_num': 1,
         'include_current': False
       }
     },
@@ -232,7 +232,7 @@
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
       'last_time': { #если нужно последние несколько мес #
         'period_type': 'm',
-        'period_num': 4,
+        'period_num': 1,
         'include_current': False
       }
     },

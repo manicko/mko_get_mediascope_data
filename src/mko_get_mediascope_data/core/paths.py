@@ -3,9 +3,10 @@ from pathlib import Path
 from platformdirs import user_config_dir
 from pydantic import BaseModel
 
-APP_NAME: str =  __package__.split(".")[0]
-APP_DIR: Path =  Path(__file__).resolve().parent.parent
+APP_NAME: str = __package__.split(".")[0]
+APP_DIR: Path = Path(__file__).resolve().parent.parent
 USER_DIR: Path = Path(user_config_dir(APP_NAME))
+
 
 class PathResolver:
     def __init__(self, base_dir: Path):
@@ -27,6 +28,7 @@ class PathResolver:
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
+
 class AppPaths(BaseModel):
     app_dir: Path
     app_name: str
@@ -34,37 +36,31 @@ class AppPaths(BaseModel):
 
     @property
     def user_settings_dir(self) -> Path:
-        return Path(self.user_dir / 'settings')
+        return Path(self.user_dir / "settings")
+
     @property
     def app_settings_dir(self) -> Path:
-        return Path(self.app_dir / 'settings')
+        return Path(self.app_dir / "settings")
 
     @property
     def app_config(self) -> Path:
-        return Path(self.user_settings_dir ,  'app_config.yaml')
+        return Path(self.user_settings_dir, "app_config.yaml")
 
     @property
     def defaults_dir(self) -> Path:
-        return Path(self.user_settings_dir, 'defaults')
+        return Path(self.user_settings_dir, "defaults")
 
     @property
     def log_config(self) -> Path:
-        return Path(self.user_settings_dir, 'log_config.yaml')
+        return Path(self.user_settings_dir, "log_config.yaml")
 
     @property
     def connection_config(self) -> Path:
-        return Path(self.user_settings_dir, 'connections/mediascope.json')
+        return Path(self.user_settings_dir, "connections/mediascope.json")
 
     @property
     def reports(self) -> Path:
-        return Path(self.user_settings_dir, 'reports')
+        return Path(self.user_settings_dir, "reports")
 
 
-
-APP_PATHS = AppPaths(
-    app_dir=APP_DIR,
-    app_name=APP_NAME,
-    user_dir=USER_DIR
-)
-
-
+APP_PATHS = AppPaths(app_dir=APP_DIR, app_name=APP_NAME, user_dir=USER_DIR)

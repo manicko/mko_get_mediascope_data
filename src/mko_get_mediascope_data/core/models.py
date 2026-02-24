@@ -1,8 +1,16 @@
-from pathlib import Path
-from typing import Any, Literal
 from datetime import date
 from enum import Enum
-from pydantic import PositiveInt, BaseModel, field_validator, Field, ConfigDict, model_validator
+from pathlib import Path
+from typing import Any, Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    field_validator,
+    model_validator,
+)
 
 
 # Logging settings
@@ -22,32 +30,31 @@ class LoggingSettings(BaseModel):
 class AppSettings(BaseModel):
     export_folder: Path
 
-    @field_validator('export_folder', mode="before")
+    @field_validator("export_folder", mode="before")
     @classmethod
     def normalize_path(cls, folder: Path | str) -> Path:
         return Path(folder).expanduser()
 
 
-class MediaType(str, Enum):
+class MediaType(Enum):
     TV = "TV"
     TV_REG = "TV_REG"
 
 
-class ReportType(str, Enum):
+class ReportType(Enum):
     crosstab = "crosstab"
     timeband = "timeband"
     simple = "simple"
 
 
-class ReportSubtype(str, Enum):
-    default_value = ''
+class ReportSubtype(Enum):
+    default_value = ""
     DYNAMICS_BY_SPOTS = "DYNAMICS_BY_SPOTS"
-    TOP_NAT_TV_ADVERTISERS = 'TOP_NAT_TV_ADVERTISERS'
-    TOP_NAT_TV_PROGRAMS = 'TOP_NAT_TV_PROGRAMS'
-    NAT_TV_CHANNELS_ATV = 'NAT_TV_CHANNELS_ATV'
+    TOP_NAT_TV_ADVERTISERS = "TOP_NAT_TV_ADVERTISERS"
+    TOP_NAT_TV_PROGRAMS = "TOP_NAT_TV_PROGRAMS"
+    NAT_TV_CHANNELS_ATV = "NAT_TV_CHANNELS_ATV"
     NAT_TV_CHANNELS_BA = "NAT_TV_CHANNELS_BA"
     NAT_TV_CHANNELS_SOC_DEM = "NAT_TV_CHANNELS_SOC_DEM"
-
 
 
 class LastTimeModel(BaseModel):
@@ -77,15 +84,21 @@ class ReportSettings(BaseModel):
     report_type: ReportType
     report_subtype: ReportSubtype = ReportSubtype.default_value
     media: MediaType
-    compression: dict[str, str] | None = Field(default_factory=lambda: {"method": "gzip"})
-    data_lang: Literal['ru', 'en'] = 'ru'
+    compression: dict[str, str] | None = Field(
+        default_factory=lambda: {"method": "gzip"}
+    )
+    data_lang: Literal["ru", "en"] = "ru"
     relative_path: Path
-    multiple_files: bool = True  # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    multiple_files: bool = (
+        True  # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    )
     ad_filter: str | None = None
-    target_audiences: dict[str, Any] | None = Field(default_factory=lambda: {"not_set": None})
+    target_audiences: dict[str, Any] | None = Field(
+        default_factory=lambda: {"not_set": None}
+    )
     period: PeriodModel
 
-    @field_validator('relative_path', mode="before")
+    @field_validator("relative_path", mode="before")
     @classmethod
     def normalize_path(cls, folder: Path) -> Path:
         return Path(folder).expanduser()
@@ -96,6 +109,7 @@ class AppConfig(BaseModel):
     """
     Main configuration class that loads and merges all configurations.
     """
+
     logging_settings: LoggingSettings
     app_settings: AppSettings
 

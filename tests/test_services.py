@@ -1,9 +1,9 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
 import pandas as pd
+import pytest
 
 from mko_get_mediascope_data.core.services import app_service
-
 
 
 @pytest.mark.asyncio
@@ -18,11 +18,9 @@ async def test_run_report_with_real_models(tmp_path, mocker, tv_yaml_content):
     test_yaml.write_text(tv_yaml_content, encoding="utf-8")
 
     # ==================== 2. Мокаем только сеть ====================
-    dummy_df = pd.DataFrame({
-        "id": ["1"],
-        "periodFrom": ["2025-01-01"],
-        "periodTo": ["2025-12-31"]
-    })
+    dummy_df = pd.DataFrame(
+        {"id": ["1"], "periodFrom": ["2025-01-01"], "periodTo": ["2025-12-31"]}
+    )
 
     # Fake MediaVortexTask
     mock_report_service = MagicMock()
@@ -42,13 +40,13 @@ async def test_run_report_with_real_models(tmp_path, mocker, tv_yaml_content):
 
     mocker.patch(
         "mko_get_mediascope_data.core.network.NetworkClient.call",
-        side_effect=mock_call_side_effect
+        side_effect=mock_call_side_effect,
     )
 
     # ==================== 3. Мокаем тяжёлый метод ====================
     mocker.patch(
         "mko_get_mediascope_data.core.reports.TVMediaReport.create_report",
-        new_callable=AsyncMock
+        new_callable=AsyncMock,
     )
 
     # ==================== 4. Запускаем реальный код ====================
