@@ -99,26 +99,26 @@ def get_last_period(
     start_of_year = today.replace(month=1, day=1)
     start_of_week = today - relativedelta(days=today.weekday())
 
-    match settings.frequency:
+    match settings.time_unit:
         case "y":
-            start = start_of_year.replace(year=today.year - settings.period_num)
+            start = start_of_year.replace(year=today.year - settings.unit_count)
         case "m":
-            start = start_of_month - relativedelta(months=settings.period_num)
+            start = start_of_month - relativedelta(months=settings.unit_count)
         case "w":
-            start = start_of_week - relativedelta(weeks=settings.period_num)
+            start = start_of_week - relativedelta(weeks=settings.unit_count)
         case "d":
-            start = today - relativedelta(days=settings.period_num)
+            start = today - relativedelta(days=settings.unit_count)
         case _:
-            raise ValueError(f"Unknown frequency: {settings.frequency}")
+            raise ValueError(f"Unknown frequency: {settings.time_unit}")
 
     if not settings.include_current:
-        match settings.frequency:
+        match settings.time_unit:
             case "y":
                 end = start_of_year - relativedelta(days=1)
             case "m":
                 end = start_of_month - relativedelta(days=1)
             case "w":
-                end = start + relativedelta(weeks=settings.period_num - 1, days=6)
+                end = start + relativedelta(weeks=settings.unit_count - 1, days=6)
             case "d":
                 end = today - relativedelta(days=1)
 

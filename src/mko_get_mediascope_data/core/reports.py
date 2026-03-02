@@ -9,7 +9,7 @@ from os import PathLike
 from mediascope_api.mediavortex.tasks import MediaVortexTask
 from pandas import DataFrame
 from unidecode import unidecode
-
+from random import uniform
 import mko_get_mediascope_data.core.utils as utils
 from mko_get_mediascope_data.core.models import (
     Data,
@@ -210,7 +210,7 @@ class TVMediaReport(MediaReport):
         """
         output_columns = {
             "slices": list(self.data_settings.slices),
-            "statistics": list(self.data_settings.slices),
+            "statistics": list(self.data_settings.statistics),
         }
         if "target_audiences" in self.report_settings:
             output_columns["slices"].insert(0, "targetAudience")
@@ -238,7 +238,7 @@ class TVMediaReport(MediaReport):
                 )  # ('2023-02-01', '2023-03-22')  #
             else:
                 period = self.report_settings.period.date_filter.copy()
-            frequency = self.report_settings.period.last_time.frequency
+            frequency = self.report_settings.period.last_time.time_unit
             period = max(available_period[0], period[0]), min(
                 available_period[1], period[1]
             )
@@ -276,8 +276,9 @@ class TVMediaReport(MediaReport):
         """
         while True:
             await asyncio.sleep(2)
+
             status = await self.network_client.call(
-                self.report_service.get_status, task.key, sleep_time=60
+                self.report_service.get_status, task.key, sleep_time=40
             )
             if status is False:
                 task.status = False

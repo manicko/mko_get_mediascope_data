@@ -28,4 +28,4 @@ def test_period_model_validation():
         PeriodModel()  # ни date_filter, ни last_time
 
     valid = PeriodModel(last_time=LastTimeModel(**{"period_num": 4, "frequency": "m"}))
-    assert valid.last_time.period_num == 4
+    assert valid.last_time.unit_count == 4

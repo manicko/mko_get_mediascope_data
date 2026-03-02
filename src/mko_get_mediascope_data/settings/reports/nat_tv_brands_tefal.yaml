@@ -1,0 +1,48 @@
+[
+  {
+    'media': 'TV',
+    'report_type': 'crosstab',
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'compression': { 'method': 'gzip' },
+    'data_lang': 'en', # задаем язык выгрузки
+    'relative_path': 'tefal/raw_data',
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'ad_filter':'(articleLevel3Id IN (4165, 4171) OR articleLevel4Id IN (510, 516, 523, 537, 538, 539, 550, 551, 552, 562, 771, 3242, 3410, 4169, 4170, 4719, 4729, 5007)) AND adIssueStatusId = R', #bit
+    'target_audiences': {
+       'all 18+': 'age >= 18',
+      'all 30-50': 'age >= 30 AND age <= 50',
+      'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
+      'all 25-45 BC': 'age >= 25 AND age <= 45 AND incomeGroupRussia IN (2,3)',
+      'all 25-55 BC': 'age >= 25 AND age <= 55 AND incomeGroupRussia IN (2,3)',
+      'w 25-45 BC': 'sex = 2 AND age >= 25 AND age <= 45 AND incomeGroupRussia IN (2,3)',
+    },
+    'period': {
+      'date_filter': [ '2022-01-01', '2024-12-31' ], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'time_unit': 'm',
+        'unit_count': 1,
+        'include_current': False
+      }
+    },
+  },
+  {
+    'media': 'TV',
+    'report_type': 'crosstab',
+    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # тип отчета
+    'relative_path': 'tefal/dict',
+    'data_lang': 'en', # задаем язык выгрузки
+    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'ad_filter':'(articleLevel3Id IN (4165, 4171) OR articleLevel4Id IN (510, 516, 523, 537, 538, 539, 550, 551, 552, 562, 771, 3242, 3410, 4169, 4170, 4719, 4729, 5007)) AND adIssueStatusId = R', #bit
+    'target_audiences': {
+       'all 18+': 'age >= 18',
+    },
+    'period': {
+      'date_filter': [ '2022-01-01', '2024-12-31' ], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+      'last_time': { #если нужно последние несколько мес #
+        'time_unit': 'm',
+        'unit_count': 1,
+        'include_current': False
+      }
+    },
+  }
+]

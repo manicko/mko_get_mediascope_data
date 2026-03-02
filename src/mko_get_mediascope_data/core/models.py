@@ -58,10 +58,10 @@ class ReportSubtype(Enum):
 
 
 class LastTimeModel(BaseModel):
-    period_num: PositiveInt
+    model_config = ConfigDict(extra="forbid")
     include_current: bool = False
-    frequency: Literal["d", "w", "m", "y"] = "w"
-
+    time_unit: Literal["d", "w", "m", "y"] = "w"
+    unit_count: PositiveInt
 
 class PeriodModel(BaseModel):
     date_filter: list[date] | None = None

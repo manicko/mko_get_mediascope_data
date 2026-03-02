@@ -53,7 +53,7 @@
       "handlers": [ "rotating_file" ],
       "propagate": False
     },
-    "telebot": {
+    "app": {
       "level": "INFO",
       "handlers": [ "console", "rotating_file" ],
       "propagate": False

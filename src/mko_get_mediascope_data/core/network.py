@@ -4,8 +4,10 @@ import asyncio
 import logging
 from collections.abc import Callable
 from typing import Any
-
+from random import uniform
 from mediascope_api.core.errors import BadRequestError
+from urllib3.exceptions import ProtocolError
+import socket
 from requests.exceptions import (
     ChunkedEncodingError,
     ConnectionError,
@@ -23,6 +25,9 @@ RETRIABLE_EXCEPTIONS = (
     Timeout,
     RetryError,
     ChunkedEncodingError,
+    ConnectionResetError,  # ← добавить
+    socket.timeout,
+    ProtocolError
 )
 
 
@@ -36,7 +41,7 @@ class NetworkClient:
 
     def __init__(
         self,
-        max_concurrent_requests: int = 10,
+        max_concurrent_requests: int = 7,
         sleep_time: int = 2,
         max_attempts: int = 10,
     ):
@@ -48,10 +53,11 @@ class NetworkClient:
         self,
         func: Callable[..., Any],
         *args,
-        sleep_time: int = 2,
+        sleep_time: int| float = 2,
         **kwargs,
     ) -> Any:
-
+        _sleep_time = max(sleep_time, self._sleep_time)
+        await asyncio.sleep(uniform(_sleep_time*0.5, _sleep_time*2))
         for attempt in range(1, self._max_attempts + 1):
             try:
                 async with self._semaphore:
@@ -72,6 +78,7 @@ class NetworkClient:
                 logger.warning(
                     f"Network error ({type(err).__name__}) "
                     f"attempt {attempt}/{self._max_attempts}: {err}"
+                    f"Error type: {repr(err)}"
                 )
 
             except HTTPError as err:
@@ -92,8 +99,11 @@ class NetworkClient:
                     f'with args="{args}" and kwargs="{kwargs}"'
                 )
                 raise
+            max_backoff = 60
+            backoff = min(_sleep_time * (2 ** (attempt - 1)), max_backoff)
+            jitter = uniform(0, 5)
 
-            backoff = self._sleep_time * (2 ** (attempt - 1))
-            await asyncio.sleep(backoff)
+            await asyncio.sleep(backoff + jitter)
+
 
         raise RuntimeError("Network retry limit exceeded")
