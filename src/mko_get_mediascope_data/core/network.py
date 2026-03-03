@@ -2,12 +2,13 @@
 
 import asyncio
 import logging
-from collections.abc import Callable
-from typing import Any
-from random import uniform
-from mediascope_api.core.errors import BadRequestError
-from urllib3.exceptions import ProtocolError
 import socket
+from collections.abc import Callable
+from random import uniform
+from typing import Any
+
+from mediascope_api.core.errors import AuthorizationError, BadRequestError
+from urllib3.exceptions import NameResolutionError, ProtocolError
 from requests.exceptions import (
     ChunkedEncodingError,
     ConnectionError,
@@ -19,15 +20,18 @@ from requests.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+# Все ошибки, которые считаем временными и достойными ретраев
 RETRIABLE_EXCEPTIONS = (
     ConnectTimeout,
     ConnectionError,
     Timeout,
     RetryError,
     ChunkedEncodingError,
-    ConnectionResetError,  # ← добавить
+    ConnectionResetError,
     socket.timeout,
-    ProtocolError
+    ProtocolError,
+    NameResolutionError,          # ← добавлено: DNS-разрешение не удалось
+    socket.gaierror,              # ← добавлено: базовая ошибка name resolution
 )
 
 
@@ -35,13 +39,16 @@ class NetworkClient:
     """
     Centralized async network handler with:
     - retry logic
-    - exponential backoff
+    - exponential backoff + jitter
     - concurrency control via Semaphore
+
+    Готово к расширению:
+    TODO (Architect): в будущем можно добавить refresh_token_func: Callable | None = None
     """
 
     def __init__(
         self,
-        max_concurrent_requests: int = 7,
+        max_concurrent_requests: int = 5,
         sleep_time: int = 2,
         max_attempts: int = 10,
     ):
@@ -53,11 +60,14 @@ class NetworkClient:
         self,
         func: Callable[..., Any],
         *args,
-        sleep_time: int| float = 2,
+        sleep_time: int | float = 2,
         **kwargs,
     ) -> Any:
         _sleep_time = max(sleep_time, self._sleep_time)
-        await asyncio.sleep(uniform(_sleep_time*0.5, _sleep_time*2))
+
+        # Небольшая начальная задержка для разглаживания пиковых нагрузок
+        await asyncio.sleep(uniform(_sleep_time * 0.5, _sleep_time * 2))
+
         for attempt in range(1, self._max_attempts + 1):
             try:
                 async with self._semaphore:
@@ -65,6 +75,14 @@ class NetworkClient:
 
             except BadRequestError as err:
                 logger.error(f"Bad request. Check configuration. {err}")
+                raise
+
+            except AuthorizationError as err:
+                # 401 — это известная клиентская ошибка, а не "Unexpected"
+                logger.error(
+                    f'Authorization error (token invalid/expired) in "{func.__name__}" '
+                    f'with args="{args}" and kwargs="{kwargs}": {err}'
+                )
                 raise
 
             except FileNotFoundError as err:
@@ -78,7 +96,6 @@ class NetworkClient:
                 logger.warning(
                     f"Network error ({type(err).__name__}) "
                     f"attempt {attempt}/{self._max_attempts}: {err}"
-                    f"Error type: {repr(err)}"
                 )
 
             except HTTPError as err:
@@ -95,15 +112,15 @@ class NetworkClient:
 
             except Exception as err:
                 logger.exception(
-                    f'Unexpected error {err} in "{func.__name__}" '
-                    f'with args="{args}" and kwargs="{kwargs}"'
+                    f'Unexpected error in "{func.__name__}" '
+                    f'with args="{args}" and kwargs="{kwargs}": {err}'
                 )
                 raise
+
+            # exponential backoff + jitter
             max_backoff = 60
             backoff = min(_sleep_time * (2 ** (attempt - 1)), max_backoff)
             jitter = uniform(0, 5)
-
             await asyncio.sleep(backoff + jitter)
-
 
         raise RuntimeError("Network retry limit exceeded")

@@ -42,7 +42,7 @@ class ReportFactory:
     @property
     def data_strategy(self):
         if "DICT" in self.report_subtype.value.upper():
-            return TVRegTaskStrategy
+            return DictDataStrategy
         else:
             return self._data_strategy
 
@@ -212,7 +212,7 @@ class TVMediaReport(MediaReport):
             "slices": list(self.data_settings.slices),
             "statistics": list(self.data_settings.statistics),
         }
-        if "target_audiences" in self.report_settings:
+        if self.targets:
             output_columns["slices"].insert(0, "targetAudience")
 
         if getattr(self.data_settings, "frequency_dist_conditions", None):
