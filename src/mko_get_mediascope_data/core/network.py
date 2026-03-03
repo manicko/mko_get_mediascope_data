@@ -117,9 +117,9 @@ class NetworkClient:
                 )
                 raise
 
-            # exponential backoff + jitter
-            max_backoff = 60
-            backoff = min(_sleep_time * (2 ** (attempt - 1)), max_backoff)
+            # backoff + jitter
+            base = 1.2
+            backoff = _sleep_time * (base ** (attempt - 1))
             jitter = uniform(0, 5)
             await asyncio.sleep(backoff + jitter)
 
