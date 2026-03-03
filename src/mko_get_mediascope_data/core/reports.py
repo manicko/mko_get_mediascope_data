@@ -5,11 +5,12 @@ import logging
 from abc import ABC, abstractmethod
 from datetime import date
 from os import PathLike
+from random import uniform
 
 from mediascope_api.mediavortex.tasks import MediaVortexTask
 from pandas import DataFrame
 from unidecode import unidecode
-from random import uniform
+
 import mko_get_mediascope_data.core.utils as utils
 from mko_get_mediascope_data.core.models import (
     Data,

@@ -223,5 +223,5 @@ __marimo__/
 data/*
 !data/output/.gitkeep
 src/mko_get_mediascope_data/settings/connections/*
-!src/mko_get_mediascope_data/settings/connections/mediascope_RENAME_.yaml
+!src/mko_get_mediascope_data/settings/connections/mediascope_RENAME_.json
 

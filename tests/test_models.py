@@ -16,7 +16,7 @@ def test_report_settings_valid():
         "report_type": "crosstab",
         "report_subtype": "TOP_NAT_TV_ADVERTISERS",
         "relative_path": "tv/test",
-        "period": {"last_time": {"period_num": 1, "frequency": "m"}},
+        "period": {"last_time": {"unit_count": 1, "time_unit": "m"}},
     }
     settings = ReportSettings(**data)
     assert settings.media == MediaType.TV
@@ -27,5 +27,5 @@ def test_period_model_validation():
     with pytest.raises(ValidationError):
         PeriodModel()  # ни date_filter, ни last_time
 
-    valid = PeriodModel(last_time=LastTimeModel(**{"period_num": 4, "frequency": "m"}))
+    valid = PeriodModel(last_time=LastTimeModel(**{"unit_count": 4, "time_unit": "m"}))
     assert valid.last_time.unit_count == 4

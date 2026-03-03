@@ -31,7 +31,7 @@ def str_to_date(date_string: str):
 
 
 def iter_period_slices(
-        overall_start: date, overall_end: date, frequency: Literal["d", "w", "m", "y"]
+    overall_start: date, overall_end: date, frequency: Literal["d", "w", "m", "y"]
 ) -> Iterator[tuple[date, date]]:
     """
     Генерирует последовательные интервалы внутри [overall_start, overall_end]
@@ -67,9 +67,9 @@ def iter_period_slices(
 
 
 def slice_period(
-        period: list[date] | tuple[date, date],
-        frequency: Literal["d", "w", "m", "y"],
-        as_strings: bool = True,
+    period: list[date] | tuple[date, date],
+    frequency: Literal["d", "w", "m", "y"],
+    as_strings: bool = True,
 ) -> list[tuple[str, str]] | list[tuple[date, date]]:
     """
     Splits a period into sub-intervals according to frequency.
@@ -86,7 +86,7 @@ def slice_period(
 
 
 def get_last_period(
-        settings: LastTimeModel, today: datetime | None = None, as_strings: bool = False
+    settings: LastTimeModel, today: datetime | None = None, as_strings: bool = False
 ) -> tuple[str, ...] | tuple[date, date]:
     """
     Возвращает начало и конец периода за последние N периодов (дни/недели/месяцы/годы).
@@ -165,17 +165,17 @@ def get_files_suffix(compression: str | dict = None):
 
 
 def csv_to_file(
-        data_frame: DataFrame,
-        csv_path_out: PathLike,
-        file_prefix: str = "",
-        compression: (
-                Literal["infer", "gzip", "bz2", "zip", "xz", "zstd", "tar"]
-                | None
-                | dict[str, Any]
-        ) = "infer",
-        add_time: bool = True,
-        *args,
-        **kwargs,
+    data_frame: DataFrame,
+    csv_path_out: PathLike,
+    file_prefix: str = "",
+    compression: (
+        Literal["infer", "gzip", "bz2", "zip", "xz", "zstd", "tar"]
+        | None
+        | dict[str, Any]
+    ) = "infer",
+    add_time: bool = True,
+    *args,
+    **kwargs,
 ):
     time_str = ""
     if add_time:
@@ -257,9 +257,9 @@ def dir_content_to_dict(files, suffix: str = "yaml"):
 
 
 def list_files_in_directory(
-        path: str | PathLike[str],
-        extensions: tuple[str, ...] = ("yaml", "json"),
-        include_subfolders: bool = False,
+    path: str | PathLike[str],
+    extensions: tuple[str, ...] = ("yaml", "json"),
+    include_subfolders: bool = False,
 ) -> list[Path]:
     """
     Lists files in a directory with specific extensions.

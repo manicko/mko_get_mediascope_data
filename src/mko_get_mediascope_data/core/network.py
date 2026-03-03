@@ -8,7 +8,6 @@ from random import uniform
 from typing import Any
 
 from mediascope_api.core.errors import AuthorizationError, BadRequestError
-from urllib3.exceptions import NameResolutionError, ProtocolError
 from requests.exceptions import (
     ChunkedEncodingError,
     ConnectionError,
@@ -17,6 +16,7 @@ from requests.exceptions import (
     RetryError,
     Timeout,
 )
+from urllib3.exceptions import NameResolutionError, ProtocolError
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,8 @@ RETRIABLE_EXCEPTIONS = (
     ConnectionResetError,
     socket.timeout,
     ProtocolError,
-    NameResolutionError,          # ← добавлено: DNS-разрешение не удалось
-    socket.gaierror,              # ← добавлено: базовая ошибка name resolution
+    NameResolutionError,  # ← добавлено: DNS-разрешение не удалось
+    socket.gaierror,  # ← добавлено: базовая ошибка name resolution
 )
 
 

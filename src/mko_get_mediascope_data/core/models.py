@@ -55,7 +55,7 @@ class ReportSubtype(Enum):
     NAT_TV_CHANNELS_ATV = "NAT_TV_CHANNELS_ATV"
     NAT_TV_CHANNELS_BA = "NAT_TV_CHANNELS_BA"
     NAT_TV_CHANNELS_SOC_DEM = "NAT_TV_CHANNELS_SOC_DEM"
-    DYNAMICS_BY_SPOTS_DICT ="DYNAMICS_BY_SPOTS_DICT"
+    DYNAMICS_BY_SPOTS_DICT = "DYNAMICS_BY_SPOTS_DICT"
 
 
 class LastTimeModel(BaseModel):
@@ -63,6 +63,7 @@ class LastTimeModel(BaseModel):
     include_current: bool = False
     time_unit: Literal["d", "w", "m", "y"] = "w"
     unit_count: PositiveInt
+
 
 class PeriodModel(BaseModel):
     date_filter: list[date] | None = None

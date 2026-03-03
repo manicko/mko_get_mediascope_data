@@ -115,7 +115,7 @@ class AppService:
 
         start_time = datetime.now().replace(microsecond=0)
         print(
-            f'\n{'-' * 10}  Обработка стартовала: {start_time} {'-' * 10}\n',
+            f"\n{'-' * 10}  Обработка стартовала: {start_time} {'-' * 10}\n",
             flush=True,
         )
 
@@ -152,7 +152,7 @@ class AppService:
 
         end_time = datetime.now().replace(microsecond=0)
         print(
-            f'\n{'-' * 10}  Обработка завершена: {end_time}. '
+            f"\n{'-' * 10}  Обработка завершена: {end_time}. "
             f"Общее время: {end_time - start_time} {'-' * 10}\n",
             flush=True,
         )
