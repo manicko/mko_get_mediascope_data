@@ -14,7 +14,7 @@ from .core.init_service import init_project
 from .core.services import app_service
 from .core.utils import list_files_in_directory
 
-sys.stdout.reconfigure(line_buffering=True)
+sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
 
 console = Console()
 app = typer.Typer(
