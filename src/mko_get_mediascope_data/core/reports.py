@@ -5,7 +5,6 @@ import logging
 from abc import ABC, abstractmethod
 from datetime import date
 from os import PathLike
-from random import uniform
 
 from mediascope_api.mediavortex.tasks import MediaVortexTask
 from pandas import DataFrame
