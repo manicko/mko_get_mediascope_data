@@ -48,7 +48,7 @@ Evidence: the double inventory with the property each removes; one property obse
 ### 3. The fixture data contract
 
 *Establish what states and values the helper layer manufactures by default, whether the product can produce each, and what stays green precisely because it cannot. A default that silently produces a surprising
- value turns every consumer into a test of a fiction; a helper that absorbs a database constraint means no test ever has to satisfy it. Also establish whether a fixed value the production vocabulary already
+ value turns every consumer into a test of a fiction; a helper that absorbs a Pydantic validation constraint means no test ever has to satisfy it. Also establish whether a fixed value the production vocabulary already
  names is restated as a bare literal by a helper — the test layer's instance of a value that now has two homes, where one copy drifts silently and every consumer is tested against the stale one. And establish
  whether the key space helper defaults must populate is ordered and non-overlapping by anything but the test's own convention, so two independently valid setups collide on an identity no constraint separates.
  Where more than one helper universe exists, establish that they agree on the contract, and where they do not, which one the assertions are actually testing. Whether helper data carries real identifiers or
@@ -67,13 +67,13 @@ the test that gates their remediation.
 
 ### 5. The harness as a system
 
-*Establish how the test schema is built, how reference data is restored, how parallel execution partitions and isolates, what bounds a runaway query, and what each registered marker is wired to. Then establish
+*Establish how test fixtures are set up, how mock collaborators are configured, how parallel execution partitions and isolates, what bounds a runaway query, and what each registered marker is wired to. Then establish
  the substitution semantics of the invocation: what a caller loses when the default options are overridden, and whether the two execution paths this project supports reach the same runtime configuration.
  Several arrangements here are deliberate and hard-won, and each is a claim to verify rather than a defect: a step excluded from the fast path, where nothing detects the failures running it would otherwise
  surface; two helper universes separated by an execution model neither can cross; an import-path shim retained so that existing patch targets still resolve after their module moved.
  Establish what each costs, what still holds it in place, and what a change would have to preserve. Finally: which tests the harness cannot currently host, and which missing coverage each explains. Establish
- what a data-level schema change does to the run — its effect, not only whether a migration applies cleanly and twice — since a schema built by a strategy other than the migration path cannot see it.*
-Evidence: the schema, reference-data, isolation, and marker-wiring facts; the override-substitution delta; the deliberate arrangements with what holds each in place; the
+ what a change to a config template or model does to the run — its effect, not only whether it applies cleanly and repeatably — since a configuration assembled by a path other than the validated one cannot see it.*
+Evidence: the fixture, mock, isolation, and marker-wiring facts; the override-substitution delta; the deliberate arrangements with what holds each in place; the
 tests the harness cannot host and the gap each names.
 
 ### 6. Reproducibility and debuggability

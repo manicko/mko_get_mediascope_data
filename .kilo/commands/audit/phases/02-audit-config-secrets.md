@@ -10,125 +10,132 @@ problems-only: true
 
 ## Purpose
 
-Audit how configuration and secrets are declared, resolved, validated, and kept
-separate across environments and automation in a **dual-process Django system**:
-a web process and a bot process that share one project and one database.
+Audit how configuration and credentials are declared, resolved, validated, and
+kept separate in a standalone async CLI tool that fetches data from the
+Mediascope API. Bundled YAML templates live in the package `settings/` tree and
+are copied to the user config directory (`~/.config/mko_get_mediascope_data/`)
+by the `init` command. All loaded configuration is validated through Pydantic
+v2 models before use. The Mediascope API credential is a JSON file in
+`connections/`.
 
-Other phases own: entry/bootstrap process (01), connection pooling and runtime DB
-concurrency (03), authentication (04), fixed-value enum discipline and
-boundary-DTO validation (10), test-suite quality and coverage (11), TLS and
-certificate lifecycle and health probes (12); whether a rendered page's actual
-subresource fetches agree with the policy values this phase declares is 16's;
-this phase owns the values themselves.
+Other phases own: process startup and import-time behaviour (01); the
+blocking-work bridge and retry contract (09); fixed-value enum discipline
+(10); packaging and CI/CD (12); the async pipeline (03, 04). This phase owns
+the **values** themselves — how they are sourced, validated, and merged.
+
+---
 
 ## Audit Blocks
 
-Each block is standalone: execute in any order, with no knowledge of the others.
-Every block carries its own evidence.
+Each block is independent — execute any one with no knowledge of the others.
+Evidence is a class, not a check list: observed output, a reproduced
+behaviour, or a static proof that a stated property does not hold; the method
+is the auditor's. A passing check is methodology, never a finding.
 
-### 1. Settings surface & variant-selection topology
+### 1. Settings surface & template distribution topology
 
-*Establish which configuration variant each running process actually loads and how
-that choice is made. Treat variant selection as a per-process decision rather than
-a per-environment label — confirm or refute that, including any variant that exists
-only as a scenario or replay helper rather than a real environment.*
-Evidence: effective variant per process, the mechanism that selects it, any
-variant with no consumer.
+Establish which configuration variant each running surface loads and how the
+choice is made. Confirm or refute that the package templates, the user config
+directory, and the defaults directory are each consumed by their intended reader.
+Check whether user edits to copied templates are preserved across a
+non-forced re-init, whether a variant exists with no consumer, and whether the
+template copy operation is atomic with respect to partial writes.
 
-### 2. Env-var name-contract reconciliation
+Evidence: effective variant per surface; the template-to-user copy mechanism;
+one user-edited file preserved or clobbered across re-init.
 
-*Reconcile four name universes in both directions: names actually read by code and
-by shell, names admitted or flagged by whatever name check exists (it may be
-permissive by design), names declared in shipped templates, and names supplied by
-each deployment or automation surface. Drift in either direction is a finding;
-separately judge whether the drift signal is actionable or indistinguishable from
-a legitimately new variable.*
-Evidence: the four sets with their symmetric difference; verdict on signal quality.
+### 2. Credential seam: where the Mediascope secret enters
 
-### 3. Secret validation & fail-fast behaviour
+Derive the credential file and establish where the secret is injected into an
+API request — path, query, header, or body. Treat absent, empty, and malformed
+as three distinct states. Check whether the secret reaches a log, an exception
+string, or a referrer; whether one process holds the credential that another
+never needs; and whether a missing or invalid credential fails fast with an
+actionable message that does not echo the secret.
 
-*For each guarded secret ask four questions: is a guard present, is it
-unconditional, can any value reachable from a production secret file disable it,
-and is the failure actionable yet free of the secret's value? Treat absent,
-present-but-empty, and malformed as three distinct states. Where one boot
-precondition is enforced in several places, check the implementations agree on
-the condition, the skip rules, and the file they expect.*
+Evidence: per call — where the credential enters, the three states, the
+holding surface; one path by which the wire form could be observed.
+
+### 3. Pydantic validation fidelity & defaults merge
+
+Establish how the merged data-settings dict is constructed: the base defaults
+from the defaults template, overlaid with the report-specific values, then
+validated as a `Data` model. Check whether validation occurs *before* the
+settings reach the API call, whether a type mismatch or missing required key
+fails fast with a named field, and whether the merge preserves list-vs-dict
+typing for every field the API consumer expects.
+
+Evidence: the merge chain (defaults → overlay → validate); one induced type
+mismatch and the resulting error; the validated model that the consumer reads.
+
+### 4. Secret validation & fail-fast behaviour
+
+For the credential guard, ask four questions: is a guard present, is it
+unconditional, can any reachable value disable it, and is the failure
+actionable yet free of the secret's value? Treat absent, empty, and malformed
+as three distinct states. Where the guard is enforced in several places, check
+the implementations agree on the condition, the skip rules, and the file they
+expect.
+
 Evidence: guard inventory with a scoping verdict; one controlled-environment
 observation per guard; the failure text itself.
 
-### 4. Secret provenance & exposure surface
+### 5. Dead, ineffective & unconsumed configuration
 
-*Trace where secret material can enter or leave: committed files, container build
-contexts and image-build steps, process command lines and standard output, error
-and traceback paths, and credentials supplied by automation. Classify every
-credential-shaped literal as real, placeholder, or test fixture. Confirm ignore
-coverage spans version control and the build context, not only the former.*
-Evidence: classified match list; ignore-file diff per secret-bearing path; any
-secret-bearing output path.
+Ask three questions in one place: is each assigned setting name still read by
+the code that loads it; does every declared value reach a reachable consumer;
+is every environment branch reachable under some real selection. Where a value
+is derived rather than read directly, check that the derived result satisfies
+its consumer's contract, not merely that the derivation exists.
 
-### 5. Environment separation & process parity
+Evidence: per-name liveness verdicts; unread-name list; derived-value validity
+check.
 
-*Determine what must not cross between environments and between co-resident
-processes, then judge each as intentional-and-complete rather than merely
-different: debug and exception exposure, transport security, cookie and origin
-policy, host allow-lists, backend substitution. Which origins and which cookie
-attributes are honoured, per environment, is the policy half and is this phase's;
-which surfaces a request-forgery check reaches, and whether it runs on each, is
-the enforcement half and belongs to 15. Include whether the two processes
-actually see the same required configuration, and whether a value written into
-one environment's secret file can reach a process belonging to another.*
-Evidence: effective-configuration diff per environment and per process (resolved
-values, not source-file diffs); per environment, the honoured origins and cookie
-attributes.
+### 6. Environment separation & process parity
 
-### 6. Automation env-parity vs. guarded configuration
+Determine what must not cross between the CLI, the library, and the module
+entry surfaces. Check whether debug-level logging, credential exposure, and
+config-variant selection are consistent across all three entry surfaces, and
+whether a value written into one surface's config can leak into another.
 
-*Reconstruct every environment automation claims to stand in for — containerised
-execution paths versus natively executed ones — and ask whether each can still
-exercise the configuration path it purports to validate. Treat the difference in
-how values reach the process between the two execution styles as a first-class
-object of analysis, and check each automated environment's supplied values
-against the set the corresponding production guards require.*
-Evidence: per automated environment — how values arrive, which guards are
-exercised, which required values are absent.
+Evidence: effective-configuration diff per entry surface; the honoured config
+paths per surface.
 
 ### 7. Env-overridable production posture
 
-*Identify settings whose value can change the security or delivery posture of a
-running production process, and ask whether each such substitution is intended,
+Identify settings whose value can change the security or delivery posture of a
+running report — the concurrency limit, the retry count, the export path, the
+credentials file path. Check whether each such substitution is intended,
 constrained, and re-pinned where a production variant is supposed to harden it.
-Separate documented operator controls from configuration that looks like drift.*
-Evidence: the list of posture-affecting settings with the pinning status of each.
+Separate documented operator controls from configuration that looks like drift.
 
-### 8. Dead, ineffective & unconsumed configuration
+Evidence: the list of posture-affecting settings with the pinning status of
+each.
 
-*Three questions in one place: is each assigned setting name still read by the
-pinned framework version; does every declared value reach a reachable consumer;
-is every environment branch reachable under some real selection. Where a value is
-derived rather than read directly, check that the derived result satisfies its
-consumer's contract, not merely that the derivation exists.*
-Evidence: per-name liveness verdicts; unread-name list; derived-value validity check.
+---
 
 ## Severity Taxonomy
 
 | Severity | Conditions |
 |---|---|
-| CRITICAL | A real secret obtainable by anyone who can read the artefact carrying it or the history preserving it; a production signing key or credential that is empty, invalid, or shared with another tier |
-| HIGH | A production control is bypassable or silently disabled, including a validation gate that cannot run; secret values reaching logs, output, or error paths; an automated environment that no longer exercises the configuration it claims to validate |
-| MEDIUM | Leakage across an environment or process boundary; ineffective transport, cookie, origin, host, or backend substitution; config-name drift, unconsumed configuration, or a setting name the framework no longer reads |
-| LOW | Placeholder and template gaps; undocumented switches; missing explanatory comments |
+| CRITICAL | A real credential obtainable by anyone who can read the file carrying it; a credential file that is empty, invalid, or shared across environments; a config gate that is bypassed or silently disabled |
+| HIGH | A production control bypassable or silently disabled; secret values reaching logs, output, or error paths; a merged config value that reaches the API consumer without validation and causes silent data corruption |
+| MEDIUM | Config-name drift; ineffective or unconsumed configuration; a setting name the validator no longer reads; leakage of config across entry surfaces |
+| LOW | Placeholder and template gaps; undocumented switches; missing explanatory comments; a template copy that is non-atomic but never observed to interleave |
 
-Severity is anchored to **present state**: rate what is true now, not the worst
-consequence a defect would have if it were triggered.
+Severity is anchored to **present state**: rate what is true now, not the
+worst consequence a defect would have if it were triggered.
+
+---
 
 ## Report Output
 
-- Write findings to: `.ai/audit/02-config-secrets/findings.md`
-- Use template: `.ai/audit/templates/audit-findings.md`
+- Findings path: `.ai/audit/02-config-secrets/findings.md`
+- Template: `.ai/audit/templates/audit-findings.md`
 - **Incremental append**, ≤100 lines per pass.
 - Prefix every finding ID with `CFG-`.
-- Record findings only and omit passing checks. Every finding must carry
-  reproducible runtime evidence and the exact consequence. If nothing is wrong in
-  this phase, write exactly: `No problems found in this phase.`
+- Record findings only and omit passing checks; every finding must carry
+  reproducible runtime evidence and the exact consequence. If nothing is wrong
+  in this phase, write exactly: `No problems found in this phase.`
 - If a shipped test asserts the current behaviour as intended, still file the
   finding and record the test as a remediation blocker.

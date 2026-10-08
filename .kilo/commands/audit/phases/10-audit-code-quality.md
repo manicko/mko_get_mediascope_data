@@ -101,15 +101,14 @@ check" comes from the path that runs, never from the prose above it. Also ask wh
 moment they are making the change.*
 Evidence: the declared-property inventory with an enforcement point or its absence; one documented rule the code contradicts; one validation hook no caller reaches.
 
-### 9. Migration discipline and schema drift
+### 9. Template and config drift
 
-*Establish, for every model change, whether the schema history records it — and then, separately, whether anything would notice if it did not. The claim to test is not "a migration exists" but "a gate fails when
-one is missing": establish whether the automation runs a drift check at all, over which paths, and whether a check present in configuration is actually executed on every change, or is declared and never wired
+*Establish, for every change to a config template or Pydantic model that affects what the API receives, whether the change is recorded — and then, separately, whether anything would notice if it were not. The claim to test is not "a record exists" but "a gate fails when
+one is missing": establish whether the automation detects template-to-model drift at all, over which paths, and whether a check present in configuration is actually executed on every change, or is declared and never wired
 in. Do not assume a gate exists until one is found running; its absence is the finding, not a failure of the block. A check that exists but that no contributor can run locally is a different absence, and a
-narrower one. Separately, establish whether schema or reference data is mutated from a code path rather than from a migration, and whether such a path is idempotent if it is run twice — a sweep, a backfill, a
-repair run, or a data fixture that writes to the database as a side effect of being imported.*
-Evidence: the gate inventory — which drift checks exist, where they run, and what they cover; one model change with no recorded migration, or the confirmation that none exists; every non-migration schema
-mutation with an idempotency verdict.
+narrower one. Separately, establish whether a template key or model field that affects the API request can be added or altered in one place without a corresponding update to its counterpart, and whether such drift is caught by a check that runs repeatably.*
+Evidence: the gate inventory — which drift checks exist, where they run, and what they cover; one template-to-model change with no recorded drift detection, or the confirmation that it is caught; every drift
+path with an idempotency verdict.
 
 ## Severity Taxonomy
 
