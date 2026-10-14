@@ -61,6 +61,18 @@ class AppService:
 
         logging.config.dictConfig(self.app_config.logging_settings.model_dump())
 
+    def reload_config(self) -> None:
+        """Invalidate cached configuration and re-apply from YAML files.
+
+        Invalidates the ``cached_property`` caches for ``app_config`` and
+        ``export_folder`` so the next access re-reads the YAML config files.
+        Also re-runs ``prepare_app()`` to re-resolve handler paths and
+        re-apply ``dictConfig``.
+        """
+        self.__dict__.pop("app_config", None)
+        self.__dict__.pop("export_folder", None)
+        self.prepare_app()
+
     @cached_property
     def export_folder(self) -> Path:
         _path = self.resolver.resolve(self.app_config.app_settings.export_folder)
