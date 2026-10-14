@@ -146,10 +146,10 @@ class MediaReport(Report):
             if item.status is True:
                 await self.extract_data(item)
             if item.status is False:
-                logger.warning(f"Расчет: '{item.name}' будет пропущен.")
+                logger.warning(f"Calculation: '{item.name}' will be skipped.")
                 await asyncio.to_thread(item.to_yaml, self.export_path)
             else:
-                logger.info(f"Задача {item.name} готова.")
+                logger.info(f"Task {item.name} is ready.")
             self.task_queue.task_done()
 
     async def processing_tasks(self):
@@ -184,7 +184,7 @@ class TVMediaReport(MediaReport):
         self.task_strategy = task_strategy or DefaultTVTaskStrategy()
         self.data_strategy = data_strategy or DefaultDataStrategy()
 
-        # общие поля (используются стратегиями)
+        # common fields (used by strategies)
         self.targets = self.report_settings.target_audiences
         self.base_id = self.data_settings.options.get("kitId", 1)
 
@@ -227,11 +227,11 @@ class TVMediaReport(MediaReport):
 
         :return: Generator with intervals in a format of tuple ('2023-02-01', '2023-03-22')
         """
-        # проверяем доступные даты в базе
+        # check available dates in the database
         available_period = await self.get_available_period()
         try:
             if self.report_settings.period.date_filter is None:
-                # если период не задан явно, строим его на основе последней доступной даты
+                # if period is not set explicitly, build it from the last available date
                 period = utils.get_last_period(
                     today=available_period[1],
                     settings=self.report_settings.period.last_time,
@@ -287,7 +287,7 @@ class TVMediaReport(MediaReport):
                 logger.warning("Max retries exceeded")
                 break
             elif isinstance(status, dict):
-                # print(f'\n Статус расчета задачи {task.name}:
+                # print(f'\n Task {task.name} status:
                 # {status.get('taskStatus', None)}, {status.get('message', None)}')
                 if status.get("taskStatus", None) in ("DONE", "FAILED", "CANCELLED"):
                     break
@@ -297,7 +297,7 @@ class TVMediaReport(MediaReport):
         :param task: Task object with task settings
         :return: Nothing
         """
-        # Получаем результат
+        # retrieve result
         res_json = await self.network_client.call(
             self.report_service.get_result, task.key
         )
@@ -330,7 +330,7 @@ class TVMediaReport(MediaReport):
                         csv_path_out=self.export_path,
                         compression=self.report_settings.compression,
                     )
-                    # print(f'\n сохраняю {task.name} в файл')
+                    # print(f'\n saving {task.name} to file')
 
     async def generate_tasks(self):
         async for task in self.task_strategy.generate(self):
@@ -346,13 +346,13 @@ class TVMediaReport(MediaReport):
 class TaskGenerationStrategy(ABC):
     @abstractmethod
     async def generate(self, report: TVMediaReport):
-        """Генерирует задачи. Должен быть async generator."""
+        """Generate tasks. Must be an async generator."""
 
 
 class DataPreparationStrategy(ABC):
     @abstractmethod
     async def prepare(self, report: TVMediaReport, df: DataFrame) -> DataFrame | None:
-        """Подготавливает DataFrame."""
+        """Prepare DataFrame."""
 
 
 class DefaultTVTaskStrategy(TaskGenerationStrategy):
@@ -376,7 +376,7 @@ class DefaultTVTaskStrategy(TaskGenerationStrategy):
                 task.interval = interval
                 task.target = t_name
                 if task.name in report.done_files:
-                    logger.warning(f"Файл: '{task.name}' уже есть в папке, пропускаем.")
+                    logger.warning(f"File '{task.name}' already exists in folder, skipping.")
                     continue
                 yield task
 
@@ -450,7 +450,7 @@ class DefaultDataStrategy(DataPreparationStrategy):
                 df = utils.pivot_df_frequency(df, report.output_columns["slices"])
             return df
         except KeyError as err:
-            logger.error(f"Ошибка '{err}' при обработке данных.")
+            logger.error(f"Error '{err}' while processing data.")
             return None
 
 
@@ -463,7 +463,7 @@ class DictDataStrategy(DataPreparationStrategy):
             return None
         missing = set(output_columns) - set(df.columns)
         if missing:
-            logger.error(f"Отсутствуют колонки: {missing}")
+            logger.error(f"Missing columns: {missing}")
             return None
 
         df = df[output_columns]

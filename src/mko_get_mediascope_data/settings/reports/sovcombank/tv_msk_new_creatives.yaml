@@ -1,13 +1,13 @@
 [
   {
     'report_type':'TV_CROSSTAB',
-    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
     'category_name': 'sovcombank',
     'compression': {'method': 'gzip'},
-    'data_lang': 'ru', # задаем язык выгрузки
+    'data_lang': 'ru', # set data language
     'folder':'msk_tv_new_creatives',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Финансовые услуги
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
+    'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Financial services
     'target_audiences': {
       'all 30+': 'age >= 30',
 #      'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
@@ -15,21 +15,21 @@
 #      'all 45-60 BC': 'age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)'
     },
     'period': {
-      'date_filter': Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'w',
         'period_num': '1',
         'include_current': True
       }
     },
     'options': {
-      # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
-      # Возможно указать только одно значение
+      # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      # Only one value can be specified
       'kitId': 6, #TV Index Russia all
-      'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       "standRtg": {
-        "useRealDuration": True,  # расчет по реальной длительности ролика.
-        "standardDuration": 20  # стандартная длительность 20 сек.
+        "useRealDuration": True,  # Calculated based on actual ad duration.
+        "standardDuration": 20  # Standard duration of 20 seconds
       }
     },
   }

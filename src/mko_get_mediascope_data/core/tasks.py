@@ -41,7 +41,7 @@ class TVTask(Task):
                 "error": self.error,
                 "settings": self.settings,
             }
-            logger.info(f"Сохраняю настройки задачи {self.name}")
+            logger.info(f"Saving task settings for {self.name}")
             with open(export_file, "w", encoding="utf-8") as outfile:
                 dump(
                     dump_settings,

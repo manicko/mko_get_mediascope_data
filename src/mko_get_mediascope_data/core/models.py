@@ -72,10 +72,10 @@ class PeriodModel(BaseModel):
     @model_validator(mode="after")
     def validate_exclusive(self):
         if not self.date_filter and not self.last_time:
-            raise ValueError("Нужно указать либо date_filter, либо last_time")
+            raise ValueError("Specify either date_filter or last_time")
 
         if self.date_filter and len(self.date_filter) != 2:
-            raise ValueError("date_filter должен содержать 2 даты")
+            raise ValueError("date_filter must contain 2 dates")
 
         return self
 
@@ -92,7 +92,7 @@ class ReportSettings(BaseModel):
     data_lang: Literal["ru", "en"] = "ru"
     relative_path: Path
     multiple_files: bool = (
-        True  # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+        True  # True: if period exceeds 1 year, split exports by month/week
     )
     ad_filter: str | None = None
     target_audiences: dict[str, Any] | None = Field(

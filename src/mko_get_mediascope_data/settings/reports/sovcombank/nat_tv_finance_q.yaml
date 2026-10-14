@@ -1,13 +1,13 @@
 [
   {
     'report_type': 'TV_CROSSTAB',
-    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
     'category_name': 'finance',
     'compression': { 'method': 'gzip' },
-    'data_lang': 'ru', # задаем язык выгрузки
+    'data_lang': 'ru', # set data language
     'folder': 'raw_data_cards',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'ad_filter': 'articleLevel4Id IN (2479, 4499, 4988) and adIssueStatusId = R', #'articleLevel2Id = 2272 and adIssueStatusId = R', #Финансовые услуги
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
+    'ad_filter': 'articleLevel4Id IN (2479, 4499, 4988) and adIssueStatusId = R', #'articleLevel2Id = 2272 and adIssueStatusId = R', #Financial services
     'target_audiences': {
       'all 18+': 'age >= 18',
       #      'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
@@ -15,20 +15,20 @@
       ##      'w 25-55': 'sex = 2 AND age >= 25 AND age <= 55'
     },
     'period': {
-      'date_filter': [ '2022-01-01', '2024-11-30' ], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': [ '2022-01-01', '2024-11-30' ], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'y',
         'period_num': '3',
         'include_current': True
       }
     },
     'slices': [
-      #'researchDate', # день разрешено указывать не более 1 временного среза на задачу.
+      #'researchDate', # day - can specify at most 1 time slice per task.
     ],
     'statistics': [
       'CumReachPer',
-      'RtgPerSum',  # суммарный рейтинг группы событий в %
-      'QuantitySum',  # количество эфирных событий
+      'RtgPerSum',  # Total reach of event group in %
+      'QuantitySum',  # Number of broadcast events
       'Universe000Avg'
     ],
   },

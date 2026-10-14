@@ -2,10 +2,10 @@
   {
     'media': 'TV',
     'report_type': 'crosstab',
-    'report_subtype': 'TOP_NAT_TV_ADVERTISERS', # тип отчета
-    'data_lang': 'ru', # задаем язык выгрузки
+    'report_subtype': 'TOP_NAT_TV_ADVERTISERS', # report type
+    'data_lang': 'ru', # set data language
     'relative_path': 'tv_report/top_adv',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': Null,
     'target_audiences': {
       'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
@@ -16,8 +16,8 @@
       'w 25-55': 'sex = 2 and age >= 25 AND age <= 55'
     },
     'period': {
-      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'm',
         'period_num': 1,
         'include_current': False
@@ -27,10 +27,10 @@
   {
     'media': 'TV',
     'report_type': 'crosstab',
-    'report_subtype': 'TOP_NAT_TV_PROGRAMS', # тип отчета
-    'data_lang': 'ru', # задаем язык выгрузки
+    'report_subtype': 'TOP_NAT_TV_PROGRAMS', # report type
+    'data_lang': 'ru', # set data language
     'relative_path': 'tv_report/top_programs',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
       255,257,258,259,260,326,329,348,348,348)',
     'ad_filter': Null,
@@ -43,8 +43,8 @@
       'w 25-55': 'sex = 2 and age >= 25 AND age <= 55'
     },
     'period': {
-      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'm',
         'period_num': 1,
         'include_current': False
@@ -52,20 +52,20 @@
     },
     'options': {
       'kitId': 1, #TV Index Russia all
-      'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       "standRtg": {
-        "useRealDuration": False,  # расчет по реальной длительности ролика.
-        "standardDuration": 20  # стандартная длительность 20 сек.
+        "useRealDuration": False,  # Calculated based on actual ad duration.
+        "standardDuration": 20  # Standard duration of 20 seconds
       }
       }
     },
   {
     'media': 'TV',
     'report_type': 'crosstab',
-    'report_subtype': 'NAT_TV_CHANNELS_ATV', # по месяцам
-    'data_lang': 'ru', # задаем язык выгрузки
+    'report_subtype': 'NAT_TV_CHANNELS_ATV', # by month
+    'data_lang': 'ru', # set data language
     'relative_path': 'tv_report/channels_tva_m',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
       255,257,258,259,260,326,329,348,348,348)',
     'target_audiences': {
@@ -86,8 +86,8 @@
 
     },
     'period': {
-      'date_filter': Null, #[ '2023-01-01', '2023-12-31' ], #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': Null, #[ '2023-01-01', '2023-12-31' ], #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'm',
         'period_num': 1,
         'include_current': False
@@ -95,25 +95,25 @@
     },
     'options': {
       "kitId": 1, #TV Index Russia all
-      "totalType": "TotalTVSet", #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
-      "issueType": "BREAKS"   #Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS,
+      "totalType": "TotalTVSet", #Share calculation base: Total Channels. Available options: TotalTVSet, TotalChannelsThem
+      "issueType": "BREAKS"   #Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS,
     },
     'slices': [
-      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
-      'tvCompanyEName',  # телекомпания
+      'researchMonth',  # month - can specify at most 1 time slice per task.
+      'tvCompanyEName',  # TV company
     ],
     'statistics': [
-      'ATVAvg', # среднесуточное время просмотра в минутах среди населения
+      'ATVAvg', # Average daily viewing time in minutes among the population
       'RtgPerAvg'
     ],
   },
   {
     'media': 'TV',
     'report_type': 'crosstab',
-    'report_subtype': 'NAT_TV_CHANNELS_ATV', # по неделям
-    'data_lang': 'ru', # задаем язык выгрузки
+    'report_subtype': 'NAT_TV_CHANNELS_ATV', # by week
+    'data_lang': 'ru', # set data language
     'relative_path': 'tv_report/channels_tvr_w',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
       255,257,258,259,260,326,329,348,348,348)',
     'target_audiences': {
@@ -133,8 +133,8 @@
       'w 25-55': 'sex = 2 and age >= 25 AND age <= 55'
     },
     'period': {
-      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'w',
         'period_num': 12,
         'include_current': False
@@ -142,34 +142,34 @@
     },
     'options': {
       "kitId": 1, #TV Index Russia all
-      "totalType": "TotalTVSet", #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
-      "issueType": "BREAKS"   #Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS,
+      "totalType": "TotalTVSet", #Share calculation base: Total Channels. Available options: TotalTVSet, TotalChannelsThem
+      "issueType": "BREAKS"   #Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS,
     },
     'slices': [
-      'researchWeek',  # месяц разрешено указывать не более 1 временного среза на задачу.
-      'tvCompanyEName',  # телекомпания
+      'researchWeek',  # month - can specify at most 1 time slice per task.
+      'tvCompanyEName',  # TV company
     ],
     'statistics': [
-      'ATVAvg', # среднесуточное время просмотра в минутах среди населения
+      'ATVAvg', # Average daily viewing time in minutes among the population
       'RtgPerAvg'
     ],
   },
   {
     'media': 'TV',
     'report_type': 'crosstab',
-    'report_subtype': 'NAT_TV_CHANNELS_BA', # тип отчета
-    'data_lang': 'ru', # задаем язык выгрузки
+    'report_subtype': 'NAT_TV_CHANNELS_BA', # report type
+    'data_lang': 'ru', # set data language
     'relative_path': 'tv_report/channels_ba_m',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
     255,257,258,259,260,326,329,348,348,348)',
-    'break_filter': 'breaksContentType = C AND breaksDistributionType = N', #'breaksContentType IN (C,S)' #Блок содержание: коммерческий, спонсорский
+    'break_filter': 'breaksContentType = C AND breaksDistributionType = N', #'breaksContentType IN (C,S)' #Block content: commercial, sponsored
     'target_audiences': {
       'all 4+': Null
     },
     'period': {
-      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'm',
         'period_num': 1,
         'include_current': False
@@ -177,11 +177,11 @@
     },
     'options': {
       "kitId": 7, #TV Index Russia all
-      "issueType": "BREAKS",   #Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      "issueType": "BREAKS",   #Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
     },
     'slices': [
-      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
-      'tvCompanyEName',  # телекомпания
+      'researchMonth',  # month - can specify at most 1 time slice per task.
+      'tvCompanyEName',  # TV company
     ],
     'statistics': [
       'SalesRtgPerAvg'
@@ -190,16 +190,16 @@
   {
     'media': 'TV',
     'report_type': 'timeband',
-    'report_subtype': 'NAT_TV_CHANNELS_SOC_DEM', # тип отчета
-    'data_lang': 'ru', # задаем язык выгрузки
+    'report_subtype': 'NAT_TV_CHANNELS_SOC_DEM', # report type
+    'data_lang': 'ru', # set data language
     'relative_path': 'tv_report/soc_dem_age',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': Null,
     'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,
        255,257,258,259,260,326,329,348,348,348)',
     'period': {
-      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'm',
         'period_num': 1,
         'include_current': False
@@ -207,11 +207,11 @@
     },
     'options': {
       "kitId": 1, #TV Index Russia all
-      "totalType": "TotalTVSet" #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
+      "totalType": "TotalTVSet" #Share calculation base: Total Channels. Available options: TotalTVSet, TotalChannelsThem
     },
     'slices': [
-      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
-      'tvCompanyEName',  # телекомпания
+      'researchMonth',  # month - can specify at most 1 time slice per task.
+      'tvCompanyEName',  # TV company
     ],
     'statistics': [
       'WAgeAverage',
@@ -222,15 +222,15 @@
   {
     'media': 'TV',
     'report_type': 'timeband',
-    'report_subtype': 'NAT_TV_CHANNELS_SOC_DEM', # тип отчета
-    'data_lang': 'ru', # задаем язык выгрузки
+    'report_subtype': 'NAT_TV_CHANNELS_SOC_DEM', # report type
+    'data_lang': 'ru', # set data language
     'relative_path': 'tv_report/soc_dem_sex',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'company_filter': 'tvNetId IN (1,2,4,10,11,12,60,83,204,206,255,257,258,259,260,326,329,348,348,348)',
     'targetdemo_filter': 'sex = 2',
     'period': {
-      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'm',
         'period_num': 1,
         'include_current': False
@@ -238,11 +238,11 @@
     },
     'options': {
       "kitId": 1, #TV Index Russia all
-      "totalType": "TotalTVSet" #база расчета Share: Total Channels. Возможны опции: TotalTVSet, TotalChannelsThem
+      "totalType": "TotalTVSet" #Share calculation base: Total Channels. Available options: TotalTVSet, TotalChannelsThem
     },
     'slices': [
-      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
-      'tvCompanyEName',  # телекомпания
+      'researchMonth',  # month - can specify at most 1 time slice per task.
+      'tvCompanyEName',  # TV company
     ],
     'statistics': [
       'TgSatPer'

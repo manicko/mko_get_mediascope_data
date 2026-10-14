@@ -1,13 +1,13 @@
 [
   {
     'report_type': 'REG_TV_CROSSTAB',
-    'report_subtype': 'DYNAMICS_BY_SPOTS_M', # тип отчета
+    'report_subtype': 'DYNAMICS_BY_SPOTS_M', # report type
     'category_name': 'gap_resurs_reg',
     'compression': { 'method': 'gzip' },
-    'data_lang': 'ru', # задаем язык выгрузки
+    'data_lang': 'ru', # set data language
     'folder': 'raw_data_m',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'ad_filter': 'articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R', #Мясо
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
+    'ad_filter': 'articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R', #Meat
     #'regions': [ 6 ],
     'target_audiences': {
       'all 18+': 'age >= 18',
@@ -17,39 +17,39 @@
 #      'w 25-45 BC': 'sex = 2 AND age >= 25 AND age <= 45 AND incomeGroup IN (2,3)',
     },
     'period': {
-      'date_filter': ['2023-01-01', '2024-04-30'], #[ '2022-12-26', '2024-05-12' ], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': ['2023-01-01', '2024-04-30'], #[ '2022-12-26', '2024-05-12' ], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'y',
         'period_num': '1',
         'include_current': False
       }
     },
     'options': {
-      # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
-      # Возможно указать только одно значение
+      # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      # Only one value can be specified
       'kitId': 3, #TV Index Russia all
-      'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       "standRtg": {
-        "useRealDuration": True,  # расчет по реальной длительности ролика.
-        "standardDuration": 20  # стандартная длительность 20 сек.
+        "useRealDuration": True,  # Calculated based on actual ad duration.
+        "standardDuration": 20  # Standard duration of 20 seconds
       }
     },
     'statistics': [
-      'RtgPerSum',  # суммарный рейтинг группы событий в %
+      'RtgPerSum',  # Total reach of event group in %
       'StandRtgPerSum',
-      'QuantitySum'  # количество эфирных событий
+      'QuantitySum'  # Number of broadcast events
     ]
 
   },
   {
     'report_type': 'REG_TV_CROSSTAB',
-    'report_subtype': 'DYNAMICS_BY_SPOTS_D', # тип отчета
+    'report_subtype': 'DYNAMICS_BY_SPOTS_D', # report type
     'category_name': 'gap_resurs_reg',
     'compression': { 'method': 'gzip' },
-    'data_lang': 'ru', # задаем язык выгрузки
+    'data_lang': 'ru', # set data language
     'folder': 'raw_data_d',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'ad_filter': 'articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R', #Мясо
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
+    'ad_filter': 'articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R', #Meat
     #'regions': [ 6 ],
     'target_audiences': {
       'all 18+': 'age >= 18',
@@ -59,55 +59,55 @@
       'w 25-45 BC': 'sex = 2 AND age >= 25 AND age <= 45 AND incomeGroup IN (2,3)',
     },
     'period': {
-      'date_filter': [ '2023-01-01', '2024-04-30' ], #[ '2022-12-26', '2024-05-12' ], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': [ '2023-01-01', '2024-04-30' ], #[ '2022-12-26', '2024-05-12' ], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'y',
         'period_num': '1',
         'include_current': False
       }
     },
     'options': {
-      # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
-      # Возможно указать только одно значение
+      # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      # Only one value can be specified
       'kitId': 3, #TV Index Russia all
-      'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       "standRtg": {
-        "useRealDuration": True,  # расчет по реальной длительности ролика.
-        "standardDuration": 20  # стандартная длительность 20 сек.
+        "useRealDuration": True,  # Calculated based on actual ad duration.
+        "standardDuration": 20  # Standard duration of 20 seconds
       }
     },
     'statistics': [
-      'RtgPerSum',  # суммарный рейтинг группы событий в %
+      'RtgPerSum',  # Total reach of event group in %
       'StandRtgPerSum',
-      'QuantitySum'  # количество эфирных событий
+      'QuantitySum'  # Number of broadcast events
     ]
 
   },
   {
     'report_type': 'REG_TV_DICT_CROSSTAB',
-    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # тип отчета
+    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # report type
     'category_name': 'gap_resurs',
-    'data_lang': 'ru', # задаем язык выгрузки
+    'data_lang': 'ru', # set data language
     'folder': 'dict',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    'ad_filter': 'articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R', #Мясо
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
+    'ad_filter': 'articleLevel3Id IN (77,4972) OR articleList4Id IN (301,4984) AND adIssueStatusId = R', #Meat
     'target_audiences': { Null: Null },
     'period': {
-      'date_filter':['2023-01-01', '2024-04-30'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter':['2023-01-01', '2024-04-30'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'y',
         'period_num': '1',
         'include_current': True
       }
     },
       'options': {
-        # id набора данных (1-Russia all, 2-Russia 100+, 3-Cities, # 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
-        # Возможно указать только одно значение
+      # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      # Only one value can be specified
         'kitId': 3, #TV Index Russia all
-        'issueType': "AD",  # Тип события для расчета отчета Кросс-таблица (Crosstab): PROGRAM, BREAKS, AD
+      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
         "standRtg": {
-          "useRealDuration": True,  # расчет по реальной длительности ролика.
-          "standardDuration": 20  # стандартная длительность 20 сек.
+        "useRealDuration": True,  # Calculated based on actual ad duration.
+        "standardDuration": 20  # Standard duration of 20 seconds
         }
       },
   }

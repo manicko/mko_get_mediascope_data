@@ -25,7 +25,7 @@ def test_report_settings_valid():
 
 def test_period_model_validation():
     with pytest.raises(ValidationError):
-        PeriodModel()  # ни date_filter, ни last_time
+        PeriodModel()  # neither date_filter nor last_time
 
     valid = PeriodModel(last_time=LastTimeModel(**{"unit_count": 4, "time_unit": "m"}))
     assert valid.last_time.unit_count == 4

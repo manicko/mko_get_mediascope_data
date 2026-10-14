@@ -10,7 +10,7 @@ def test_cli_init():
     runner = CliRunner()
     result = runner.invoke(app, ["init", "--help"])
     assert result.exit_code == 0
-    assert "Инициализировать" in result.stdout
+    assert "Initialize" in result.stdout
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Network handler — общие сетевые вызовы к Mediascope API с ретраями и обработкой ошибок."""
+"""Network handler — common network calls to the Mediascope API with retries and error handling."""
 
 import asyncio
 import logging
@@ -20,7 +20,7 @@ from urllib3.exceptions import NameResolutionError, ProtocolError
 
 logger = logging.getLogger(__name__)
 
-# Все ошибки, которые считаем временными и достойными ретраев
+# All errors considered transient and worthy of retries
 RETRIABLE_EXCEPTIONS = (
     ConnectTimeout,
     ConnectionError,
@@ -30,8 +30,8 @@ RETRIABLE_EXCEPTIONS = (
     ConnectionResetError,
     socket.timeout,
     ProtocolError,
-    NameResolutionError,  # ← добавлено: DNS-разрешение не удалось
-    socket.gaierror,  # ← добавлено: базовая ошибка name resolution
+    NameResolutionError,  # ← added: DNS resolution failed
+    socket.gaierror,  # ← added: basic name resolution error
 )
 
 
@@ -42,8 +42,8 @@ class NetworkClient:
     - exponential backoff + jitter
     - concurrency control via Semaphore
 
-    Готово к расширению:
-    TODO (Architect): в будущем можно добавить refresh_token_func: Callable | None = None
+    Ready for extension:
+    TODO (Architect): can add refresh_token_func: Callable | None = None in the future
     """
 
     def __init__(
@@ -65,7 +65,7 @@ class NetworkClient:
     ) -> Any:
         _sleep_time = max(sleep_time, self._sleep_time)
 
-        # Небольшая начальная задержка для разглаживания пиковых нагрузок
+        # Small initial delay to smooth peak loads
         await asyncio.sleep(uniform(_sleep_time * 0.5, _sleep_time * 2))
 
         for attempt in range(1, self._max_attempts + 1):
@@ -78,7 +78,7 @@ class NetworkClient:
                 raise
 
             except AuthorizationError as err:
-                # 401 — это известная клиентская ошибка, а не "Unexpected"
+                # 401 — is a known client error, not "Unexpected"
                 logger.error(
                     f'Authorization error (token invalid/expired) in "{func.__name__}" '
                     f'with args="{args}" and kwargs="{kwargs}": {err}'

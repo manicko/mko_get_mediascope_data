@@ -1,19 +1,19 @@
 [
   {
     'report_type':'TV_CROSSTAB',
-    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
     'category_name': 'snacks',
     'compression': {'method': 'gzip'},
-    'data_lang': 'ru', # задаем язык выгрузки
+    'data_lang': 'ru', # set data language
     'folder':'raw_data',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': 'articleLevel3Id IN (81)  AND adIssueStatusId = R', #bit
     'target_audiences': {
       'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
     },
     'period': {
-      'date_filter': ['2024-01-01', '2026-12-31'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': ['2024-01-01', '2026-12-31'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'm',
         'period_num': '1',
         'include_current': True
@@ -22,16 +22,16 @@
   },
   {
     'report_type':'TV_DICT_CROSSTAB',
-    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # тип отчета
+    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # report type
     'category_name': 'snacks',
-    'data_lang': 'ru', # задаем язык выгрузки
+    'data_lang': 'ru', # set data language
     'folder':'dict',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': 'articleLevel3Id IN (81)  AND adIssueStatusId = R', #bit
     'target_audiences': { Null: Null },
     'period': {
-      'date_filter':['2024-01-01', '2026-12-31'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter':['2024-01-01', '2026-12-31'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'm',
         'period_num': '1',
         'include_current': True

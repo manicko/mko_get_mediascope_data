@@ -2,11 +2,11 @@
   {
     'media': 'TV',
     'report_type': 'crosstab',
-    'report_subtype': 'DYNAMICS_BY_SPOTS', # тип отчета
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
     'compression': { 'method': 'gzip' },
-    'data_lang': 'en', # задаем язык выгрузки
+    'data_lang': 'en', # set data language
     'relative_path': 'tefal/raw_data',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter':'(articleLevel3Id IN (4165, 4171) OR articleLevel4Id IN (510, 516, 523, 537, 538, 539, 550, 551, 552, 562, 771, 3242, 3410, 4169, 4170, 4719, 4729, 5007)) AND adIssueStatusId = R', #bit
     'target_audiences': {
        'all 18+': 'age >= 18',
@@ -17,8 +17,8 @@
       'w 25-45 BC': 'sex = 2 AND age >= 25 AND age <= 45 AND incomeGroupRussia IN (2,3)',
     },
     'period': {
-      'date_filter': ['2023-01-01', '2024-12-31'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': ['2023-01-01', '2024-12-31'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
+      'last_time': { #if you need the last few months #
         'time_unit': 'm',
         'unit_count': 1,
         'include_current': False
@@ -28,17 +28,17 @@
   {
     'media': 'TV',
     'report_type': 'crosstab',
-    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # тип отчета
+    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # report type
     'relative_path': 'tefal/dict',
-    'data_lang': 'en', # задаем язык выгрузки
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'data_lang': 'en', # set data language
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter':'(articleLevel3Id IN (4165, 4171) OR articleLevel4Id IN (510, 516, 523, 537, 538, 539, 550, 551, 552, 562, 771, 3242, 3410, 4169, 4170, 4719, 4729, 5007)) AND adIssueStatusId = R', #bit
     'target_audiences': {
        'all 18+': 'age >= 18',
     },
     'period': {
-      'date_filter': ['2023-01-01', '2024-12-31'], # Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': ['2023-01-01', '2024-12-31'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
+      'last_time': { #if you need the last few months #
         'time_unit': 'm',
         'unit_count': 1,
         'include_current': False

@@ -34,8 +34,8 @@ def iter_period_slices(
     overall_start: date, overall_end: date, frequency: Literal["d", "w", "m", "y"]
 ) -> Iterator[tuple[date, date]]:
     """
-    Генерирует последовательные интервалы внутри [overall_start, overall_end]
-    с шагом, соответствующим frequency.
+    Generate sequential intervals within [overall_start, overall_end]
+    with a step corresponding to frequency.
     """
     if overall_start > overall_end:
         return
@@ -52,13 +52,13 @@ def iter_period_slices(
         case "y":
             delta = relativedelta(years=1)
         case _:
-            raise ValueError(f"Неизвестная частота: {frequency}")
+            raise ValueError(f"Unknown frequency: {frequency}")
 
     while current <= overall_end:
         next_start = current + delta
-        # конец текущего среза = день перед следующим началом
+        # end of current slice = day before next start
         slice_end = next_start - relativedelta(days=1)
-        # но не выходим за overall_end
+        # but do not exceed overall_end
         slice_end = min(slice_end, overall_end)
 
         yield current, slice_end
@@ -89,7 +89,7 @@ def get_last_period(
     settings: LastTimeModel, today: datetime | None = None, as_strings: bool = False
 ) -> tuple[str, ...] | tuple[date, date]:
     """
-    Возвращает начало и конец периода за последние N периодов (дни/недели/месяцы/годы).
+    Return the start and end of the period for the last N periods (days/weeks/months/years).
     """
 
     today = date.today() if today is None else today
@@ -131,25 +131,25 @@ def get_last_period(
 
 
 def get_files_suffix(compression: str | dict = None):
-    """Возвращает полное расширение файла с учётом сжатия.
-    Всегда нормализует gzip → .gz (стандартное и надёжное расширение).
+    """Return the full file extension accounting for compression.
+    Always normalize gzip → .gz (standard and reliable extension).
     """
     base = ".csv"
 
     if compression is None or compression == "infer" or not compression:
         return base
 
-    # Получаем метод сжатия
+    # get compression method
     if isinstance(compression, dict):
         method = compression.get("method", "").lower().strip()
     else:
         method = str(compression).lower().strip()
 
-    # Нормализация gzip (самая частая проблема)
+    # gzip normalization (most common issue)
     if method in ("gzip", ".gzip", "gz", ".gz"):
         return base + ".gz"
 
-    # Другие популярные сжатия
+    # Other popular compression formats
     elif method in ("bz2", "bzip2"):
         return base + ".bz2"
     elif method in ("xz",):
@@ -216,7 +216,7 @@ def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
         return df
 
     try:
-        #  Берем колонки, где одно значение в строке
+        # Take columns where there is one value per row
         base_df = (
             df[df["frequencyDistInterval"] == "-"]
             .drop(columns="frequencyDistInterval")
@@ -224,7 +224,7 @@ def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
             .groupby(dim_cols, as_index=False)
             .first()
         )
-        # Частоты - тут набор значений в строки их приводим в pivot
+        # Frequencies - pivot the set of values into rows here
         freq_df = (
             df[df["frequencyDistInterval"] != "-"]
             .pivot_table(
@@ -235,7 +235,7 @@ def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
             )
             .reset_index()
         )
-        # сортировка частотных интервалов
+        # sort frequency intervals
         freq_df = freq_df.reindex(
             sorted(
                 freq_df.columns, key=lambda x: int(x[1:-2]) if x.startswith("[") else -1
@@ -243,12 +243,12 @@ def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
             axis=1,
         )
 
-        # Склейка двух массивов
+        # Merge two arrays
         result = base_df.merge(freq_df, on=dim_cols, how="left")
 
         return result
     except Exception as err:
-        logger.exception(f"Ошибка '{err}' при обработке частот.")
+        logger.exception(f"Error '{err}' while processing frequencies.")
         return df
 
 

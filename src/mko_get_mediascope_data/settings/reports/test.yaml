@@ -1,10 +1,10 @@
 [
   {
     'report_type': 'TV_CROSSTAB',
-    'report_subtype': 'TOP_NAT_TV_ADVERTISERS', # тип отчета
-    'data_lang': 'ru', # задаем язык выгрузки
+    'report_subtype': 'TOP_NAT_TV_ADVERTISERS', # report type
+    'data_lang': 'ru', # set data language
     'folder': 'adv_total_m',
-    'multiple_files': True, # True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'category_name': 'tv_report',
     'ad_filter': Null,
     'target_audiences': {
@@ -16,15 +16,15 @@
       'w 25-55': 'sex = 2 and age >= 25 AND age <= 55'
     },
     'period': {
-      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Задаем явно период ['2023-09-01', '2023-09-31'] или Null
-      'last_time': { #если нужно последние несколько мес #
+      'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      'last_time': { #if you need the last few months #
         'period_type': 'm',
         'period_num': 24,
         'include_current': False
       }
     },
     'slices': [
-      'researchMonth',  # месяц разрешено указывать не более 1 временного среза на задачу.
+      'researchMonth',  # month - can specify at most 1 time slice per task.
     ]
   },
  ]
