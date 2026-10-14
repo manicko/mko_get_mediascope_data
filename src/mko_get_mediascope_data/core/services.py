@@ -20,6 +20,8 @@ from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
 from mko_get_mediascope_data.core.reports import ReportFactory, TVMediaReport
 
+logger = logging.getLogger(__name__)
+
 _CONNECTION_MAP: dict[MediaType, type] = {
     MediaType.TV: MediaVortexTask,
     MediaType.TV_REG: MediaVortexTask,
@@ -139,14 +141,13 @@ class AppService:
         export_paths: list[Path] = []
 
         start_time = datetime.now().replace(microsecond=0)
-        print(
-            f"\n{'-' * 10}  Обработка стартовала: {start_time} {'-' * 10}\n",
-            flush=True,
+        logger.info(
+            f"{'-' * 10}  Processing started: {start_time} {'-' * 10}"
         )
 
         idx = 1
         for report_settings in report_settings_sequence:
-            print(f"\nОтчёт {idx} → {report_settings.report_subtype}\n")
+            logger.info(f"Report {idx}: {report_settings.report_subtype}")
             export_path: Path = Path(self.export_folder / report_settings.relative_path)
             self.resolver.ensure_dir(export_path)
 
@@ -176,10 +177,9 @@ class AppService:
             idx += 1
 
         end_time = datetime.now().replace(microsecond=0)
-        print(
-            f"\n{'-' * 10}  Обработка завершена: {end_time}. "
-            f"Общее время: {end_time - start_time} {'-' * 10}\n",
-            flush=True,
+        logger.info(
+            f"{'-' * 10}  Processing finished: {end_time}. "
+            f"Total duration: {end_time - start_time} {'-' * 10}"
         )
 
         return export_paths

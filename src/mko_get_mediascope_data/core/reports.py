@@ -262,7 +262,7 @@ class TVMediaReport(MediaReport):
             task.key = {}
             task.key = await self.network_client.call(self.sender, task_json)
 
-            print("=", end="", flush=True)
+            logger.info("=")
         if not task.key:
             task.status = False
             task.log_error = True
