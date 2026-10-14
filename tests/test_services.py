@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pandas as pd
 import pytest
 
-from mko_get_mediascope_data.core.services import app_service
+from mko_get_mediascope_data.core.services import get_app_service
 
 
 @pytest.mark.asyncio
@@ -50,7 +50,7 @@ async def test_run_report_with_real_models(tmp_path, mocker, tv_yaml_content):
     )
 
     # ==================== 4. Запускаем реальный код ====================
-    export_paths = await app_service.run_report(test_yaml)
+    export_paths = await get_app_service().run_report(test_yaml)
 
     # ==================== 5. Проверки ====================
     assert len(export_paths) == 1

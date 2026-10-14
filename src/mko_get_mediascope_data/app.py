@@ -11,10 +11,8 @@ import typer
 from rich.console import Console
 
 from .core.init_service import init_project
-from .core.services import app_service
+from .core.services import get_app_service
 from .core.utils import list_files_in_directory
-
-sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
 
 console = Console()
 app = typer.Typer(
@@ -44,11 +42,12 @@ def run(
     verbose: bool = typer.Option(True, "--verbose", "-v"),
 ):
     """Запустить выгрузку отчёта"""
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
     if verbose:
         console.print(f"[blue]▶ Запуск отчёта:[/blue] {report.name}")
 
     try:
-        asyncio.run(app_service.run_report(report))
+        asyncio.run(get_app_service().run_report(report))
         console.print("[green]✅ Отчёт успешно завершён[/green]")
 
     except Exception as e:
@@ -59,7 +58,7 @@ def run(
 @app.command()
 def list_reports():
     """Показать все доступные файлы заданий"""
-    reports_dir = app_service.app_paths.reports
+    reports_dir = get_app_service().app_paths.reports
     files = list_files_in_directory(
         reports_dir, extensions=("yaml",), include_subfolders=True
     )
@@ -78,7 +77,7 @@ async def run_report_async(report_path: str | Path) -> None:
     path = Path(report_path)
     if not path.exists():
         raise FileNotFoundError(f"Файл не найден: {path}")
-    await app_service.run_report(path)
+    await get_app_service().run_report(path)
 
 
 def run_report(report_path: str | Path) -> None:

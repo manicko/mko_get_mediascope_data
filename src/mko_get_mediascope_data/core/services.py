@@ -34,10 +34,21 @@ class AppService:
 
     @cached_property
     def app_config(self) -> AppConfig:
-        logging_settings = LoggingSettings(
-            **utils.yaml_to_dict(self.app_paths.log_config)
-        )
-        app_settings = AppSettings(**utils.yaml_to_dict(self.app_paths.app_config))
+        logging_settings_dict = utils.yaml_to_dict(self.app_paths.log_config)
+        if logging_settings_dict is None:
+            raise FileNotFoundError(
+                f"Log config file '{self.app_paths.log_config}' is empty or "
+                f"contains only a null node."
+            )
+        logging_settings = LoggingSettings(**logging_settings_dict)
+
+        app_settings_dict = utils.yaml_to_dict(self.app_paths.app_config)
+        if app_settings_dict is None:
+            raise FileNotFoundError(
+                f"App config file '{self.app_paths.app_config}' is empty or "
+                f"contains only a null node."
+            )
+        app_settings = AppSettings(**app_settings_dict)
 
         return AppConfig(logging_settings=logging_settings, app_settings=app_settings)
 
@@ -47,6 +58,8 @@ class AppService:
                 file_path = self.resolver.resolve(handler["filename"])
                 self.resolver.ensure_file_parent(file_path)
                 handler["filename"] = file_path
+
+        logging.config.dictConfig(self.app_config.logging_settings.model_dump())
 
     @cached_property
     def export_folder(self) -> Path:
@@ -160,7 +173,15 @@ class AppService:
         return export_paths
 
 
-app_service = AppService(app_paths=APP_PATHS, resolver=PathResolver(APP_PATHS.user_dir))
-log_config = app_service.app_config.logging_settings
+_app_service: AppService | None = None
 
-logging.config.dictConfig(log_config.model_dump())
+
+def get_app_service() -> AppService:
+    """Return the process-wide AppService singleton, creating it on first call."""
+    global _app_service
+    if _app_service is None:
+        _app_service = AppService(
+            app_paths=APP_PATHS,
+            resolver=PathResolver(APP_PATHS.user_dir),
+        )
+    return _app_service

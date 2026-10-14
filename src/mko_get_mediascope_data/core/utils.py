@@ -340,7 +340,7 @@ def resolve_path(path: str | Path, base_dir: Path | None = None) -> Path:
     return resolved_path
 
 
-def yaml_to_dict(file: str | PathLike) -> dict[str, Any] | None:
+def yaml_to_dict(file: str | PathLike) -> dict[str, Any]:
     """
     Loads configuration from a YAML file.
 
@@ -348,15 +348,23 @@ def yaml_to_dict(file: str | PathLike) -> dict[str, Any] | None:
         file (Path): Path to the YAML configuration file.
 
     Returns:
-        Dict[str, Any]: Parsed configuration dictionary, or an empty dict if the file does not exist or is invalid.
+        Dict[str, Any]: Parsed configuration dictionary. For an empty file,
+        returns an empty dict (``yaml.safe_load`` returns ``None`` for null
+        nodes, which is normalized to ``{}``).
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        yaml.YAMLError: If the file contains invalid YAML.
     """
     try:
         with open(file, encoding="utf8") as cfg:
             return yaml.safe_load(cfg) or {}
     except yaml.YAMLError as err:
         logger.error(err)
+        raise
     except FileNotFoundError as err:
-        logger.error(f"No such file or directory{file} {err}")
+        logger.error(f"No such file or directory: {file} — {err}")
+        raise
 
 
 def merge_dicts(dict1: dict[Any, Any], dict2: dict[Any, Any]) -> dict[Any, Any]:
