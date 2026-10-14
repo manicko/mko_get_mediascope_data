@@ -30,13 +30,14 @@ alwaysApply: true
 
 ```
 src/mko_get_mediascope_data/
+├── __init__.py              # package init — lazy public re-exports via PEP 562 __getattr__
 ├── __main__.py              # module entry: `python -m mko_get_mediascope_data`
 ├── app.py                   # CLI (Typer) + public API (run_report, etc.)
 ├── core/
 │   ├── paths.py             # PathResolver + AppPaths — config dir resolution
 │   ├── models.py            # Pydantic v2 models + Enums (MediaType, ReportType, ReportSubtype)
 │   ├── init_service.py      # Copies template settings to user config dir
-│   ├── services.py          # AppService orchestrator (singleton app_service)
+│   ├── services.py          # AppService orchestrator (lazy singleton via get_app_service())
 │   ├── reports.py           # Report classes + Strategy pattern (task/data strategies)
 │   ├── tasks.py             # TVTask — async task representation
 │   ├── network.py           # NetworkClient — async retry with backoff + semaphore
