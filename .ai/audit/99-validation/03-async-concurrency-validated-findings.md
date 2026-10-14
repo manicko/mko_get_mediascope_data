@@ -13,17 +13,20 @@ validator: "99-validate"
 
 ## Summary
 
-Seven findings (1 CRITICAL, 1 HIGH, 4 MEDIUM, 1 LOW). All seven anchors resolve to the
-cited locations in `core/reports.py` or `core/network.py`, all seven disambiguator tokens
-exist inside their primary anchors, and all seven claims reproduce under static
-control-flow analysis. Two findings (ASY-001, ASY-005) are independently confirmed by
-Phase 04 runtime probes (REPRO D and REPRO E respectively).
+Six findings confirmed (1 CRITICAL, 1 HIGH, 3 MEDIUM, 1 LOW), and one finding (ASY-004) is
+not substantiated — re-characterized as intentional two-level design. All confirmed
+findings' anchors resolve to the cited locations in `core/reports.py` or `core/network.py`,
+all confirmed findings' disambiguator tokens exist inside their primary anchors, and all
+confirmed claims reproduce under static control-flow analysis. Two findings (ASY-001,
+ASY-005) are independently confirmed by Phase 04 runtime probes (REPRO D and REPRO E
+respectively).
 
-**7 confirmed, 0 rejected, 0 re-graded, 0 re-typed, 0 merged, 0 unsettled.**
+**6 confirmed, 1 not substantiated, 0 re-graded, 0 re-typed, 0 merged, 0 unsettled.**
 
-No finding was downgraded, re-typed, or withdrawn. The sole imprecisions — ASY-001's
-repro cites line 269 as a raise site (it is an assignment) — do not affect any finding's
-verdict. One cross-phase gap is recorded as VAL-001.
+ASY-004 was re-characterized to not substantiated and downgraded to an advisory LOW (see the
+ASY-004 section); no other finding was downgraded, re-typed, or withdrawn. The remaining
+imprecision — ASY-001's repro cites line 269 as a raise site (it is an assignment) — does
+not affect any finding's verdict. One cross-phase gap is recorded as VAL-001.
 
 ## Scope
 
@@ -59,7 +62,7 @@ tests mock `create_report` entirely and provide no coverage of the worker pool l
 | ASY-001 | confirmed | CRITICAL | reports.py:141–153 (worker) | `task_done` at line 153 ✓ |
 | ASY-002 | confirmed | HIGH | reports.py:387 (TVRegTaskStrategy.generate) | `get_tv_region` at line 387 ✓ |
 | ASY-003 | confirmed | MEDIUM | reports.py:162 (processing_tasks) | `t.cancel` at line 162 ✓ |
-| ASY-004 | confirmed | MEDIUM | reports.py:92, reports.py:115, reports.py:159, network.py:51, services.py:130 | `max_tasks` / `max_concurrent_requests` ✓ |
+| ASY-004 | not substantiated | LOW | reports.py:92, reports.py:115, reports.py:159, network.py:51, services.py:155 | `max_tasks` / `max_concurrent_requests` ✓ (claim not substantiated — see section) |
 | ASY-005 | confirmed | MEDIUM | reports.py:277 (wait_task) | `while True` at line 277 ✓ |
 | ASY-006 | confirmed | MEDIUM | reports.py:115, reports.py:160 (processing_tasks) | — (no qsize logging, confirmed by absence) |
 | ASY-007 | confirmed | LOW | network.py:126, errors.py:1-6, tests/test_network.py:15 | `RuntimeError` at line 126 ✓ |
@@ -213,44 +216,72 @@ No re-grade.
 
 ---
 
-### ASY-004 — confirmed — [MEDIUM] Pool size (100) and Semaphore permits (5) are decoupled
+### ASY-004 — not substantiated — [LOW] Pool size (100) and Semaphore permits (5) are intentional, independent limits
 
 **Anchor resolved:** `core/reports.py::MediaReport.__init__` (line 92),
 `core/network.py::NetworkClient.__init__` (line 51),
-`core/services.py` instantiation site (line 130).
+`core/services.py::AppService.run_report` (line 155).
 
-**Claim tested:** `max_tasks=100` (reports.py:92) and `max_concurrent_requests=5`
-(network.py:51) are defined independently with no relationship enforced.
-`services.py:130` instantiates `NetworkClient()` with defaults — no override propagated.
-At any moment, up to 100 workers can exist but only 5 can hold a Semaphore permit inside
-`NetworkClient.call` (network.py:73); the remaining 95 are suspended at
-`async with self._semaphore`.
+**Claim tested (original):** `max_tasks=100` (reports.py:92) and `max_concurrent_requests=5`
+(network.py:51) are "decoupled" with no relationship enforced; up to 100 workers exist but
+only 5 hold a Semaphore permit, "the remaining 95 are suspended at `async with self._semaphore`";
+the pool should be derived from the Semaphore limit.
 
-**Disambiguator:** `max_tasks` — present at reports.py:92. ✓
+**Corrected analysis.** The two parameters intentionally limit two different resources, and the
+original "95 workers perpetually blocked at the semaphore" mechanism does not survive
+control-flow tracing:
+
+1. **`max_tasks` — Level 1: remote calculation capacity.** Worker-pool size (reports.py:159)
+   and `asyncio.Queue` maxsize (reports.py:115) bound how many tasks are simultaneously
+   submitted to the Mediascope remote base for calculation. The pipeline is two-stage:
+   submit up to `max_tasks` tasks, then poll their readiness.
+2. **`max_concurrent_requests` — Level 2: client HTTP concurrency.** The `asyncio.Semaphore(5)`
+   (network.py:55) bounds how many HTTP requests the client issues concurrently; together with
+   the smoothing sleep (network.py:69) and `asyncio.sleep(2)` (reports.py:278) it produces the
+   required slow, staggered polling cadence.
+3. **Where stalled workers actually wait.** The smoothing sleep
+   `await asyncio.sleep(uniform(_sleep_time * 0.5, _sleep_time * 2))` executes at network.py:69
+   **before** the permit is acquired at network.py:73, and `asyncio.sleep(2)` precedes every
+   poll call. Across a ~52 s poll cycle a worker holds the semaphore only for the brief HTTP
+   status call (~1 % of the cycle); the remaining time is spent sleeping *outside* the
+   semaphore. The accurate statement is that at most 5 HTTP calls proceed at once — not that
+   95 workers sit blocked at the semaphore.
+4. **The recommended fix is unsafe.** `max_tasks = max_concurrent_requests` would cut
+   remote-base in-flight capacity from 100 to 5, serializing a 100-task report into ~20
+   sequential batches (~20× slower) and destroying the submit-then-poll overlap. The proposed
+   verification test `test_pool_size_aligned_with_semaphore` must **not** be implemented — it
+   would encode the incorrect coupling.
+
+**Disambiguator:** `max_tasks` — present at reports.py:92. ✓ (However, the disambiguator
+token alone does not establish the claim; see analysis above.)
 
 **Evidence (source inspection):**
 ```text
-reports.py:92:  max_tasks: int = 100,
-reports.py:114: self.max_tasks = max_tasks
-reports.py:115: self.task_queue = asyncio.Queue(maxsize=self.max_tasks)
+network.py:69:  await asyncio.sleep(uniform(_sleep_time * 0.5, _sleep_time * 2))  # BEFORE semaphore
+network.py:73:      async with self._semaphore:
+network.py:74:          return await asyncio.to_thread(func, *args, **kwargs)
+reports.py:278:     await asyncio.sleep(2)                                   # outside semaphore
+reports.py:280:     status = await self.network_client.call(..., sleep_time=40)
+reports.py:115: self.task_queue = asyncio.Queue(maxsize=self.max_tasks)    # Level 1 bound
 reports.py:159: task_group = [asyncio.create_task(self.worker()) for _ in range(self.max_tasks)]
-
-services.py:130: network_client: NetworkClient = NetworkClient()
-
-network.py:49: def __init__(
-network.py:51:     max_concurrent_requests: int = 5,
-network.py:55: self._semaphore = asyncio.Semaphore(max_concurrent_requests)
-network.py:73: async with self._semaphore:
 ```
 
 **Rubric grading:** Phase 03 MEDIUM = "architectural drift that obscures the effective
-concurrency model." The pool and Semaphore are decoupled. MEDIUM matches. No re-grade.
+concurrency model." Not substantiated: the parameter decoupling is intentional design
+protecting two different resources (remote calculation engine vs. client HTTP budget), and the
+"95 workers perpetually blocked" mechanism is factually incorrect. Downgraded to an advisory
+LOW: the independence of the two parameters is undocumented, so a future maintainer could
+mistakenly couple them.
 
-**Load-bearing artefact:** Code (`core/reports.py::MediaReport.__init__` parameter `max_tasks`
-and `core/network.py::NetworkClient.__init__` parameter `max_concurrent_requests`).
+**Load-bearing artefact:** none — documentation only, no code change required.
 
-**Recommendation carry-out:** "Derive the worker pool size from the `NetworkClient` Semaphore
-limit." Target `MediaReport.__init__` parameter `max_tasks` exists and is stable. ✓
+**Recommendation carry-out:** The original recommendation ("Derive the worker pool size from
+the `NetworkClient` Semaphore limit") is **rejected** — it breaks the two-stage design. Correct
+action: document the two-level model
+(see `docs/00-overview/async-concurrency-architecture.md`).
+
+**Correction note:** the original findings cite the instantiation site as `services.py:130`;
+the current source has it at `services.py:155` (line 130 is inside `get_connection`).
 
 ---
 
@@ -450,7 +481,7 @@ scope is correct.
 |---|---|---|---|---|---|---|
 | worker exception / task_done | — | — | ASY-001 (CRITICAL) | PIPE-002 (HIGH) | `MediaReport.worker` no try/except → `task_done` skipped → `queue.join()` deadlock | cross-reference; both confirmed; grade divergence justified (see below) |
 | wait_task unbounded poll | — | — | ASY-005 (MEDIUM) | PIPE-006 (HIGH) | `TVMediaReport.wait_task` `while True` no timeout/deadline/iteration cap | cross-reference; both confirmed; grade divergence justified (see below) |
-| pool Semaphore decoupling | — | — | ASY-004 (MEDIUM) | — | `max_tasks=100` vs `max_concurrent_requests=5`, no propagation | Phase 03 only; not claimed by Phase 04 |
+| pool Semaphore decoupling | — | — | ASY-004 (LOW) | — | `max_tasks=100` vs `max_concurrent_requests=5`, intentional two-level design (corrected — see ASY-004) | Phase 03 only; not claimed by Phase 04 |
 | `RuntimeError` exhaustion | — | — | ASY-007 (LOW) | — | `NetworkClient.call` raises generic `RuntimeError` at line 126 | Phase 03 only; not claimed by Phase 04 |
 | print() in core/ | ENT-005 (MEDIUM) | CFG-010 (LOW) | — (acknowledged, not claimed) | — (acknowledged, not re-claimed) | `print()` in `core/services.py` and `core/reports.py:265` | cross-reference; all confirmed; Phase 03 correctly excludes |
 
@@ -486,8 +517,9 @@ due to cross-phase interaction.
 - ASY-001 fix (`try/finally: task_done()` in `worker`) is the foundation for ASY-003
   (cancellation cleanup) and ASY-007 (exception classification) — all touch the same
   `worker`/`processing_tasks`/`call` code paths. ✓
-- ASY-002 and ASY-004 are independent of the worker-lifecycle fixes (ASY-002 is in
-  `TVRegTaskStrategy.generate`; ASY-004 is a configuration-alignment concern). ✓
+- ASY-002 is independent of the worker-lifecycle fixes (it is in
+  `TVRegTaskStrategy.generate`). ASY-004 requires no code change — advisory
+  documentation note only (see `docs/00-overview/async-concurrency-architecture.md`). ✓
 
 **Fix ordering:**
 1. ASY-001 first — `try/finally` in `worker` guarantees `task_done()` regardless of
@@ -498,7 +530,8 @@ due to cross-phase interaction.
    `task_done` to avoid masking the original exception.
 4. ASY-007 alongside ASY-001 — exception type change only affects what callers catch;
    subclassing `RuntimeError` keeps `test_network.py:15` green.
-5. ASY-002, ASY-004, ASY-006 independent — can proceed in parallel.
+5. ASY-002 and ASY-006 independent — can proceed in parallel (ASY-004 requires no code
+   change; documentation only).
 
 **Rollout risk:**
 - Fixing ASY-001 changes hang-on-error to continue-on-error behaviour. Existing report
@@ -533,7 +566,7 @@ backward compatibility with `test_network.py:15`.
 | `network.py:49-58` | `NetworkClient.__init__` — `max_concurrent_requests=5`, `Semaphore` |
 | `network.py:59-126` | `NetworkClient.call` — retry, backoff, `raise RuntimeError` at line 126 |
 | `errors.py:1-6` | Only `NoReportFoundError`, `WrongDataSettings` — no network exception |
-| `services.py:130` | `NetworkClient()` instantiated with defaults, no override |
+| `services.py:155` | `NetworkClient()` instantiated with defaults, no override (cited as `services.py:130` in the original findings; corrected) |
 | `tests/test_network.py:15` | Asserts `RuntimeError("Network retry limit exceeded")` |
 | `tests/test_services.py:48` | `create_report` mocked entirely — no worker lifecycle coverage |
 | `03-audit-async-concurrency.md` | Phase 03 severity taxonomy, audit blocks, ID prefix |
@@ -549,11 +582,11 @@ backward compatibility with `test_network.py:15`.
 
 | Disposition | Count |
 |---|---|
-| confirmed | 7 |
+| confirmed | 6 |
 | re-typed | 0 |
 | re-graded | 0 |
 | merged | 0 |
-| not substantiated | 0 |
+| not substantiated | 1 |
 | unsettled | 0 |
 | **Total** | **7** |
 

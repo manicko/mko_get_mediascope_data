@@ -7,16 +7,16 @@ report_status: "validated"
 severity_taxonomy: ".kilo/commands/audit/phases/05-audit-config-templates.md#severity-taxonomy"
 code_ref: "d093d9c"
 validator: "99-validate"
+validation_revision: "2026-10-14"
 ---
 
 # Audit Findings — Validation Report: Config Template Validation & Spec Conformance
 
 ## Summary
 
-Six findings (1 CRITICAL, 3 HIGH, 1 MEDIUM, 1 LOW). All six primary anchors
+Six findings (1 CRITICAL, 2 HIGH, 1 MEDIUM, 1 LOW; one further finding, TPL-006, is rejected as a merge-semantics finding and re-typed into TPL-001 as LOW kitId drift). All six primary anchors
 resolve to a real code symbol or YAML token, and all six claims reproduce under
-runtime probe or static inspection. **6 confirmed, 0 rejected, 0 re-graded, 0
-unsettled.**
+runtime probe or static inspection. **5 confirmed (one re-graded), 1 rejected as a merge-defect and re-typed into TPL-001, 0 unsettled.**
 
 Two cross-phase overlaps with Phase 02 (config-secrets) are noted: TPL-001
 shares a root cause with CFG-001 (same 30/32 failure), and TPL-004/TPL-005
@@ -29,6 +29,20 @@ separately: a brace-count mismatch in the TPL-004 evidence, an inaccurate
 claim about the `tv_yaml_content` conftest fixture using `time_unit`/`unit_count`,
 and a previously-unreported YAML structural defect in `nat_tv_tvreport.yaml` that
 distorts parsed `options` blocks.
+
+> **Re-validation revision (2026-10-14, HEAD `b04d177`).** The project owner
+> identified an architectural error in the original validation: TPL-006 treated
+> the intended two-layer settings architecture as a merge defect. This revision
+> re-adjudicates TPL-006 and TPL-002 against that architecture — the DEFAULT
+> layer (`settings/defaults/**/*.yaml` → `DataDefaults`) is the broad base
+> carrying the full parameter set plus per-subtype blocks; the CLIENT layer
+> (`settings/reports/**/*.yaml` → `ReportSettings`) carries deltas; and
+> `AppService.merge_data_settings` (`core/services.py:104-121`) overlays
+> matching top-level keys wholesale — client values win where specified,
+> default values remain where the client is silent. Architecture is primary:
+> stale templates are repaired to conform, never the code or models. The
+> architecture reference for this revision is
+> [`docs/00-overview/settings-layers-architecture.md`](../../../docs/00-overview/settings-layers-architecture.md).
 
 ## Scope
 
@@ -80,16 +94,20 @@ not a real Mediascope response.
 | ID      | Disposition  | Severity   | Band (rubric) vs. Carried | Anchor resolves |
 |---------|-------------|------------|--------------------------|-----------------|
 | TPL-001 | confirmed   | CRITICAL   | CRITICAL vs. CRITICAL    | yes             |
-| TPL-002 | confirmed   | HIGH       | HIGH vs. HIGH            | yes             |
+| TPL-002 | confirmed   | LOW        | HIGH vs. LOW             | yes             |
 | TPL-003 | confirmed   | HIGH       | HIGH vs. HIGH            | yes             |
 | TPL-004 | confirmed   | HIGH       | HIGH vs. HIGH            | yes             |
 | TPL-005 | confirmed   | MEDIUM     | MEDIUM vs. MEDIUM        | yes             |
-| TPL-006 | confirmed   | LOW        | LOW vs. LOW              | yes\*           |
+| TPL-006 | re-typed (folded into TPL-001) | LOW (drift, masked by TPL-001) | — | yes\* |
 
-\* TPL-006's evidence cites `tv/crosstab.yaml` line 61 as being in the
-"TOP_NAT_TV_ADVERTISERS block" — it is actually in the `DYNAMICS_BY_SPOTS` block
-(see VAL-001). The kitId value (1) and the divergence claim (default=7 vs
-template=1 for `TOP_NAT_TV_PROGRAMS`) are correct; only the block-label is wrong.
+\* TPL-006's kitId inventory was inaccurate and its central claim was
+mis-framed: `DATA_DEFAULTS.options` is `Null` (no kitId), `TOP_NAT_TV_ADVERTISERS`
+has no kitId (duplicate `issueType` at L107-108), and the shallow top-level
+override in `merge_data_settings` is the intended architecture, not a defect.
+A second divergence the original finding missed:
+`last_category/nat_tv_brands_weekly_reach.yaml[0]` (DYNAMICS_BY_SPOTS) kitId=7
+vs default kitId=1. TPL-006 is re-typed into TPL-001 as kitId-value
+reconciliation; see the revised TPL-006 section and Appendix D.
 
 ---
 
@@ -124,10 +142,10 @@ Passing entries:
   reports\nat_tv_brands_tefal.yaml[0]
   reports\nat_tv_brands_tefal.yaml[1]
 
-Failure modes across 30 failing entries:
-  report_type: enum                  (23 entries — stale TV_CROSSTAB / REG_TV_* values)
-  media: missing                     (15 entries)
-  relative_path: missing             (15 entries)
+Failure modes across 30 failing entries (reproduced at HEAD b04d177):
+  report_type: enum                  (22 entries — stale TV_CROSSTAB / REG_TV_* values)
+  media: missing                     (22 entries)
+  relative_path: missing             (22 entries)
   period.last_time.unit_count: missing (30 entries)
   period.last_time.period_type: extra_forbidden (30 entries)
   period.last_time.period_num: extra_forbidden   (30 entries)
@@ -159,7 +177,7 @@ templates are the data that must migrate.
 **Fix:** Migrate all 15 template files: rename `period_type→time_unit`,
 `period_num→unit_count`; replace stale `ReportType` enum strings (`TV_CROSSTAB`→`crosstab`,
 `REG_TV_CROSSTAB`→`crosstab`, etc.); add `media` and `relative_path` to legacy entries.
-Targets: all 15 template files. Stable. ✓
+Reconcile `kitId` values in `options` blocks against the in-file legend (`defaults/tv/crosstab.yaml`: `TOP_NAT_TV_PROGRAMS` L129 kitId `7→1`; remove the duplicate `issueType` in `TOP_NAT_TV_ADVERTISERS` L107-108) and in `settings/reports/last_category/nat_tv_brands_weekly_reach.yaml` L31 (`7→1`) — this covers the TPL-006 residual. Every `options` block declared in a template must be complete (kitId + issueType + standRtg where the default block carries them). Targets: all 15 template files. Stable. ✓
 
 **Verify:** `tests/test_models.py::test_report_settings_valid` uses correct
 `time_unit`/`unit_count` keys and passes — must stay green.
@@ -170,69 +188,80 @@ Targets: all 15 template files. Stable. ✓
 
 ---
 
-### TPL-002 — confirmed — [HIGH] `Data` model silently absorbs 12 untyped API-parameter keys
+### TPL-002 — re-graded — [LOW] Typo'd API-parameter keys pass through `Data` unvalidated (pass-through itself is intended)
 
 **Anchor resolved:** `src/mko_get_mediascope_data/core/models.py::Data`
 — `model_config = ConfigDict(extra="allow")`; declares 3 fields:
 `options`, `statistics`, `slices`.
 
-**Claim tested:** The merged `Data` dict for the one validating template
-(`nat_tv_brands_tefal.yaml[0]`) contains 15 keys; 12 are consumed nowhere by
-Pydantic and stored as untyped `Any` extras. `ReportSettings`
-(`extra="allow"`) similarly absorbs orphaned template keys (`category_name`,
-`folder`, `period_type`, `period_num`) that no code path reads.
-
-**Evidence (runtime probe — merge + Data construction):**
-```text
-merged keys count: 15  declared Data fields: 3 (options, statistics, slices)
-Data.model_dump() keys count: 15
-ad_filter survived from template: (articleLevel3Id IN (4165, 4171) OR arti...
-options.kitId survived from default DYNAMICS_BY_SPOTS: 1
-
-ReportSettings.model_dump() extras verified:
-  options, company_filter, category_name, folder  ← all absorbed via extra='allow'
-```
-
-Full 15-key inventory: `ad_filter`, `basedemo_filter`, `break_filter`,
+**Claim re-framed:** The original finding claimed that 12 merged keys are
+"consumed nowhere by Pydantic and stored as untyped `Any` extras". The first
+half is inaccurate: all 12 keys (`ad_filter`, `basedemo_filter`, `break_filter`,
 `company_filter`, `date_filter`, `daytype_filter`, `frequency_dist_conditions`,
 `location_filter`, `options`, `program_filter`, `slices`, `sortings`,
-`statistics`, `targetdemo_filter`, `weekday_filter`.
+`statistics`, `targetdemo_filter`, `weekday_filter`) are **consumed downstream**.
+The merged dict becomes `Data` (`services.py:122-125`), the task strategies
+re-dump it (`reports.py:365`/`386`), it becomes `TVTask.settings` (`tasks.py:19`),
+and `send_task` forwards it as `build_task(report_type, **task.settings)`
+(`reports.py:258-259`). The vendor `MediaVortexTask.build_task` (library
+`mediavortex/tasks.py:50`) reads each named parameter into the API JSON
+(`statistics` L215, `ad_filter`→`adFilter` L230, `slices` L240, `options`
+L248, `sortings` L244, `frequency_dist_conditions`→`frequencyDistConditions`
+L268, and every `*_filter` L219-238). `extra="allow"` on `Data`/`DataDefaults`/`ReportSettings`
+(`models.py:84`/`120`/`125`) is therefore the **intended pass-through
+transport** for template-defined API parameters — the defaults layer defines
+the full parameter set and the client layer overrides individual keys
+(`merge_data_settings`, `services.py:104-121`) — not a silent absorber.
 
-12 untyped extras: all keys except `options`, `statistics`, `slices`.
+**Residual (real, LOW):** two validation gaps remain in the pass-through:
+(a) a typo'd top-level key (e.g. `ad_filterr`) is silently dropped by
+`build_task`, so the report runs without the intended filter and no error is
+raised; (b) a typo'd key inside the untyped `options` dict (e.g. `kitid`
+instead of `kitId`) is forwarded verbatim to the API, while
+`TVMediaReport.__init__` reads `self.data_settings.options.get("kitId", 1)`
+(`reports.py:189`) and silently falls back to kitId=1 (Russia all) — a report
+against the wrong dataset without error.
 
-**Asserted cause tested separately:**
-- `Data.model_config` has `extra="allow"` — verified in `models.py`.
-- `TVMediaReport.__init__` (`reports.py:189`):
-  `self.base_id = self.data_settings.options.get("kitId", 1)` — confirmed
-  via `rg -n 'kitId' src/mko_get_mediascope_data/core/reports.py`.
-  A typoed `kitid` (lowercase) becomes an extra key absorbed by `Data`,
-  while `.get("kitId", 1)` silently returns `1` (Russia all), producing
-  a report against the wrong dataset without error.
-- Template keys with 0 hits in `core/` (grep tool): `category_name` (0 hits),
-  `period_type` (0 hits), `period_num` (0 hits). `folder` appears only as an
-  unrelated parameter name in `core/tasks.py:29` (`def to_yaml(self,
-  folder: str | bytes | PathLike = None)`), never as a consumed
-  `ReportSettings`/`Data` attribute.
+**Genuinely-orphaned keys (ReportSettings level, never reach `Data`):**
+`category_name`, `folder`, `period_type`, `period_num` appear in some stale
+templates, are never placed into the merged `Data` dict and never forwarded.
+Their presence is template staleness (TPL-001), not a `Data` defect.
+
+**Evidence:** consumption trace above. Probe at HEAD `b04d177`: all 15 merged
+`Data` keys for the only validating template (`nat_tv_brands_tefal.yaml[0]`)
+are named parameters of `build_task` (verified `True`). The original claim
+that `options`, `company_filter`, `category_name`, `folder` appear as extras in
+`ReportSettings.model_dump()` is inaccurate for that template: it declares
+none of them — its `options.kitId=1` is inherited from the `DYNAMICS_BY_SPOTS`
+defaults block, not absorbed as a `ReportSettings` extra.
 
 **Rubric grading:** Phase 05 HIGH = "`extra='allow'` silently absorbing a
 typoed field name that the code never reads, so a misconfigured report runs
-with defaults the operator did not intend." The `Data` model's `extra="allow"`
-absorbs typoed keys; `TVMediaReport` reads `kitId` with a silent default of `1`.
-HIGH carried = HIGH on rubric. No re-grade.
+with defaults the operator did not intend." does not apply as originally scoped —
+the keys are read and forwarded into the API request. The residual typo risk
+belongs to the LOW band (drift with no current runtime consequence: typo'd
+keys can only appear in templates that fail TPL-001 validation today).
+HIGH carried → LOW on re-grade.
 
-**Load-bearing artefact:** Code (`core/models.py::Data` and
-`core/reports.py:189`).
+**Load-bearing artefact:** Templates (`settings/reports/**/*.yaml`,
+`settings/defaults/**/*.yaml`) and the vendor boundary
+(`MediaVortexTask.build_task`).
 
-**Fix:** Narrow `Data` to `extra="forbid"` to reject typoed keys at
-serialization; type each API parameter as a named field with `Field(default=None)`.
-If that is too invasive, at minimum type `options` as `dict[str, Any]` with
-`model_config = ConfigDict(extra="forbid")` on a nested `Options` model so
-`kitId` vs `kitid` is caught. Target: `core/models.py::Data` and
-`core/reports.py:189`. Stable. ✓
+**Fix (template conformance — no code change):** keep `extra="allow"` as the
+intended transport. Narrowing `Data` or `ReportSettings` to `extra="forbid"`
+would break the two-layer overlay, because the client layer relies on
+template-defined API-parameter keys (`options`, `slices`, `statistics`,
+`*_filter`, …) being absorbed and forwarded. The remedy is template
+conformance (TPL-001): parameter names in templates must exactly match the
+API parameter names consumed by `build_task`. If typing is ever desired, add
+the known API parameters as declared fields on `Data` rather than forbidding
+extras.
 
-**Verify:** `tests/test_utils.py` has no test asserting `extra="allow"` behavior
-on `Data`. `tests/test_models.py` constructs `Data`-adjacent models with
-explicit fields — no test asserts extra-field absorption.
+**Verify:** `tests/test_utils.py` has no test asserting `extra="allow"`
+behavior on `Data`; `tests/test_models.py` constructs adjacent models with
+explicit fields. No test asserts the typo-propagation paths; a test
+constructing `TopNatTvPrograms` with a typo'd `options` key and asserting no
+silent `kitId` fallback is recommended after TPL-001 is resolved.
 
 **Related:** TPL-001, TPL-006, CFG-007
 
@@ -442,94 +471,87 @@ is recommended.
 
 ---
 
-### TPL-006 — confirmed — [LOW] `kitId` duplicated across defaults and templates with divergent values
+### TPL-006 — re-typed (folded into TPL-001) — [LOW] `kitId` value/comment drift between defaults and templates
 
 **Anchor resolved (primary):**
-`settings/defaults/tv/crosstab.yaml::"kitId"`.
+`settings/defaults/tv/crosstab.yaml::"kitId"` — L129 `TOP_NAT_TV_PROGRAMS` kitId=7.
 
 **Anchor resolved (secondary):**
 `src/mko_get_mediascope_data/core/services.py::AppService.merge_data_settings`
-— line 83: `data_settings[k] = v` (shallow assignment).
+(L104-121) — L115 `data_settings[k] = v` (shallow top-level overlay, **by design**).
 
-**Claim tested:** `kitId` is specified in both default subtype blocks and
-report templates. For `TOP_NAT_TV_PROGRAMS` the default sets `kitId: 7`
-while the matching report entry in `nat_tv_tvreport.yaml[1]` sets `kitId: 1`.
-`merge_data_settings` overlays report fields with a shallow assignment
-(`data_settings[k] = v`), so the report-level `options` dict fully replaces
-the subtype default `options` — no deep merge — and the default `kitId: 7`
-is silently discarded in favor of the report's `kitId: 1`.
+**Claim rejected:** TPL-006 frames the shallow per-key overlay in
+`merge_data_settings` as a merge defect ("no deep merge; default kitId
+silently discarded"). This contradicts the intended two-layer architecture:
+the DEFAULT layer (`settings/defaults/{media}/{report_type}.yaml` →
+`DataDefaults`) supplies the broad base — the full API-parameter set plus
+per-subtype blocks — and the CLIENT layer (`settings/reports/**/*.yaml` →
+`ReportSettings`) supplies deltas. `merge_data_settings` overlays matching
+top-level keys wholesale: a client value replaces the default value for that
+key; a key the client does not specify keeps its default. `extra="allow"` on
+`Data`/`DataDefaults`/`ReportSettings` (`models.py:84`/`120`/`125`) is the
+intended pass-through for template-defined API parameters — every such
+parameter is consumed downstream by `MediaVortexTask.build_task` (library
+`mediavortex/tasks.py:50`), which reads each named parameter into the API JSON
+(`statistics` L215, `ad_filter`→`adFilter` L230, `slices` L240, `options`
+L248, `sortings` L244, `frequency_dist_conditions`→`frequencyDistConditions`
+L268, and every `*_filter` L219-238). Implementing a deep merge, or removing
+`kitId` from templates, would change or bypass the intended contract.
 
-**Evidence (runtime probe — merge on the one validating template + kitId inventory):**
-```text
-defaults\tv\crosstab.yaml::TOP_NAT_TV_PROGRAMS.options.kitId = 7
-reports\nat_tv_tvreport.yaml[1]: sub=TOP_NAT_TV_PROGRAMS, options.kitId = 1
+**Real residual (template/default data, not merge):** `kitId` values and
+comments are inconsistent with the in-file legend (`1`=Russia all … `6`=Moscow;
+`7` is undefined.):
+- `TOP_NAT_TV_PROGRAMS` default kitId=7 (L129, commented "Russia all") is
+  stale — `7` is undefined in the legend. `nat_tv_tvreport.yaml[1]` kitId=1
+  (L54) is correct; the shallow override correctly selects it.
+- `TOP_NAT_TV_ADVERTISERS` (defaults L100-122) has **no kitId** — a duplicate
+  `issueType` key (L107 `PROGRAM`, L108 `AD`; the later value wins). The
+  original "kitId: 7 here" claim was incorrect.
+- `DATA_DEFAULTS.options` is `Null` (L17) — the original
+  "DATA_DEFAULTS.options.kitId=1" claim was incorrect; kitId comes from the
+  subtype blocks.
+- Missed by the original finding: `last_category/nat_tv_brands_weekly_reach.yaml[0]`
+  (DYNAMICS_BY_SPOTS) kitId=7 (L31) overrides the default kitId=1 (L61) — the
+  wrong direction.
 
-tv/crosstab.yaml kitId inventory:
-  DYNAMICS_BY_SPOTS block (line 61):      'kitId': 1    ← block label in finding evidence is DYNAMICS_BY_SPOTS, not TOP_NAT_TV_ADVERTISERS (see VAL-001)
-  TOP_NAT_TV_ADVERTISERS block (line 107): "kitId": 7
-  TOP_NAT_TV_PROGRAMS block (line 129):     "kitId": 7
+This divergence is masked today: all `nat_tv_tvreport.yaml` entries fail
+TPL-001, so no divergent `kitId` reaches the API. Per the architecture-first
+rule, stale templates and defaults are repaired, not the merge.
 
-shallow merge confirmed:
-  merge_data_settings loop: data_settings[k] = v   ← replaces entire options dict, not deep-merged
+**Disposition:** REJECTED as a merge-semantics finding. The residual kitId
+value/comment drift is LOW and **folded into TPL-001** (reconcile kitId to the
+legend; remove the duplicate `issueType`; align comments). No code, model, or
+merge change is warranted.
 
-merged for nat_tv_brands_tefal.yaml[0]:
-  options.kitId = 1  ← surfaced from default DYNAMICS_BY_SPOTS (report had no options)
-```
+**Fix (template/default data only):** (a) `defaults/tv/crosstab.yaml` — align
+kitId values to the legend and remove the duplicate `issueType` in
+`TOP_NAT_TV_ADVERTISERS`; (b) every `reports/**` template that declares an
+`options` block must supply a complete block (kitId + issueType + standRtg
+where the default block carries them) — no shipped template relies on partial
+keys inherited from the default. Targets: `settings/defaults/tv/crosstab.yaml`,
+`settings/reports/nat_tv_tvreport.yaml`,
+`settings/reports/last_category/nat_tv_brands_weekly_reach.yaml`.
 
-Both values are annotated `#TV Index Russia all`, contradicting the in-file
-dataset legend (`1`=Russia all, `2`=Russia 100+, `3`=Cities, `4`=TVI+ Russia all,
-`5`=TVI+ Russia 100+, `6`=Moscow; `7` is undefined in the legend).
+**Verify:** No test asserts kitId merge behavior; the only validating template
+(`nat_tv_brands_tefal.yaml[0]`) declares no `options` and inherits
+`DYNAMICS_BY_SPOTS` kitId=1.
 
-**Asserted cause tested separately:** `merge_data_settings`
-(services.py:77-93), line 83: `data_settings[k] = v` — a shallow dict
-assignment. Verified against source. `TVMediaReport.__init__` reads
-`self.data_settings.options.get("kitId", 1)` (reports.py:189), so the merged
-`options` dict determines which dataset is requested. A divergent `kitId`
-produces a report against the wrong dataset without error.
-
-**Impact note:** The `nat_tv_tvreport.yaml` templates currently fail TPL-001,
-so this divergence is latent — the report cannot run at all today. If TPL-001
-is fixed without also reconciling `kitId`, the shallow merge will silently
-select the report-level kitId. No shipped example asserts the kitId merge
-behavior.
-
-**Rubric grading:** Phase 05 LOW = "documentation and drift with no runtime
-consequence today: a template key never consulted but harmlessly present; a
-duplicated constant that has not yet diverged." Here the constant has
-diverged (7 vs 1) but the divergence is masked by TPL-001. The drift is
-real; the consequence is currently blocked by TPL-001. LOW carried = LOW
-on rubric. No re-grade.
-
-**Load-bearing artefact:** Template files (`settings/defaults/tv/crosstab.yaml`
-and `settings/reports/nat_tv_tvreport.yaml`) and Code
-(`core/services.py::merge_data_settings`).
-
-**Fix:** Reconcile `kitId` values: either (a) remove `kitId` from templates
-that should inherit the default, or (b) implement a deep-merge in
-`merge_data_settings` so per-key overrides are explicit. Target:
-`merge_data_settings` at services.py:77, and `tv/crosstab.yaml` /
-`nat_tv_tvreport.yaml` kitId entries. Stable. ✓
-
-**Verify:** No existing test asserts kitId merge behavior. A new test
-constructing `TopNatTvPrograms` with a non-default `options.kitId` and
-asserting the merged value should be added after TPL-001 is resolved.
-
-**Related:** TPL-001, TPL-002, CFG-007
+**Related:** folded into TPL-001; TPL-002 (the `extra="allow"` pass-through is
+intended); CFG-007 (same kitId/None drift root cause).
 
 ---
 
 ## Disposition Summary
 
 ```
-Confirmed:   6  (TPL-001 ×1, TPL-002 ×1, TPL-003 ×1, TPL-004 ×1, TPL-005 ×1, TPL-006 ×1)
-Rejected:    0
-Re-graded:   0
+Confirmed:   5  (TPL-001, TPL-003, TPL-004, TPL-005 at carried severity; TPL-002 confirmed and re-graded HIGH -> LOW)
+Rejected:    1  (TPL-006 as a merge-semantics finding — shallow top-level override is intended architecture)
+Re-typed:    1  (TPL-006 residual — kitId value/comment drift, LOW, folded into TPL-001)
+Re-graded:   1  (TPL-002 HIGH -> LOW — pass-through consumption verified via MediaVortexTask.build_task)
 Unsettled:   0
 ```
 
-All six findings are substantiated by direct evidence. No finding was
-downgraded, re-typed, or withdrawn. No finding depends on an assumption that
-could not be verified in the current tree.
+Five findings are substantiated by direct evidence. TPL-002 is confirmed but re-graded (HIGH → LOW) after the downstream consumption trace. TPL-006 is rejected as a merge-semantics finding and re-typed into TPL-001: the shallow top-level override in `merge_data_settings` is the intended two-layer architecture, not a defect.
 
 ## Validation-Level Findings (VAL-)
 
@@ -556,7 +578,7 @@ value (1) is correct; the block label is wrong.
 accurately captured; the mislabel does not change TPL-006's verdict.
 
 **Disposition:** confirmed. No finding re-grade needed. Recommendation: correct
-the block label in the next raw-phase revision.
+the block label in the next raw-phase revision. Superseded — the corrected kitId inventory appears in the revised TPL-006 section and Appendix D of the 2026-10-14 revision.
 
 ### VAL-002 — [LOW] TPL-001 fix-order inaccurately describes `tv_yaml_content` fixture
 
@@ -598,8 +620,7 @@ is masked.
 
 **Impact:** If TPL-001 is fixed (field-name migration) without addressing this,
 entry [0] (TOP_NAT_TV_ADVERTISERS) would run without any `options` — `kitId`
-would fall back to the default subtype block's value (7), and the template's
-intended `kitId: 1` would be silently absent.
+would fall back to `1` (the `.get` default in `reports.py:189`), not 7, because the `TOP_NAT_TV_ADVERTISERS` defaults block defines no `kitId` (it has a duplicate `issueType` key instead). The template's intended `kitId: 1` would be silently absent — though the resulting value coincides with the correct one.
 
 **Disposition:** confirmed. This is a supplementary observation, not a new
 finding under the TPL prefix (it is masked by TPL-001 today). It should be
@@ -613,7 +634,7 @@ filed as a separate finding if TPL-001 is resolved.
 |---|---|---|---|---|
 | Template validation failures | TPL-001 (CRITICAL) | CFG-001 (HIGH) | 30/32 `ReportSettings(**rep)` failures from `period_type`/`period_num` + stale `ReportType` enum | cross-reference; both confirmed |
 | Malformed defaults YAML | TPL-004 (HIGH) | CFG-002 (HIGH) | `tv_reg/crosstab.yaml` unbalanced flow mapping → `yaml.safe_load` `ParserError` | cross-reference; both confirmed |
-| `yaml_to_dict` None return | TPL-004 (HIGH) | CFG-005 (MEDIUM) | `utils.py:yaml_to_dict` catches `YAMLError`, falls through to implicit `return None` | cross-reference; both confirmed |
+| `yaml_to_dict` None return | TPL-004 (HIGH) | CFG-005 (MEDIUM) | `utils.py:yaml_to_dict` catches `YAMLError`, falls through to implicit `return None` | cross-reference; both confirmed (mechanism stale at HEAD b04d177 — see Current-Tree Accuracy Addendum) |
 | Missing defaults template | TPL-005 (MEDIUM) | CFG-006 (MEDIUM) | `TV_REG/timeband.yaml` absent → `DataDefaults(**None)` → `TypeError` | cross-reference; both confirmed |
 | Missing subtype defaults | TPL-003 (HIGH) | CFG-007 (MEDIUM) | `NAT_TV_CHANNELS_ATV/BA/SOC_DEM` have no key in defaults → `slices`/`statistics` stay `None` | cross-reference; both confirmed |
 
@@ -647,10 +668,12 @@ The malformed `tv_reg/crosstab.yaml` prevents any TV_REG defaults test from
 running. After TPL-004 is fixed, `get_default_data_settings` for
 `TV_REG/timeband` would hit the missing-file path (TPL-005).
 
-**Dependency: TPL-001 must land before TPL-006 is reachable.**
-All `nat_tv_tvreport.yaml` entries fail `ReportSettings` validation. Once
-field names are migrated, the `kitId` divergence (default=7 vs template=1
-for `TOP_NAT_TV_PROGRAMS`) becomes active through the shallow merge.
+**Dependency: TPL-001's migration must include kitId reconciliation (covers TPL-006).**
+Once field names are migrated, the previously-masked kitId divergences become
+active through the shallow override. TPL-006's proposed *merge* change is NOT a
+dependency — it is rejected. The migration step must assert that every
+`options` block is complete and every kitId matches the legend (1..6; the
+undefined value 7 removed or justified).
 
 **Dependency: TPL-003 must land before CFG-007 is reachable.**
 `en_to_ru(None)` crashes before `Data(**data_settings)` is constructed.
@@ -673,6 +696,36 @@ remain in the current `code_ref: d093d9c` tree unmodified.
 
 ---
 
+## Current-Tree Accuracy Addendum (HEAD `b04d177`)
+
+The validated evidence above was pinned to `code_ref: d093d9c`, which is
+absent from the current repository object store (`git cat-file -t d093d9c` →
+not found; `git rev-parse HEAD` → `b04d177`). During the 2026-10-14
+re-validation the following current-tree facts were established. They do not
+change any finding's verdict; they correct the *mechanisms* some findings
+cite:
+
+1. **`yaml_to_dict` no longer returns `None`.** `core/utils.py:343-367` —
+   signature `-> dict[str, Any]`, body `return yaml.safe_load(cfg) or {}`,
+   `except YAMLError / FileNotFoundError: logger.error(...); raise`. Probe at
+   `b04d177`: a missing file raises `FileNotFoundError`; a malformed file
+   raises `ParserError`. The "falls through to implicit `return None`"
+   mechanism cited by TPL-004, TPL-005 and by cross-phase findings CFG-005 /
+   ENT-003 / QLT-005 does not reproduce; failures now surface as
+   `FileNotFoundError`/`ParserError` from `get_default_data_settings`
+   (`services.py:101`).
+2. **`defaults/tv/crosstab.yaml` is malformed at HEAD (L138).** The
+   `TOP_NAT_TV_PROGRAMS` `slices` block sequence is closed by `}` instead of
+   `]`. `yaml.safe_load` raises `ParserError` at L138. Consequences: Appendix
+   C's "parses OK" claim is false at HEAD; the only `TV` defaults file cannot
+   load, so every TV-media report crashes at
+   `DataDefaults(**utils.yaml_to_dict(...))` (`services.py:101`); and the
+   original TPL-006 Block-2 merge probe (`options.kitId=1 from default
+   `DYNAMICS_BY_SPOTS`) is not reproducible at HEAD. This is a sibling of
+   TPL-004 (template defect — repair the YAML), not a TPL-006 matter.
+3. Line references captured at `d093d9c` (`services.py:77-93`, `:83`, `:90`)
+   correspond to `services.py:104-121`, `:115`, `:118` at HEAD.
+
 ## Evidence Index
 
 | Evidence | Supports |
@@ -694,17 +747,17 @@ remain in the current `code_ref: d093d9c` tree unmodified.
 | `en_to_ru(['researchDate','tvCompanyEName'])` → `['researchDate','tvCompanyName']` | TPL-003 |
 | `DATA_DEFAULTS.slices = Null` in `tv/crosstab.yaml` and `tv/timeband.yaml` | TPL-003 |
 | `hasattr` check: `NAT_TV_CHANNELS_ATV/BA/SOC_DEM` → `False` in `tv/crosstab.yaml` | TPL-003 |
-| `merge_data_settings` services.py:90 → `en_to_ru(data_settings["slices"])` | TPL-003 |
+| `merge_data_settings` services.py:118 → `en_to_ru(data_settings["slices"])` | TPL-003 |
 | Brace count: `tv/crosstab.yaml` 13/13 (balanced) | TPL-004 |
 | Brace count: `tv_reg/crosstab.yaml` 13/12 (unbalanced) | TPL-004 |
 | `yaml.safe_load(tv_reg/crosstab.yaml)` → `ParserError` at line 162 | TPL-004 |
-| `yaml_to_dict(tv_reg/crosstab.yaml)` → `None` | TPL-004, TPL-005 |
+| `yaml_to_dict(tv_reg/crosstab.yaml)` → `None` (mechanism stale at HEAD b04d177 — see Current-Tree Accuracy Addendum) | TPL-004, TPL-005 |
 | `git ls-files defaults/` → `tv/crosstab.yaml`, `tv/timeband.yaml`, `tv_reg/crosstab.yaml` | TPL-005 |
 | `TV_REG/timeband.yaml` existence → False | TPL-005 |
-| `DataDefaults(**None)` → `TypeError` | TPL-005 |
+| `DataDefaults(**None)` → `TypeError` (mechanism stale at HEAD b04d177 — see Current-Tree Accuracy Addendum) | TPL-005 |
 | `defaults/tv/crosstab.yaml::TOP_NAT_TV_PROGRAMS.options.kitId = 7` | TPL-006 |
 | `nat_tv_tvreport.yaml[1] options.kitId = 1` (from `yaml.safe_load`) | TPL-001, TPL-006 |
-| `merge_data_settings` services.py:83 → `data_settings[k] = v` (shallow) | TPL-006 |
+| `merge_data_settings` services.py:115 → `data_settings[k] = v` (shallow, by-design override) | TPL-006 |
 | `reports.py:189` → `self.data_settings.options.get("kitId", 1)` | TPL-006 |
 | `paths.py:59` → `connection_config` returns `connections/mediascope.json` | TPL-005 |
 | Shipped credential file: `settings/connections/mediascope_RENAME_.json` | TPL-005 |
@@ -812,40 +865,52 @@ FINAL depth=1  ← unclosed outer { → ParserError
 
 ### Appendix C — Sibling `tv/crosstab.yaml` brace structure (correct)
 
+The sibling `defaults/tv/crosstab.yaml` has balanced braces (13 open / 13 close)
+but is **structurally invalid**: the `TOP_NAT_TV_PROGRAMS.slices` flow sequence
+(`'slices': [` at L132) is closed by `}` at L138 instead of `]` — the
+closing brace terminates the `TOP_NAT_TV_PROGRAMS` mapping, leaving the
+sequence unclosed.
+
+**DATA_DEFAULTS.options** (L17): `'options': Null` — no kitId; kitId values
+enter exclusively through the per-subtype blocks (`DYNAMICS_BY_SPOTS` L61
+kitId=1, `DYNAMICS_BY_SPOTS_DICT` L89 kitId=1, `TOP_NAT_TV_PROGRAMS` L129
+kitId=7).
+
 ```text
-LINE   1: depth=1 opens=1 closes=0 | {
-LINE   3: depth=2 opens=1 closes=0 | 'DATA_DEFAULTS': {
-LINE  18: depth=3 opens=1 closes=0 | 'options': {
-LINE  21: depth=4 opens=1 closes=0 | "standRtg": {
-LINE  25: depth=3 opens=0 closes=1 | }       (closes standRtg)
-LINE  26: depth=2 opens=0 closes=1 | }       (closes options)
-LINE  19: depth=1 opens=0 closes=1 | },      ← WAIT: line 19 shows the DATA_DEFAULTS closing
-FINAL depth=0  ← balanced, parses OK
+brace count:  open=13  close=13  (balanced)
+bracket count: open=1   close=0   (unbalanced — [ at L132 never closed with ])
+yaml.safe_load('defaults/tv/crosstab.yaml') → ParserError:
+  while parsing a flow node, expected the node content, but found '}'
+  at line 138, column 3
 ```
 
-*(Note: the sibling file closes `DATA_DEFAULTS` with a dedicated `},` before the
-first subtype block. `tv_reg/crosstab.yaml` is missing this closing brace.)*
+**Consequence:** `tv/crosstab.yaml` is the only `TV` defaults file; with it
+malformed, every `media=TV` report crashes at
+`DataDefaults(**utils.yaml_to_dict(data_default_settings_path))`
+(`services.py:101`). The raw-phase "parses OK, 5 keys" claim (Block 2 output)
+held at `code_ref d093d9c` but is false at HEAD `b04d177`. See the
+**Current-Tree Accuracy Addendum** for full probe details.
 
 ### Appendix D — kitId inventory
 
 ```text
 defaults/tv/crosstab.yaml:
-  DATA_DEFAULTS.options.kitId = 1
-  DYNAMICS_BY_SPOTS.options.kitId = 1
-  DYNAMICS_BY_SPOTS_DICT.options.kitId = 1
-  TOP_NAT_TV_ADVERTISERS.options.kitId = 7
-  TOP_NAT_TV_PROGRAMS.options.kitId = 7
+  DATA_DEFAULTS.options: Null                    (no kitId — L17)
+  DYNAMICS_BY_SPOTS.options.kitId = 1            (L61)
+  DYNAMICS_BY_SPOTS_DICT.options.kitId = 1       (L89)
+  TOP_NAT_TV_ADVERTISERS.options: NO kitId       (L107-108 duplicate issueType PROGRAM/AD)
+  TOP_NAT_TV_PROGRAMS.options.kitId = 7          (L129)  <- legend-invalid (7 undefined; comment "Russia all" wrong)
 
 templates with kitId (per yaml.safe_load):
-  nat_tv_tvreport.yaml[1] (TOP_NAT_TV_PROGRAMS): kitId=1   ← diverges from default (7)
-  nat_tv_tvreport.yaml[2] (NAT_TV_CHANNELS_ATV): kitId=1
-  nat_tv_tvreport.yaml[3] (NAT_TV_CHANNELS_ATV): kitId=1
-  nat_tv_tvreport.yaml[4] (NAT_TV_CHANNELS_BA): kitId=7
+  nat_tv_tvreport.yaml[1] (TOP_NAT_TV_PROGRAMS):      kitId=1   <- diverges from default (7); template is correct per legend
+  nat_tv_tvreport.yaml[2] (NAT_TV_CHANNELS_ATV):     kitId=1
+  nat_tv_tvreport.yaml[3] (NAT_TV_CHANNELS_ATV):     kitId=1
+  nat_tv_tvreport.yaml[4] (NAT_TV_CHANNELS_BA):      kitId=7
   nat_tv_tvreport.yaml[5] (NAT_TV_CHANNELS_SOC_DEM): kitId=1
   nat_tv_tvreport.yaml[6] (NAT_TV_CHANNELS_SOC_DEM): kitId=1
-  gap_resurs/reg_tv_by_spots.yaml[*]: kitId=3
-  last_category/nat_tv_brands_weekly_reach.yaml[0] (DYNAMICS_BY_SPOTS): kitId=7  ← diverges from default (1)
-  sovcombank/reg_tv_by_spots.yaml[0]: kitId=3
-  sovcombank/tv_msk_new_creatives.yaml[0]: kitId=6
-  sovcombank/tv_msk_new_creatives_short.yaml[0]: kitId=6
+  gap_resurs/reg_tv_by_spots.yaml[0]:                kitId=3
+  last_category/nat_tv_brands_weekly_reach.yaml[0] (DYNAMICS_BY_SPOTS): kitId=7   <- diverges from default (1); template is STALE (7 undefined)
+  sovcombank/reg_tv_by_spots.yaml[0]:                kitId=3
+  sovcombank/tv_msk_new_creatives.yaml[0]:           kitId=6
+  sovcombank/tv_msk_new_creatives_short.yaml[0]:     kitId=6
 ```

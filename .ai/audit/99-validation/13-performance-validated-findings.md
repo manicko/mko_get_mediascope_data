@@ -29,7 +29,10 @@ overstates a match count (claims 1 match for `perf_counter|timeit|elapsed|durati
 returns 0 — see VAL-001), and PERF-002's escalation Impact example cites numbers that do not
 match the referenced `nat_tv_brands_last.yaml` (see VAL-002). Neither alters a verdict: the
 core claims hold under direct inspection. A third VAL finding records drift in the Phase 13
-instruction's namespace premise (see VAL-003).
+instruction's namespace premise (see VAL-003). A fourth VAL finding records stale
+cross-phase citations of ASY-004 as a "pool/Semaphore decoupling" defect — ASY-004 was since
+re-characterized to not substantiated / LOW (the two-level design is intentional); the
+citations are corrected in place and no PERF verdict changes (see VAL-004).
 
 **3 confirmed, 0 rejected, 0 re-graded, 0 re-typed, 0 merged, 0 unsettled.**
 
@@ -129,10 +132,15 @@ local invocations (e.g. a flag). Dependency: `test_services.py` mocks `create_re
 and patches `NetworkClient.call`, so the worker loop is not exercised there — the fix cannot
 break it; verified by test source (tests/test_services.py:47-50). ✓
 
-**Block 6 — Cross-phase.** Cross-referenced ASY-004 (Phase 03, validated) covers the
-*Semaphore/pool decoupling correctness*; PERF-001 covers the *cost* of sharing that gate for
-CPU work. These are complementary angles, not the same finding. EXT-002 (Phase 09,
-validated) is the *timeout* gap on the `to_thread` bridge — distinct. No conflict; no merge.
+**Block 6 — Cross-phase.** ASY-004 (Phase 03, validated) originally alleged that the
+`max_tasks` worker pool and the `max_concurrent_requests` Semaphore are a "decoupled"
+defect; it was since re-characterized to **not substantiated / LOW** — the two levels are
+intentional and independent (Level 1 bounds in-flight tasks in the remote calculation base;
+Level 2 bounds client HTTP concurrency and polling cadence). PERF-001 is unaffected by that
+re-characterization: it reports the *cost* of routing CPU/local work (`build_task`,
+`result2table`) through the I/O gate (Semaphore + initial jitter) — a distinct performance
+angle, not a correctness claim about the two-level design. EXT-002 (Phase 09, validated) is
+the *timeout* gap on the `to_thread` bridge — distinct. No conflict; no merge.
 
 ---
 
@@ -227,6 +235,7 @@ elsewhere. No conflict; no merge.
 | VAL-001 | LOW | confirmed | PERF-003 repro overstates grep result for `perf_counter\|timeit\|elapsed\|duration` in `core/` (claims 1 match / `time_unit`; actual is 0) |
 | VAL-002 | LOW | confirmed | PERF-002 Impact example `4 audiences × ~208 weekly slices ≈ 832 tasks` does not match `nat_tv_brands_last.yaml` (3 audiences, monthly, ~15-month period, TV_CROSSTAB not TV_REG) |
 | VAL-003 | LOW | confirmed | Phase 13 instruction (13-audit-performance.md:154) asserts `PERF-` is "already in use ... with at least one identifier resolving to two different findings"; no such usage exists in the tree |
+| VAL-004 | LOW | confirmed | Cross-phase citations of ASY-004 (Phase 03) as "ASY-004 (MEDIUM)" / "pool Semaphore decoupling correctness" are stale after ASY-004's re-characterization to not substantiated / LOW; citations corrected in place, no verdict impact |
 
 ### VAL-001 — [LOW] PERF-003 repro grep overstates match count
 
@@ -300,11 +309,33 @@ form and no cross-phase reuse. The findings reused the declared `PERF-` namespac
 
 **Disposition:** confirmed.
 
+### VAL-004 — [LOW] Stale cross-phase citations of ASY-004 ("decoupling correctness", MEDIUM)
+
+**Block 6 (compare against sibling reports).**
+
+**Observed:** This report's cross-phase sections cited ASY-004 (Phase 03, validated) in three
+places as a MEDIUM "Semaphore/pool decoupling correctness" finding complementary to PERF-001
+(PERF-001 Block 6, the Cross-Phase Analysis table, and the closing "No cross-phase conflicts"
+paragraph). ASY-004 was subsequently re-verified and re-characterized to **not
+substantiated / LOW**: the claim that "95 workers are perpetually blocked at the semaphore"
+is factually incorrect (the smoothing sleep at network.py:69 precedes semaphore acquisition at
+network.py:73), and the `max_tasks` (Level 1 — remote calculation capacity) /
+`max_concurrent_requests` (Level 2 — client HTTP concurrency) decoupling is intentional
+design, not drift. The citations are therefore stale in both severity and substance.
+
+**Impact on verdict:** None. PERF-001's own claim — CPU/local work (`build_task`,
+`result2table`) routed through the I/O Semaphore and the initial-jitter gate — is independent
+of ASY-004's decoupling allegation and remains confirmed. The stale citations created only a
+false implication that a decoupling *correctness* problem exists.
+
+**Disposition:** confirmed. All three citations corrected in place to reference the
+re-characterized ASY-004 and to describe PERF-001 as an independent performance angle.
+
 ## Cross-Phase Analysis
 
 | Cross-phase pair | Phase | Finding | Phase 13 PERF finding | Shared concern | Disposition |
 |---|---|---|---|---|---|
-| Semaphore pool/pool decoupling correctness | 03 (validated) | ASY-004 (MEDIUM) | PERF-001 (cost of shared gate) | Semaphore shared across all call types | complementary (correctness vs cost); no conflict |
+| Semaphore over-broad gating | 03 (validated) | ASY-004 (not substantiated / LOW — decoupling shown to be intentional two-level design) | PERF-001 (cost of shared gate for CPU/local work) | Semaphore + initial jitter applied to every `call()` invocation | distinct axes; ASY-004 re-characterization does not conflict with PERF-001; no merge |
 | Wait-task unbounded poll | 04 (validated) / 03 (validated) | PIPE-006 (HIGH) / ASY-005 (MEDIUM) | PERF-003 (latency attribution) | `wait_task` `while True` no deadline | escalation trigger; owned elsewhere; not re-filed |
 | Polling interval amplification | 09 (validated) | EXT-004 (HIGH) | PERF-003 | `sleep_time=40` → 20–80 s jitter per poll | escalation trigger; owned elsewhere |
 | `to_thread` bridge timeout | 09 (validated) | EXT-002 (HIGH) | PERF-001 (over-gating) | `to_thread` has no deadline | related but distinct (timeout vs cost) |
@@ -319,8 +350,9 @@ in this domain: PERF-001 = cost of the concurrency ceiling; PERF-002 = memory/ca
 backpressure; PERF-003 = latency observability. No finding was filed under a phase that does
 not own it.
 
-**No cross-phase conflicts.** The findings correctly treat the Semaphore's *correctness*
-(ASY-004), retry contract (EXT-005/EXT-002), unbounded polling (PIPE-006/ASY-005), and
+**No cross-phase conflicts.** The findings correctly treat the pool↔Semaphore architecture
+question (ASY-004 — re-characterized to not substantiated; the two-level design is
+intentional), the retry contract (EXT-005/EXT-002), unbounded polling (PIPE-006/ASY-005), and
 polling amplification (EXT-004) as owned elsewhere, and reference them only as escalation
 context — not as re-filed defects.
 
@@ -396,4 +428,4 @@ no public API signature changes, no config-schema changes, no output-format chan
 | unsettled | 0 |
 | **Total** | **3** |
 
-**Validation-level findings (VAL-): 3** (VAL-001, VAL-002, VAL-003 — all LOW)
+**Validation-level findings (VAL-): 4** (VAL-001, VAL-002, VAL-003, VAL-004 — all LOW)

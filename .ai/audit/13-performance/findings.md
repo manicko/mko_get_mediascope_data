@@ -186,9 +186,11 @@ emit a per-task total. Target symbol: `MediaReport.worker` / `TVMediaReport.send
     amplification per poll (EXT-004 HIGH) live in `wait_task` — this phase rates them as
     already-covered *escalation triggers* for PERF-003's "stuck vs slow" problem, not as new
     defects.
-  - Semaphore correctness / pool↔Semaphore decoupling (ASY-004 MEDIUM / ASY-002) and the
-    missing `to_thread` deadline (EXT-002 HIGH) are concurrency-safety concerns; Phase 13
-    treats the *cost* (PERF-001 gate + PERF-003 attribution gap) only.
+  - The pool↔Semaphore sizing question (ASY-004 — since re-characterized to not
+    substantiated / LOW: the two levels are an intentional, independent design), the
+    synchronous-catalog-bypass issue (ASY-002), and the missing `to_thread` deadline
+    (EXT-002 HIGH) are concurrency-safety concerns; Phase 13 treats the *cost*
+    (PERF-001 gate + PERF-003 attribution gap) only.
   - Retry metrics gap (EXT-007 MEDIUM / Phase 12 observability stack) — PERF-003 is the
     per-task *latency* attribution surface, a distinct axis.
 - **Rollout risk:** None of the three MEDIUM fixes alter happy-path data output; PERF-001's

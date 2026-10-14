@@ -12,7 +12,7 @@ code_ref: "d093d9c"
 
 ## Summary
 
-Seven findings across CRITICAL / HIGH / MEDIUM / LOW bands. The worker lifecycle has no exception isolation: any API error inside a worker skips `task_done()`, deadlocking `queue.join()` and hanging every invocation. A synchronous API call in the TV_REG strategy bypasses the Semaphore and blocks the event loop. Worker cancellation and the pool/semaphore sizing are not properly disciplined, and the queue depth is not observable.
+Seven findings across CRITICAL / HIGH / MEDIUM / LOW bands. The worker lifecycle has no exception isolation: any API error inside a worker skips `task_done()`, deadlocking `queue.join()` and hanging every invocation. A synchronous API call in the TV_REG strategy bypasses the Semaphore and blocks the event loop. The pool/Semaphore sizing was re-examined and confirmed as an intentional two-level design (see ASY-004 correction); the queue depth is not observable.
 
 ## Scope
 
@@ -29,7 +29,7 @@ Seven findings across CRITICAL / HIGH / MEDIUM / LOW bands. The worker lifecycle
 | ASY-001 | CRITICAL | `core/reports.py::MediaReport.worker` | Worker exception skips `task_done()`, `queue.join()` deadlocks forever |
 | ASY-002 | HIGH | `core/reports.py::TVRegTaskStrategy.generate` | Synchronous `get_tv_region()` call bypasses Semaphore, retry, and `to_thread` |
 | ASY-003 | MEDIUM | `core/reports.py::MediaReport.processing_tasks` | Workers cancelled with bare `cancel()`, never awaited or gathered |
-| ASY-004 | MEDIUM | `core/reports.py::MediaReport.__init__` | Pool size (100) and Semaphore permits (5) are decoupled — 95 workers perpetually blocked |
+| ASY-004 | LOW | `core/reports.py::MediaReport.__init__` | Pool size and Semaphore limits are intentionally independent (original claim not substantiated — advisory only) |
 | ASY-005 | MEDIUM | `core/reports.py::TVMediaReport.wait_task` | `while True` poll loop has no timeout, worker can hang indefinitely |
 | ASY-006 | MEDIUM | `core/reports.py::MediaReport.processing_tasks` | Queue depth is non-observable — no logging of backpressure or stall |
 | ASY-007 | LOW | `core/network.py::NetworkClient.call` | Exhausted-retry raises generic `RuntimeError`, indistinguishable from permanent failures |
@@ -119,40 +119,27 @@ core/reports.py:162:         [t.cancel() for t in task_group]
 
 ---
 
-#### ASY-004 — [MEDIUM] Pool size (100) and Semaphore permits (5) are decoupled
+#### ASY-004 — [LOW] Pool size (100) and Semaphore permits (5) are intentionally independent limits (original claim not substantiated)
 
 **Anchor:** `src/mko_get_mediascope_data/core/reports.py::MediaReport.__init__`
 `src/mko_get_mediascope_data/core/network.py::NetworkClient.__init__`
+`src/mko_get_mediascope_data/core/services.py::AppService.run_report` (line 155)
 **Disambiguator:** `max_tasks`
 **Checked:** static
-**Why this band:** The pool size (100) and the Semaphore limit (5) are set independently with no relationship enforced. 95 of 100 worker coroutines are perpetually blocked at `async with self._semaphore` inside `NetworkClient.call`, creating a misleading concurrency ceiling. The MEDIUM band covers architectural drift that obscures the effective concurrency model.
-**Problem:** `MediaReport.__init__` sets `max_tasks=100` (line 92) and creates `asyncio.Queue(maxsize=100)` (line 115) with 100 worker coroutines (line 159). `NetworkClient` is instantiated in `AppService.run_report` (line 130, `services.py`) with the default `max_concurrent_requests=5` (line 51 of `network.py`). No configuration propagates the Semaphore limit to the pool size — they are set by unrelated defaults. At any moment, up to 100 workers can be in the queue-processing state, but only 5 can hold a Semaphore permit to make an API call; the remaining 95 are suspended at `async with self._semaphore` (line 73 of `network.py`).
-**Repro:** 1. Run a TV report with many intervals × target audiences (e.g. 100+ tasks). 2. Observe via `asyncio.all_tasks()` that ~100 worker coroutines exist but only ~5 are inside `NetworkClient.call` at any time. 3. The 95 blocked workers consume coroutine frames and block semaphore slots are never released faster than the 5-call ceiling allows.
-**Impact:** The 100-worker pool creates a false impression of 100-way concurrency; actual API throughput is capped at 5. Debugging is harder because stack traces show 100 worker tasks but only 5 make progress. Resource waste is minimal (coroutine frames are cheap), but the disconnect between pool and Semaphore is a maintainability risk if either is changed independently.
-**Root cause:** `max_tasks` (pool/queue) and `max_concurrent_requests` (Semaphore) are defined in separate classes (`MediaReport` and `NetworkClient`) with no shared configuration or assertion.
-**Fix:** Derive the worker pool size from the `NetworkClient` Semaphore limit (e.g. `max_tasks = max_concurrent_requests` or a small multiple), or assert at startup that `max_tasks` does not exceed a reasonable multiple of the Semaphore limit. Target symbol: `MediaReport.__init__` parameter `max_tasks`.
-**Verify:** new test needed: `test_pool_size_aligned_with_semaphore` — assert that `max_tasks` does not exceed `network_client._semaphore._bound_value` by an arbitrary constant.
+**Why this band:** Re-verified after validation: the two parameters intentionally limit two different resources. `max_tasks` (Level 1) bounds in-flight tasks in the remote calculation base; `max_concurrent_requests` (Level 2) bounds concurrent client HTTP calls and, with the smoothing sleep, the polling cadence. The original claim of "95 workers perpetually blocked at the Semaphore" is factually incorrect — the smoothing sleep (network.py:69) precedes semaphore acquisition (network.py:73), so a polling worker holds a permit only for the brief HTTP status call (~1% of a ~52 s cycle) and sleeps outside the semaphore the rest of the time. LOW band: advisory documentation note only.
+**Problem:** None in code. The pair of defaults is undocumented, so a future maintainer could mistakenly couple them (e.g. derive `max_tasks` from the Semaphore limit), which would cut remote-base in-flight capacity from 100 to 5, serialize a 100-task report into ~20 batches (~20× slower), and destroy the submit-then-poll overlap.
+**Repro:** N/A — no defect to reproduce. (Original repro assumed workers stall at the semaphore; tracing shows they stall in `asyncio.sleep` outside it.)
+**Impact:** Original finding's stated impacts do not occur. Residual risk is maintainability only.
+**Root cause:** The two levels' independence is intentional but undocumented.
+**Fix:** No code change. Document the two-level model in `docs/00-overview/async-concurrency-architecture.md`. Do NOT implement the previously proposed `test_pool_size_aligned_with_semaphore` — it would encode an incorrect coupling.
+**Verify:** N/A (documentation change).
 **Related:** ASY-002
 
-**Evidence — `services.py` instantiation site (no override of `max_concurrent_requests`):**
+**Evidence — instantiation site (no override of `max_concurrent_requests`; note corrected line):**
 ```text
-core/services.py:130:             network_client: NetworkClient = NetworkClient()
+core/services.py:155:             network_client: NetworkClient = NetworkClient()
 ```
-
-**Evidence — `reports.py` pool and queue:**
-```text
-core/reports.py:92:         max_tasks: int = 100,
-core/reports.py:114:         self.max_tasks = max_tasks
-core/reports.py:115:         self.task_queue = asyncio.Queue(maxsize=self.max_tasks)
-```
-
-**Evidence — `network.py` Semaphore default:**
-```text
-core/network.py:49:     def __init__(
-core/network.py:50:         self,
-core/network.py:51:         max_concurrent_requests: int = 5,
-core/network.py:55:         self._semaphore = asyncio.Semaphore(max_concurrent_requests)
-```
+*(Note: this file previously cited services.py:130; the current source line is 155.)*
 
 ---
 
@@ -275,7 +262,7 @@ No test exercises `MediaReport.worker`, `MediaReport.processing_tasks`, `TVMedia
 ```text
 core/reports.py:92:  max_tasks: int = 100,          # worker pool + queue maxsize
 core/network.py:51:  max_concurrent_requests: int = 5,  # Semaphore permits
-core/services.py:130: network_client: NetworkClient = NetworkClient()  # default, no override
+core/services.py:155: network_client: NetworkClient = NetworkClient()  # default, no override
 ```
 
 `func.__name__` in `NetworkClient.call` (line 83, 90, 115) references the function name for logging, but `self.catalogs.get_tv_region` at `reports.py:387` does not go through `call` at all.
