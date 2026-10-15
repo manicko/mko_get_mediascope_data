@@ -135,5 +135,6 @@
       'programEName', # Program name
       'tvCompanyEName', # TV company
       'programTypeEName', # Program genre
+    ],
   }
 }

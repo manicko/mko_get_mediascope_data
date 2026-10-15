@@ -1,4 +1,10 @@
+import asyncio
+import threading
+import time
+from unittest.mock import AsyncMock
+
 import pytest
+from mediascope_api.core.errors import AuthorizationError, BadRequestError
 from requests.exceptions import ConnectTimeout  # type: ignore[import-untyped]
 
 from mko_get_mediascope_data.core.network import NetworkClient
@@ -41,3 +47,80 @@ async def test_mock_network_client_retries_on_retryable_error(mock_network_clien
 
     # call was invoked max_attempts times, simulating retries
     assert mock_network_client.call.call_count == mock_network_client._max_attempts
+
+
+@pytest.mark.asyncio
+async def test_call_returns_result_on_success(mocker):
+    """Verify that NetworkClient.call returns the function's result on success."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+
+    def success_func():
+        return {"result": "ok"}
+
+    result = await client.call(success_func)
+    assert result == {"result": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_call_raises_immediately_on_bad_request(mocker):
+    """Verify that BadRequestError (4xx) is re-raised without retry."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+    call_count = [0]
+
+    def bad_request_func():
+        call_count[0] += 1
+        raise BadRequestError("bad request")
+
+    with pytest.raises(BadRequestError):
+        await client.call(bad_request_func)
+
+    assert call_count[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_call_raises_immediately_on_auth_error(mocker):
+    """Verify that AuthorizationError (401) is re-raised without retry."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+    call_count = [0]
+
+    def auth_error_func():
+        call_count[0] += 1
+        raise AuthorizationError("unauthorized")
+
+    with pytest.raises(AuthorizationError):
+        await client.call(auth_error_func)
+
+    assert call_count[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_call_respects_semaphore(mocker):
+    """Verify that the semaphore limits concurrent in-flight calls."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_concurrent_requests=2, max_attempts=1, sleep_time=0)
+
+    counter = {"current": 0, "max": 0}
+    counter_lock = threading.Lock()
+
+    def tracking_func():
+        with counter_lock:
+            counter["current"] += 1
+            counter["max"] = max(counter["max"], counter["current"])
+        time.sleep(0.05)  # real sleep to allow thread overlap
+        with counter_lock:
+            counter["current"] -= 1
+        return "ok"
+
+    results = await asyncio.gather(
+        client.call(tracking_func),
+        client.call(tracking_func),
+        client.call(tracking_func),
+        client.call(tracking_func),
+        client.call(tracking_func),
+    )
+
+    assert counter["max"] <= 2
+    assert all(r == "ok" for r in results)

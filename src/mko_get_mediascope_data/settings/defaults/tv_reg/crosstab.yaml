@@ -23,7 +23,8 @@
       "standRtg": {
         "useRealDuration": False,  # Calculated based on actual ad duration.
         "standardDuration": 20  # Standard duration of 20 seconds
-      },
+      }
+    },
     'add_city_to_basedemo_from_region': True,  # Required for region calculation
     'add_city_to_targetdemo_from_region': True, # Required for region calculation
     'frequency_dist_conditions': Null, # Sets frequency distribution
