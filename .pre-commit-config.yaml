@@ -1,0 +1,10 @@
+# Pre-commit hooks for mko_get_mediascope_data.
+# Ruff derives its configuration automatically from pyproject.toml
+# ([tool.ruff] / [tool.ruff.lint] / [tool.ruff.format]), so no inline
+# configuration is required here.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.1
+    hooks:
+      - id: ruff
+      - id: ruff-format
