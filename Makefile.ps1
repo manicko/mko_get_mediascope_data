@@ -45,7 +45,7 @@ function Run-Test {
 }
 
 function Run-TypeCheck {
-    Invoke-Step 'typecheck' { uv run mypy src }
+    Invoke-Step 'typecheck' { uv run mypy }
 }
 
 function Run-Format {
