@@ -194,16 +194,19 @@ full Mediascope parameter set) plus optional subtype blocks. Bundled coverage:
 
 | File | Status |
 |---|---|
-| `defaults/tv/crosstab.yaml` | **Malformed YAML at HEAD** — `yaml.safe_load` raises `ParserError` at line 138 (the `TOP_NAT_TV_PROGRAMS.slices` sequence is closed with `}` instead of `]`). Verified: the file parsed correctly at commit `3408747` and breaks from commit `b04d177` onward (probe), i.e. the regression entered with the i18n translation commit |
-| `defaults/tv_reg/crosstab.yaml` | **Malformed YAML** — unbalanced flow-mapping braces (13 open / 12 close); `ParserError` at line 162 (verified by probe; lead: audit TPL-004) |
+| `defaults/tv/crosstab.yaml` | **Fixed** — `yaml.safe_load` previously raised `ParserError` at line 138 (the `TOP_NAT_TV_PROGRAMS.slices` sequence was closed with `}` instead of `]`). Verified: the regression entered with commit `b04d177` (the i18n translation commit) and the template parses correctly at HEAD (TST-007) |
+| `defaults/tv_reg/crosstab.yaml` | **Fixed** — `yaml.safe_load` previously raised `ParserError` at line 162 (unbalanced flow-mapping braces: 13 open / 12 close). Verified: parses correctly at HEAD (TST-007; lead: audit TPL-004) |
 | `defaults/tv/timeband.yaml` | Parses; contains only `DATA_DEFAULTS`, no subtype blocks |
 | `tv/simple`, `tv_reg/timeband`, `tv_reg/simple` | **Not shipped** — a report with that `(media, report_type)` pair fails with `FileNotFoundError` from `get_default_data_settings` (verified: no such files; `services.py:96-101`; lead: audit TPL-005) |
 
-Consequence: at HEAD, **no bundled report can complete a run**. The only two
-entries that pass `ReportSettings` validation are the crosstab entries of
-`nat_tv_brands_tefal.yaml`, and the TV crosstab DEFAULT template they need fails
-to parse; every other bundled entry fails validation itself. This is the top
-current-state gap ([Open Questions](open-questions.md) Q-01, Q-06).
+Consequence: with the crosstab template fixes (TST-007), the TV and TV_REG
+crosstab DEFAULT templates now parse correctly. However, **no bundled report
+can complete a full run against the real API** — the only entries that pass
+`ReportSettings` validation are the crosstab entries of `nat_tv_brands_tefal.yaml`
+(now able to load their DEFAULT template), but every other bundled entry fails
+validation itself, and `tv/simple`, `tv_reg/timeband`, `tv_reg/simple` DEFAULT
+templates are not shipped. This is the top current-state gap ([Open Questions](open-questions.md)
+Q-01, Q-06).
 
 ### Outputs
 
@@ -250,23 +253,33 @@ current-state gap ([Open Questions](open-questions.md) Q-01, Q-06).
 
 ### Tests
 
-The suite was executed on the investigation machine: **23 passed**
-(`uv run pytest`, all mocked — no network, no Mediascope credentials).
+The suite was executed on the investigation machine: **31 passed**
+(`uv run pytest`, all mocked — no network, no Mediascope credentials). One test,
+`test_run_report_with_real_models`, carries the `@pytest.mark.slow` marker and can
+be excluded with `uv run pytest -m "not slow"`. Coverage is reported by default
+via `--cov=src/mko_get_mediascope_data --cov-report=term-missing` (configured in
+`pyproject.toml`).
 
 | Test file | What it pins down |
 |---|---|
-| `tests/test_app.py` | CLI `init --help`; lazy re-export of the public API; package import does not bootstrap the service |
-| `tests/test_models.py` | `ReportSettings` validation with the current field names; `PeriodModel` exclusivity rules |
-| `tests/test_network.py` | Retry exhaustion raises `RuntimeError("Network retry limit exceeded")` |
+| `tests/test_app.py` | CLI `init --help`; lazy re-export of `run_report`, `run_report_async`, `initialize_settings` via PEP 562 `__getattr__`; package import does not bootstrap `AppService`; re-exported functions are identical objects to those in `app.py` |
+| `tests/test_models.py` | `ReportSettings` validation with the current field names; `PeriodModel` exclusivity rules; `merge_data_settings` does not call `en_to_ru` when `data_lang="en"` |
+| `tests/test_network.py` | Retry exhaustion raises `RuntimeError("Network retry limit exceeded")`; `mock_network_client` fixture retries on retryable errors; success returns the function result; `BadRequestError` (4xx) and `AuthorizationError` (401) are re-raised without retry; semaphore limits concurrent in-flight calls |
 | `tests/test_reports.py` | `DefaultTVTaskStrategy` task naming; `DictDataStrategy` output columns |
-| `tests/test_services.py` | `run_report` with real models and a mocked network (export path derivation); config caching and `reload_config()` |
-| `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; gzip CSV writing; suffix mapping |
+| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging |
+| `tests/test_services.py` | Full `run_report` pipeline end-to-end (slow; doubled `MediaVortexTask`, real `AppService`); `app_config` caching; `reload_config()` invalidates cache, is safe before first access, reapplies logging, and re-resolves `export_folder` |
+| `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; gzip CSV writing; suffix mapping; `csv_to_file` writes into the report directory (`tmp_report_dir` fixture) |
 
 Behaviors with **no test coverage** — these code paths were therefore never
-executed during this investigation: `get_period` (including the crashing
-configuration), `wait_task`, the worker's error handling, `TVRegTaskStrategy`,
-`en_to_ru`, `TVTask.to_yaml`, the `run` and `list-reports` CLI happy paths, and
-any end-to-end run against the real API.
+executed during this investigation: `TVRegTaskStrategy` (tests use `media=TV`
+only), `TVTask.to_yaml`, the worker's **error** handling (lifecycle tests
+exercise the happy path only), the `run` and `list-reports` CLI happy paths,
+and any end-to-end run against the real API. The following behaviors previously
+listed as uncovered are **now exercised** by the lifecycle and hermetic pipeline
+tests: `get_period` (including the period-clipping logic), `wait_task`,
+`en_to_ru` (indirectly, via the `data_lang="ru"` path in
+`test_run_report_with_real_models`), and queue completion accounting
+(`task_done` / `queue.join`).
 
 ## Known defects and limitations
 
@@ -280,7 +293,7 @@ background reading, not evidence.
 | Defect (code-verified) | Impact | Also recorded as |
 |---|---|---|
 | 30 of 32 bundled report entries fail `ReportSettings` validation (stale `period_type`/`period_num`, stale `report_type` values such as `TV_CROSSTAB`, missing `media`/`relative_path`) — verified by probe | A user following the README's example (`nat_tv_brands_last.yaml`) cannot run it; the owner requires all bundled templates to be runnable (D-06) | audit TPL-001 / CFG-001 leads; gap G-05 |
-| Both bundled crosstab DEFAULT templates are malformed YAML (`defaults/tv/crosstab.yaml` ParserError at line 138; `defaults/tv_reg/crosstab.yaml` at line 162) — verified by probe; the TV regression entered with commit `b04d177` (verified by parsing the file at `3408747` vs `b04d177`) | Even a valid crosstab entry cannot complete | audit TPL-004 (+ DISC-07) |
+| Both bundled crosstab DEFAULT templates were malformed YAML (`defaults/tv/crosstab.yaml` ParserError at line 138; `defaults/tv_reg/crosstab.yaml` at line 162) — verified by probe; the TV regression entered with commit `b04d177` (verified by parsing the file at `3408747` vs `b04d177`). **Fixed at HEAD** (TST-007): both templates now parse correctly | Fixed — templates now parse at HEAD | audit TPL-004 (+ DISC-07) |
 | CSV write collision is swallowed and the task reports "ready" — verified by probe | A re-run without `check_done` silently produces no file | audit PIPE-001 / OUT-003 |
 | Worker has no exception isolation; `queue.join()` hangs on any raise — verified by probe | A single transient failure can stall the whole run instead of failing it | audit PIPE-002 / ASY-001 |
 | Zero-task and out-of-window periods exit 0 with a success message — verified by probe | An analyst cannot distinguish "no data" from "done" | audit PIPE-004 / PIPE-005 |
@@ -310,9 +323,11 @@ Further limitations observed during this investigation, each traceable to code:
   `AppService.get_connection` constructs a new `MediaVortexTask` per report
   entry (`services.py:127-135`, `:157-160`) — so each entry in a report file
   opens its own session; none is explicitly closed.
-- Type safety is not enforced: `uv run mypy src/` reports **56 errors in 7
-  files** at HEAD (verified on the investigation machine) and there is no CI
-  gate, so typechecking cannot be treated as a safety net.
+- Type safety is not enforced: `uv run mypy` (which checks both `src` and
+  `tests` per `pyproject.toml` `files = ["src", "tests"]`) reports **56 errors
+  in 7 files** at HEAD (verified on the investigation machine) and there is no
+  CI gate for typechecking (CI runs only `ruff check src tests` + `pytest`),
+  so typechecking cannot be treated as a safety net.
 
 ## Verification
 
@@ -331,8 +346,8 @@ Read-only probes executed for this document (scripts kept for reproduction in
 | `.ai/tmp/doc_probe_options_none.py` | A subtype with no defaults block leaves `slices`/`statistics`/`options` as `None`; `Data(**merged)` then raises a Pydantic `ValidationError` for `data_lang: en` (the `data_lang: ru` path crashes earlier in `en_to_ru`) |
 | `.ai/tmp/doc_probe_vendor_build_task.py` + reading `.venv/Lib/site-packages/mediascope_api/` | Vendor `build_task` has no `**kwargs` (unknown key → `TypeError`); one `requests.Session` per `MediaVortexTask` (`core/net.py:73`) |
 | `.ai/tmp/doc_probe_links.py` | All relative links and heading anchors in the documentation resolve (2 pre-existing broken example links in `doc-maintenance-rules.md` were found and left untouched) |
-| `uv run pytest` | 23 passed (full suite, mocked) |
-| `uv run mypy src/` | 56 errors in 7 files (recorded as the current-tree typecheck state) |
+| `uv run pytest` | 31 passed (full suite, mocked — no network, no Mediascope credentials; coverage reported via `--cov`) |
+| `uv run mypy` | 56 errors in 7 files (recorded as the current-tree typecheck state; mypy now checks both `src` and `tests` per `pyproject.toml` `files = ["src", "tests"]`) |
 | Inspection of the machine's `output/` folder | Confirms the file naming convention `<start>_<end>_<audience>.csv.gz` and that real report runs happened historically; the files predate the current column-selection code |
 
 Side effect of probing, disclosed for completeness: constructing `AppService`

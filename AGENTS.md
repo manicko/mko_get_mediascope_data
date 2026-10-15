@@ -12,11 +12,16 @@ alwaysApply: true
 
 - **Package Manager:** `uv` (Python)
 - **CLI entry point:** `uv run -m mko_get_mediascope_data`
-- **Lint:** `uv run ruff check <path>` · **Auto-fix:** `uv run ruff check --fix <path>`
+- **Lint:** `uv run ruff check <path>` · **Auto-fix:** `uv run ruff check --fix <path>` · **pre-commit:** `pre-commit run --all-files` (`.pre-commit-config.yaml`)
 - **Format:** `uv run ruff format <path>`
-- **Typecheck:** `uv run mypy <path>`
-- **Test:** `uv run pytest`
+- **Typecheck:** `uv run mypy <path>` · mypy checks both `src` and `tests` (configured in `pyproject.toml`)
+- **Test:** `uv run pytest` (coverage reported by default via `--cov`) · **`slow` marker:** `uv run pytest -m slow` (run only slow tests); `uv run pytest -m "not slow"` (skip slow tests)
 - **Add dep:** `uv add <package>` · **Add dev dep:** `uv add --dev <package>`
+
+On Windows, `Makefile.ps1` wraps the same toolchains:
+`.\Makefile.ps1 test` · `.\Makefile.ps1 lint` · `.\Makefile.ps1 typecheck` · `.\Makefile.ps1 format` · `.\Makefile.ps1 all` (lint + test).
+
+**CI:** every push and PR runs `uv run ruff check src tests` then `uv run pytest` (`.github/workflows/ci.yml`).
 
 ## Core Context
 
@@ -67,7 +72,8 @@ uv run pytest --asyncio-mode=auto                  # explicit asyncio mode
 Configuration is in `pyproject.toml`:
 - `pythonpath = ["src"]`
 - `testpaths = ["tests"]`
-- `addopts`: `--import-mode=importlib -ra -v --strict-markers --asyncio-mode=auto`
+- `addopts`: `--import-mode=importlib -ra -v --strict-markers --asyncio-mode=auto --cov=src/mko_get_mediascope_data --cov-report=term-missing`
+- `markers`: `slow` (use `-m slow` to run only slow tests; `-m "not slow"` to skip)
 
 Test fixtures live in `tests/conftest.py`: `mock_network_client`, `dummy_df`, `tv_yaml_content`, `tmp_report_dir`.
 

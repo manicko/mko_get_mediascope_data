@@ -3,6 +3,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue)](https://www.python.org)
 [![uv](https://img.shields.io/badge/uv-managed-4B0082)](https://docs.astral.sh/uv/)
+[![CI](https://github.com/manicko/mko_get_mediascope_data/actions/workflows/ci.yml/badge.svg)](https://github.com/manicko/mko_get_mediascope_data/actions/workflows/ci.yml)
 
 **Fast, reliable and asynchronous data loader for Mediascope API (TV / TV_REG).**
 
