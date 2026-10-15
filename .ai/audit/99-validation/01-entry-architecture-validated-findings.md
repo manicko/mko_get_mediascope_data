@@ -14,12 +14,12 @@ validator: "99-validate"
 ## Summary
 
 Seven findings (3 CRITICAL, 1 HIGH, 2 MEDIUM, 1 LOW at `code_ref d093d9c`). All
-seven anchors resolved to their cited symbols at `code_ref d093d9c`; ENT-001 is
-**fixed at HEAD** (the mechanism was relocated into the `run` command, so the
-code_ref claim no longer reproduces), and five claims
+seven anchors resolved to their cited symbols at `code_ref d093d9c`; ENT-001 and
+ENT-006 are **fixed at HEAD** (ENT-001's mechanism was relocated into the `run`
+command; ENT-006's `reload_config()` was added in commit `755523e`), and five claims
 (ENT-002, ENT-003, ENT-004, ENT-005, ENT-007) are rejected as falsified — see
-the re-validation note. **1 fixed, 1 confirmed, 5
-rejected (falsified at HEAD), 0 re-graded, 0 unsettled.**
+the re-validation note. **2 fixed (ENT-001, ENT-006), 5 rejected
+as falsified at HEAD (ENT-002–005, ENT-007), 0 re-graded, 0 unsettled.**
 
 The 2026-10-15 re-validation pass found that post-`code_ref` remediation falsified ENT-002 and ENT-003; both are rejected with the current-tree truth recorded. The originally recorded imprecision (ENT-003's secondary `services.py:40` reference) is moot: that mechanism no longer exists.
 
@@ -39,7 +39,9 @@ anchor-format drift and the ENT-003 line-number imprecision.
 > directly and never constructs `AppService`. The remaining five findings were not
 > re-examined in that pass; a second re-validation pass (2026-10-15) re-examined
 > them against HEAD and additionally **rejected ENT-001, ENT-004, ENT-005 and
-> ENT-007 as falsified** (see the marked sections). Only ENT-006 remains confirmed.
+> ENT-007 as falsified** (see the marked sections). ENT-006 was confirmed in that
+> pass but **fixed at HEAD** in commit `755523e` — see the marked section below.
+> All seven findings were remediated at HEAD.
 
 ## Scope
 
@@ -72,7 +74,7 @@ observed. All other claims are directly reproduced.
 
 **Validated against:** commit `d093d9c` (Phase 01 baseline)
 **HEAD at re-validation:** `8ed385f` (commit `e8fd1867` code-identical to `b04d177`)
-**Survival at HEAD:** 1 fixed (ENT-001), 1 confirmed (ENT-006), 5 rejected as falsified at HEAD (ENT-002–005, ENT-007), 0 re-graded, 0 unsettled
+**Survival at HEAD:** 2 fixed (ENT-001, ENT-006), 5 rejected as falsified at HEAD (ENT-002–005, ENT-007), 0 re-graded, 0 unsettled
 **Correction type:** no-op — re-validation notes and corrected Summary are already inline; this block records the conformance verdict for cross-file tooling.
 
 **Conformance review 2026-10-15** — reviewed against the code at HEAD and the
@@ -95,17 +97,18 @@ stdout. Mapping: ENT-001 → D-05.
 | ENT-003 | rejected (falsified at HEAD) | CRITICAL (at code_ref) | CRITICAL vs. falsified at HEAD | yes† |
 | ENT-004 | rejected (falsified at HEAD) | HIGH (at code_ref) | HIGH vs. falsified at HEAD | yes† |
 | ENT-005 | rejected (falsified at HEAD) | MEDIUM (at code_ref) | MEDIUM vs. falsified at HEAD | yes† |
-| ENT-006 | confirmed   | MEDIUM     | MEDIUM vs. MEDIUM    | yes             |
+| ENT-006 | fixed at HEAD (claim falsified at code_ref) | MEDIUM (at code_ref) | MEDIUM vs. fixed at HEAD | yes† |
 | ENT-007 | rejected (falsified at HEAD) | LOW (at code_ref) | LOW vs. falsified at HEAD | yes† |
 
-\* ENT-001/002/003/004/005/007: anchors resolved at code_ref d093d9c; the claims are
+\* ENT-001/002/003/004/005/006/007: anchors resolved at code_ref d093d9c; the claims are
 falsified at HEAD by the remediation commits that followed the validation:
 `706eed0` (deferred singleton via `get_app_service()`; `yaml_to_dict` raises instead
 of returning `None`; `sys.stdout.reconfigure` moved into the `run` command),
 `63bb1c0` (tests migrated to the factory), `934cf9c0` (PEP 562 lazy re-exports in
-`__init__.py`), `606c899` (`print()` replaced with `logger.info()`), and `b04d177`
-(Russian strings translated to English). See the re-validation note and the marked
-sections below. Only ENT-006 remains confirmed.
+`__init__.py`), `606c899` (`print()` replaced with `logger.info()`), `b04d177`
+(Russian strings translated to English), and `755523e` (`reload_config()` added to
+`AppService`, falsifying ENT-006's "no invalidation hook" assertion). See the re-validation
+note and the marked sections below. All seven findings were remediated at HEAD.
 
 ### ENT-001 — fixed at HEAD — [CRITICAL at code_ref] `sys.stdout.reconfigure()` at module scope
 
@@ -364,18 +367,38 @@ MEDIUM carried = MEDIUM on rubric. No re-grade.
 
 ---
 
-### ENT-006 — confirmed — [MEDIUM] `app_config` cached on singleton is stale
+### ENT-006 — fixed at HEAD (claim falsified at code_ref) — [MEDIUM at code_ref] `app_config` cached on singleton is stale
+
+**FIXED AT HEAD `e8fd1867` (the code_ref claim is falsified).** Remediation commit
+`755523e` (*feat(core): add reload_config() to AppService for dynamic config reload
+(ENT-006)*) added a `reload_config()` method to `AppService`
+(`core/services.py:66-76`) that invalidates the `@cached_property` caches for both
+`app_config` and `export_folder` and re-applies `dictConfig`. The original asserted
+cause — "no `reload_config()` method exists" — was verified by source inspection at
+`code_ref d093d9c` and is now falsified: the method exists and is covered by 5 tests
+(`tests/test_services.py:102-145`). Additionally, the module-scope singleton was
+deferred to `get_app_service()` (commit `706eed0`), so `app_config` is no longer
+accessed at import time. The `@cached_property` decorator itself remains, but the
+staleness concern is remediated by the explicit invalidation hook. The claim,
+evidence, and grading below are preserved as the `code_ref d093d9c` record and do
+not reproduce at HEAD.
 
 **Anchor resolved:** `src/mko_get_mediascope_data/core/services.py:35` →
-`@cached_property` decorator on `app_config` (line 35), property body at lines 36-42.
+`@cached_property` decorator on `app_config` (line 35 at `code_ref`; line 37 at HEAD),
+property body at lines 36-42 (code_ref) / 38-55 (HEAD). The `@cached_property` remains
+at HEAD; `reload_config()` at lines 66-76 provides the invalidation hook that was absent
+at `code_ref`.
 
 **Claim tested:** `app_config` is a `cached_property`. It is first accessed during
-`prepare_app()` in `__init__` (line 33), i.e. at import time via the module-level
-singleton. Once cached on the instance, subsequent accesses return the same object.
-Since `app_service` is a process-wide singleton, config edits in a long-lived
-process (Jupyter/Airflow) are silently ignored.
+`prepare_app()` in `__init__` (line 33 at `code_ref`), i.e. at import time via the
+module-level singleton. Once cached on the instance, subsequent accesses return the
+same object. Since `app_service` is a process-wide singleton, config edits in a
+long-lived process (Jupyter/Airflow) are silently ignored. At HEAD, the singleton is
+deferred behind `get_app_service()` (commit `706eed0`) and `reload_config()` (commit
+`755523e`) allows explicit cache invalidation, so config edits are no longer silently
+ignored.
 
-**Evidence (source inspection):**
+**Evidence (source inspection, at `code_ref d093d9c`):**
 ```text
 services.py:35:     @cached_property
 services.py:36:     def app_config(self) -> AppConfig:
@@ -388,9 +411,16 @@ services.py:163: app_service = AppService(app_paths=APP_PATHS, ...)
 in `self.__dict__["app_config"]`. Subsequent `app_service.app_config` returns the
 cached object. Python `cached_property` semantics verified.
 
+At HEAD: `reload_config()` (`services.py:66-76`) pops `app_config` and
+`export_folder` from `self.__dict__` and calls `prepare_app()`, so the next
+`app_config` access re-reads the YAML files. Five tests cover this
+(`tests/test_services.py:102-145`).
+
 **Asserted cause tested separately:** `@cached_property` has no invalidation hook.
 The singleton is process-global. No `reload_config()` method exists. Verified by
-source inspection — search for "reload" returns no results.
+source inspection — search for "reload" returns no results. At HEAD,
+`reload_config()` exists (`services.py:66-76`) and the singleton is deferred behind
+`get_app_service()` (`services.py:188-199`), falsifying both sub-claims.
 
 **Rubric grading:** Phase 01 MEDIUM = "an import-time side effect that is
 unnecessary but not harmless." The caching occurs at import time (via `__init__`
@@ -526,12 +556,11 @@ due to cross-phase interaction; the ENT-003/CFG-005 pair is jointly rejected at 
 ## Rollout Safety Assessment
 
 **Post-validation remediation applied at HEAD:** the singleton was moved out of module scope (commit `706eed0`, which deferred the singleton via `get_app_service()` and made `yaml_to_dict` raise instead of returning `None`) and tests were migrated to the factory in commit `63bb1c0`. The same remediation sweep also moved `sys.stdout.reconfigure` into the `run` command (commit `706eed0`, ENT-001), added PEP 562 lazy re-exports to `__init__.py` (commit `934cf9c0`, ENT-004), replaced the `print()` calls in `core/` with `logger.info()` (commit `606c899`, ENT-005/CFG-010), and translated all Russian strings to English (commit `b04d177`, ENT-007). The risks, dependencies, and the closing statement below are preserved as the `code_ref d093d9c` record.
-- `tests/test_services.py:6` imports `from mko_get_mediascope_data.core.services import app_service`
-  directly and calls `app_service.run_report(test_yaml)` at line 53.
-- `tests/test_app.py:3` imports `from mko_get_mediascope_data.app import app`, which
-  triggers the full module body including `from .core.services import app_service`.
-- Both tests depend on the module-scope singleton. A fix that removes module-scope
-  instantiation must provide a lazy accessor or test fixture workaround.
+- `tests/test_services.py:8` imports `from mko_get_mediascope_data.core.services import AppService, get_app_service` (migrated to the factory per commit `63bb1c0`); `tests/test_services.py:55` calls `get_app_service().run_report(test_yaml)`.
+- `tests/test_app.py:6` imports `from mko_get_mediascope_data.app import app`, which
+  imports `get_app_service` (a function) at module scope — no bootstrap at import.
+- Tests were migrated to the `get_app_service()` factory (commit `63bb1c0`); they no
+  longer depend on a module-scope singleton. The lazy accessor is in use.
 
 **Risk: `__init__.py` re-exports (ENT-004 fix)**
 - A naive `from .app import run_report` in `__init__.py` would trigger the ENT-002
@@ -568,7 +597,7 @@ due to cross-phase interaction; the ENT-003/CFG-005 pair is jointly rejected at 
 | Runtime probe: `from mko_get_mediascope_data import run_report` → `ImportError` (at `code_ref d093d9c`; importable via PEP 562 at HEAD) | ENT-004 |
 | Runtime probe: `__init__.py` is 0 bytes (at `code_ref d093d9c`; 32-line lazy re-export at HEAD) | ENT-004 |
 | AST scan: four `print()` calls in `core/services.py` and `core/reports.py` (at `code_ref d093d9c`; 0 active at HEAD — commit 606c899) | ENT-005 |
-| Source inspection: `@cached_property` on `app_config`, first accessed in `__init__` | ENT-006 |
+| Source inspection: `@cached_property` on `app_config`, first accessed in `__init__` (at `code_ref d093d9c`; `reload_config()` exists at HEAD — services.py:66-76) | ENT-006 |
 | AST scan: Cyrillic in `app.py` module docstring and all command docstrings (at `code_ref d093d9c`; no Cyrillic in `src/` at HEAD — commit b04d177) | ENT-007 |
 | `pyproject.toml:44`: console-script entry point `mko_get_mediascope_data.app:app` | ENT-001, ENT-002 |
 | `app.py:14`: `from .core.services import app_service` at module scope (code_ref; HEAD imports the `get_app_service` factory) | ENT-002, ENT-003 |

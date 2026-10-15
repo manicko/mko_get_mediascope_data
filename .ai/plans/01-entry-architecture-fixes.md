@@ -3,9 +3,26 @@ plan_id: "01-entry-architecture-fixes"
 source_audit: ".ai/audit/99-validation/01-entry-architecture-validated-findings.md"
 source_code_ref: "d093d9c"
 phase: "01-entry-architecture"
-status: draft
+status: completed
 agent_role: "planner"
 findings_covered: ["ENT-001", "ENT-002", "ENT-003", "ENT-004", "ENT-005", "ENT-006", "ENT-007"]
+---
+
+## Completion Note
+
+All five execution blocks (A–E) were completed via the following commits:
+
+| Block | Commit | Findings addressed |
+|-------|--------|-------------------|
+| A | `706eed0` | ENT-001, ENT-002, ENT-003 |
+| A-test | `63bb1c0` | Test migration to `get_app_service()` factory |
+| B | `755523e` | ENT-006 (`reload_config()`) |
+| C | `934cf9c0` | ENT-004 (PEP 562 lazy re-exports) |
+| D | `606c899` | ENT-005 (print → logger.info) |
+| E | `b04d177` | ENT-007 (Russian → English) |
+
+All 23 tests pass. See the validation report at `.ai/audit/99-validation/01-entry-architecture-validated-findings.md` for the post-HEAD re-validation verdict.
+
 ---
 
 # Execution Plan — Entry Architecture Fixes
