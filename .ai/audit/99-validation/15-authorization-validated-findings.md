@@ -22,6 +22,61 @@ AUT-003 is statically confirmed (no scope/authority references anywhere in `core
 are correctly graded against Phase 15's own severity taxonomy. One VAL finding (VAL-001)
 records a cross-phase ownership-attribution imprecision in AUT-002's "Related" note.
 
+> **2026-10-15 mechanism update:** AUT-001's mechanism was refined — the vendor
+> `MediascopeApiNetwork.refresh_token()` is called before every request
+> (`net.py:178`) and refreshes only when expired (`net.py:127-138`), so the
+> missing refresh-on-401 hook in our `NetworkClient` (`core/network.py:46` TODO)
+> is a robustness gap, not the primary path; a 401 still raises immediately
+> (`core/network.py:80-86`). Statuses are unchanged (all confirmed).
+
+### Conformance (2026-10-15)
+
+Reviewed against the code at HEAD (`8ed385f`) and the owner decision register
+(D-05: the audit is a lead source, not a source of truth). Corrections applied
+during this review are listed per finding below; mechanism changes cite the
+verifying code location. Mapping: AUT-001 → D-09, G-02, W-02; AUT-002 → D-09,
+G-02, W-02; AUT-003 → D-10, G-03, R-01.
+
+- **AUT-001 — mechanism nuance added (2026-10-15).** Verified: vendor
+  `MediascopeApiNetwork.refresh_token()` is invoked before every request
+  (`net.py:178`) and re-authenticates only when the token is expired
+  (`net.py:127-138`); therefore the missing refresh-on-401 hook in our
+  `NetworkClient` (`core/network.py:46` TODO) is a robustness gap, not the
+  primary failure path — a 401 still raises immediately (`core/network.py:80-86`).
+  Status unchanged: confirmed (the hook is genuinely absent). At HEAD the TODO
+  text is English (`b04d177`), not Russian as quoted at `code_ref d093d9c`.
+- **AUT-002 — mechanism confirmed (2026-10-15).** Verified: 403 raises
+  `AccessForbiddenError` (vendor `errors.py:29-34`), which is not among our
+  dedicated handlers, so it falls through to the generic `except Exception`
+  handler (`core/network.py:113-118`) that logs "Unexpected error".
+- **AUT-003 — confirmed by absence (2026-10-15).** Verified: `get_connection`
+  (`core/services.py:127-135`) performs no credential/scope validation.
+
+---
+
+## Conformance
+
+**Validated against:** Phase 15 baseline; **HEAD at review:** `8ed385f`
+(code-identical to `b04d177`).
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). All 3 findings re-verified at HEAD against the project source and the
+installed vendor library (`.venv/Lib/site-packages/mediascope_api/`): AUT-001's
+mechanism nuance (vendor proactively refreshes the token before every request —
+`net.py:178`, `127-138` — so the missing refresh-on-401 hook is a robustness
+gap, not the primary failure path) re-confirmed; AUT-002's routing (403 →
+`AccessForbiddenError` → generic handler → "Unexpected error") re-confirmed;
+AUT-003's absence-of-validation re-confirmed. Mapping: AUT-001/002 → W-02 slice
+4 neighborhood (retry/error classification; 401/403 must surface distinctly —
+the audit's own recommendation) and EXT-005's classification fix; AUT-003 →
+D-12 / W-06 (credential best-practice decision — explicit "credentials missing
+or incomplete" startup error is part of the recorded recommendation); all three
+→ D-17 (no fail-fast) requires these to become per-task failures, not run
+aborts, once W-02 slice 1 lands.
+
+---
+
 ## Per-Finding Validation
 
 ### AUT-001 — confirmed — [HIGH] Declared `refresh_token_func` hook unimplemented; no refresh-on-401
@@ -63,6 +118,21 @@ exists only as a TODO in the class docstring; `__init__` exposes no such paramet
   `expires_in` timing, never on a 401. ✓
 - Vendor `mediascope_api/core/net.py:467-482` — `_raise_error` raises `AuthorizationError`
   on 401 (line 471-472). ✓
+
+**Mechanism nuance (2026-10-15, verified against HEAD):** The vendor
+`MediascopeApiNetwork.refresh_token()` is called before every outbound request
+(`net.py:178` inside `send_request`, `send_request_lo`, `send_raw_request`,
+`send_crossweb_request`, `get_curl_request`) and re-authenticates only when the
+cached token has expired (`net.py:127-138`: the `if token_time + token_exp -
+now <= 0` check). Because the vendor proactively refreshes before each call,
+token expiry in normal operation is handled at the vendor layer. The missing
+`refresh_token_func` hook in our `NetworkClient` is therefore a robustness gap
+(not the primary failure path): a 401 is still re-raised immediately
+(`core/network.py:80-86`) without any refresh attempt or retry in our layer.
+`NetworkClient.call`'s `__init__` (`core/network.py:49-54`) exposes no
+`refresh_token_func` parameter. At HEAD the TODO at `core/network.py:46` reads
+`can add refresh_token_func: Callable | None = None in the future` (English,
+post-`b04d177`).
 
 **Disambiguator:** `"AuthorizationError"` — present in the `except AuthorizationError` branch
 (network.py:80). ✓

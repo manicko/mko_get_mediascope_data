@@ -13,18 +13,35 @@ validator: "99-validate"
 
 ## Summary
 
-All 16 findings in `.ai/audit/10-code-quality/findings.md` (code_ref `d093d9c`) are
-**CONFIRMED** against live source inspection at HEAD `d093d9c`. mypy reproduces **61
+14 of the 16 findings in `.ai/audit/10-code-quality/findings.md` (code_ref `d093d9c`) are
+**CONFIRMED** against live source inspection at the validation baseline; QLT-005 and
+QLT-020 are **rejected as falsified at HEAD** (see the re-validation note). mypy reproduces **61
 errors in 7 files**; ruff is clean (exit 0); 12 shipped tests are green (they mock the
 API / plain-dict `data_settings`, which is exactly the coverage gap each finding
 identifies); 5 runtime probes reproduce the asserted crashes/returns verbatim; and
-git-grep confirms the dead-code and unused-exception claims. The 3 HIGH findings
-(QLT-005/006/007) each reproduce as an actual `AttributeError`/`TypeError` on a
+git-grep confirms the dead-code and unused-exception claims. The 2 remaining HIGH
+findings (QLT-006/007) each reproduce as an actual `AttributeError` on a
 **documented** configuration input. Five LOW-severity validation-level issues
 (VAL-001–005) are recorded for imprecision in the input report's supporting narrative;
 none alters a finding's verdict.
 
-**16 confirmed, 0 rejected, 0 re-graded, 0 re-typed, 0 merged, 0 unsettled.**
+**14 confirmed, 2 rejected (falsified at HEAD), 0 re-graded, 0 re-typed, 0 merged, 0 unsettled.**
+
+> **Re-validation revision (2026-10-15, HEAD `e8fd1867`; code identical to baseline
+> `b04d177`).** QLT-005 is **rejected as falsified at HEAD**: `yaml_to_dict`
+> (`core/utils.py:343-367`) is annotated `-> dict[str, Any]` — the `| None` the
+> finding graded no longer exists — and the function raises `FileNotFoundError`/
+> `YAMLError` with logging instead of returning `None`; the five mypy errors it
+> reproduced at `code_ref d093d9c` no longer appear. QLT-019 is **re-framed** to
+> match the two-layer settings architecture (the `extra="allow"` pass-through is
+> intended, not a defect — see
+> [`docs/00-overview/settings-layers-architecture.md`](../../../docs/00-overview/settings-layers-architecture.md)
+> and the re-graded TPL-002 in `99-validation/05-...`); its severity (LOW) and
+> residual typo-risk verdict are unchanged. A second pass on the same day
+> **rejected QLT-020 as falsified at HEAD**: a Cyrillic grep
+> (`[А-яЁё]`) over `src/` returns no matches (commit `b04d177` translated all
+> source strings), so the phase-01 sibling ENT-007 is rejected on the same
+> ground. Original texts are preserved below as the `code_ref d093d9c` record.
 
 ## Scope
 
@@ -33,10 +50,10 @@ none alters a finding's verdict.
 (ENT-003/ENT-007, CFG-005, PIPE-002/PIPE-006 cross-refs).
 
 **Tools:** `uv run mypy` 1.19.1 (61 errors); `uv run ruff check` (exit 0); `uv run pytest`
-(12 passed); `uv run python -c` runtime probes; `git grep`; Grep (Cyrillic).
+(12 passed at `code_ref d093d9c`; 23 passed at HEAD `8ed385f`); `uv run python -c` runtime probes; `git grep`; Grep (Cyrillic).
 
 **Runtime probes performed (reproduced from the findings):**
-- QLT-005 — `yaml_to_dict('nonexistent.yaml')` → `None`
+- QLT-005 — `yaml_to_dict('nonexistent.yaml')` → `None` at `code_ref d093d9c`; raises `FileNotFoundError` at HEAD (finding rejected)
 - QLT-006 — `Data().get('slices')` → `AttributeError: 'Data' object has no attribute 'get'`
   (and `getattr(d,'slices',None)` → `[]` falsy, so the `or` evaluates `.get`)
 - QLT-007 — `ReportSettings(..., period={'date_filter':[...]})` → `period.last_time` is `None`;
@@ -51,13 +68,38 @@ none alters a finding's verdict.
 Jupyter/Airflow import behaviour (inferred from static analysis; ENT-001/002 own the
 import-time entry layer).
 
+## Conformance
+
+**Validated against:** commit `d093d9c` (Phase 10 baseline)
+**HEAD at re-validation:** `8ed385f` (commit `e8fd1867` code-identical to `b04d177`)
+**Survival at HEAD:** 14 confirmed (QLT-005 and QLT-020 rejected as falsified at HEAD), 0 unsettled. All surviving findings' anchors resolve at HEAD.
+**Correction type:** git-HEAD reference update (`e8fd1867`→`8ed385f`); pytest count annotation (12→23 at HEAD).
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). All findings re-verified at HEAD: QLT-006's exact site and repro
+re-confirmed (`core/reports.py:459-461` — `Data` has no `.get`; the
+`AttributeError` fires whenever `slices` is empty/None, i.e. inside
+`DictDataStrategy.prepare` for DICT reports); QLT-018's mechanism confirmed
+(`en_to_ru` in `core/utils.py` catches only `TypeError`; a non-string list item
+makes `param.replace(...)` raise `AttributeError`, uncaught); QLT-019 confirmed
+with the merge rule cited (`extra="allow"` absorbs unknown report keys, but the
+overlay applies only keys already present in `DATA_DEFAULTS`,
+`core/services.py:113-115`; legacy keys `folder`/`category_name` have zero
+references in `core/`). Mapping: QLT-006 → latent crash in the DICT path;
+candidate fix within W-05 (DICT rework, decision D-14) or a small W-02-adjacent
+fix; QLT-016 (`core/errors.py` never raised — grep-verified) and QLT-017
+(`core/logger.py` is a 0-byte placeholder) → no dedicated work item; QLT-019 →
+D-01 (two-layer merge is intended) and W-01 (template repair must not rely on
+pass-through of stray keys).
+
 ---
 
 ## Findings
 
 | ID | Disposition | Severity | Anchor resolves | Disambiguator exists |
 |---|---|---|---|---|
-| QLT-005 | confirmed | HIGH | services.py `AppService.app_config/get_report_settings/get_default_data_settings`; utils.py `yaml_to_dict` | services.py:37 `**utils.yaml_to_dict` ✓ |
+| QLT-005 | rejected (falsified at HEAD) | HIGH (at code_ref) | services.py `AppService.app_config/get_report_settings/get_default_data_settings`; utils.py `yaml_to_dict` | services.py:37 `**utils.yaml_to_dict` ✓ |
 | QLT-006 | confirmed | HIGH | reports.py `DictDataStrategy.prepare` | reports.py:461 `report.data_settings.get("slices", None)` ✓ |
 | QLT-007 | confirmed | HIGH | reports.py `TVMediaReport.get_period` | reports.py:241 `last_time.time_unit` ✓ |
 | QLT-008 | confirmed | MEDIUM | models.py `DataDefaults`; services.py `merge_data_settings/get_data_settings`; reports.py `DefaultTVTaskStrategy.generate` | models.py:121 `DATA_DEFAULTS: dict` ✓ |
@@ -72,18 +114,31 @@ import-time entry layer).
 | QLT-017 | confirmed | LOW | logger.py | file is empty (1 byte) ✓ |
 | QLT-018 | confirmed | LOW | utils.py `en_to_ru` | utils.py:209 `except TypeError as err:` ✓ |
 | QLT-019 | confirmed | LOW | models.py `ReportSettings` | models.py:84 `ConfigDict(extra="allow")` ✓ |
-| QLT-020 | confirmed | LOW | utils.py `iter_period_slices` | utils.py:37 `Генерирует...` ✓ |
+| QLT-020 | rejected (falsified at HEAD) | LOW (at code_ref) | utils.py `iter_period_slices` | utils.py:37 `Генерирует...` (translated to English at HEAD) ✓ |
 
-_Tally: 16 confirmed — 3 HIGH, 7 MEDIUM, 6 LOW — matching the input summary exactly._
+_Tally: 14 confirmed — 2 HIGH, 7 MEDIUM, 5 LOW; QLT-005 and QLT-020 rejected as falsified at HEAD (3 HIGH, 6 LOW at `code_ref d093d9c`)._
 
 ---
 
-### QLT-005 — confirmed — [HIGH] `yaml_to_dict` returns `dict[str, Any] \| None`; `**` unpacking ignores `None`
+### QLT-005 — rejected (falsified at HEAD) — [HIGH at code_ref] `yaml_to_dict` returns `dict[str, Any] \| None`; `**` unpacking ignores `None`
+
+**REJECTED — falsified at HEAD `e8fd1867`.** `yaml_to_dict` (`core/utils.py:343`) is
+annotated `-> dict[str, Any]` — the `| None` this finding grades no longer exists —
+and the body `return yaml.safe_load(cfg) or {}` (line 361) with `except
+yaml.YAMLError`/`except FileNotFoundError` logging and re-raising (lines 362-367)
+never returns `None`. The five mypy errors reproduced at `code_ref d093d9c` no
+longer appear (the return type is a plain dict), and no shipped test asserts the
+old behaviour. The call sites are safe: `app_config` (`core/services.py:37-55`)
+unpacks behind now-unreachable None-guards (40-44, 48-52), `get_report_settings`
+iterates the result (87), and `get_default_data_settings` unpacks a dict (101).
+The finding's recommendation — "change `yaml_to_dict` to raise instead of returning
+`None`" — is the implemented behaviour at HEAD. The claim, mypy output, and grading
+below are preserved as the `code_ref d093d9c` record.
 
 **Anchor resolved:** `core/utils.py::yaml_to_dict` (line 343); call sites in
 `core/services.py` — `AppService.app_config` (lines 36–42), `AppService.get_report_settings`
 (lines 57–64), `AppService.get_default_data_settings` (line 74). All exist at the cited code
-(line numbers are stable: `code_ref d093d9c` == `HEAD d093d9c`).
+(line numbers as of `code_ref d093d9c`; HEAD is `8ed385f`).
 
 **Claim tested on its own terms:** `yaml_to_dict` returns `None` on `FileNotFoundError`/
 `YAMLError` (utils.py:353–360) and falls through to an implicit `return None`. The four
@@ -285,6 +340,21 @@ narrative's aside that `len(slices_en)` would raise `TypeError` is technically w
 
 ### QLT-019 — confirmed — [LOW] `extra="allow"` silently accepts unknown YAML keys
 
+**Re-framed at HEAD `e8fd1867` (same error class as the TPL-006 re-adjudication in
+`99-validation/05-...`).** `extra="allow"` on `ReportSettings`/`DataDefaults`/`Data`
+is the **intended pass-through transport** for template-defined API parameters in
+the two-layer settings architecture: the DEFAULT layer defines the full parameter
+set, the CLIENT layer overrides individual keys, and the merged keys are forwarded
+into the API JSON by the vendor `MediaVortexTask.build_task` via
+`build_task(report_type, **task.settings)` (`core/reports.py:258-259`). "Silently
+accepts" mis-describes a deliberate design; see
+[`docs/00-overview/settings-layers-architecture.md`](../../../docs/00-overview/settings-layers-architecture.md).
+The residual risk is real and LOW: a typo'd top-level key (e.g. `ad_filterr`) is
+silently dropped by `build_task`, and a typo'd `options` key (e.g. `kitid`) reaches
+the API while `core/reports.py:189` falls back to `kitId=1` — see the re-graded
+TPL-002. Severity LOW carried = LOW; the framing error is corrected while the
+typo-absorption verdict stands.
+
 **Anchor resolved:** `core/models.py` — `ReportSettings` (line 84), `DataDefaults`
 (line 120), `Data` (line 125) all set `ConfigDict(extra="allow")`. (`LastTimeModel` line 62
 sets `extra="forbid"`.)
@@ -297,7 +367,15 @@ PeriodModel use `extra='forbid'`." LastTimeModel does (line 62); `PeriodModel` h
 models accept extra keys — is unaffected (all three `allow` sites are real).
 **Rubric grading:** LOW. Matches.
 
-### QLT-020 — confirmed — [LOW] Russian comments/docstrings/log messages throughout `core/`
+### QLT-020 — rejected (falsified at HEAD) — [LOW at code_ref] Russian comments/docstrings/log messages throughout `core/`
+
+**REJECTED — falsified at HEAD `e8fd1867`.** A Cyrillic grep (`[А-яЁё]`) over the
+whole `src/mko_get_mediascope_data/` tree returns **no matches**: the docstrings,
+comments, and log messages in `core/` were translated to English in commit
+`b04d177` (ENT-007), and AGENTS.md rule 1 / `doc-maintenance-rules.md` are
+satisfied at HEAD. The anchor string (`utils.py:37` `Генерирует...`) is preserved
+below as the `code_ref d093d9c` record. The claim, grep output, and grading below
+do not reproduce at HEAD.
 
 **Anchor resolved:** `core/utils.py::iter_period_slices`, line 37 docstring
 `Генерирует последовательные интервалы...` — reproduced. AGENTS.md rule 1 mandates
@@ -352,12 +430,12 @@ radius; the "value with two homes" phrasing is HIGH-band language that does not 
 
 | QLT finding | Sibling finding(s) | Shared subject | Disposition |
 |---|---|---|---|
-| QLT-005 | ENT-003 (CRIT) / CFG-005 (MED) | `yaml_to_dict` returns `None` | cross-reference; all confirmed; distinct owning phase/angle — no merge |
+| QLT-005 | ENT-003 (CRIT) / CFG-005 (MED) | `yaml_to_dict` returns `None` | all three rejected at HEAD — `yaml_to_dict` raises (utils.py:343-367); distinct owning phases retained as record |
 | QLT-005 + QLT-006 + QLT-007 | (within QLT) | None-safety at call sites / dict-style access on models | QLT's own "merge candidates"; kept as 3 distinct defects at 3 distinct symbols |
-| QLT-006 | QLT-005 | missing-config / None cascade | cross-reference (acknowledged in QLT Fix Order) |
+| QLT-006 | QLT-005 | missing-config / None cascade | cross-reference; QLT-005 rejected at HEAD, QLT-006 unaffected |
 | QLT-016 | 05-config-templates:146, 04-data-pipeline:242 | `WrongDataSettings`/`NoReportFoundError` meant to be raised | cross-reference; recommendation provenance accurate |
-| QLT-019 | QLT-005, QLT-007 | config-file None handling | adjacent (same cluster) |
-| QLT-020 | ENT-007 (LOW) | English-only rule | complementary scope (app.py vs core/); no conflict |
+| QLT-019 | two-layer settings pass-through | intended transport, not a defect | re-framed at HEAD; residual typo risk LOW |
+| QLT-020 | ENT-007 (LOW) | English-only rule | both rejected at HEAD — Cyrillic translated (commit b04d177) |
 | QLT-013 | QLT-008, QLT-009 | untyped `dict`/`Any` | adjacent, same cluster |
 
 **No cross-phase conflicts.** QLT-005/006/007 are the input report's own "merge candidates"; I
@@ -365,24 +443,16 @@ keep them as three distinct confirmed defects because they sit at three distinct
 (`services.py` call sites vs `reports.py::DictDataStrategy.prepare` vs
 `reports.py::TVMediaReport.get_period`) with three distinct fixes — merging would obscure the
 remediation targets, exactly what phase 99 warns against ("record rather than silently edit a
-merge"). ENT-003/CFG-005/QLT-005 share a root cause but each phase owns a distinct concern
-(bootstrap / config / type-contract), matching the precedent set by the 01-validation
-cross-phase table — cross-reference, not merge.
+merge"). ENT-003/CFG-005/QLT-005 shared a root cause at `code_ref d093d9c`; at HEAD all three
+are rejected because `yaml_to_dict` raises. Each phase's record is retained.
 
 ## Rollout Safety Assessment
 
 **Validated from source (`pyproject.toml:166–177`) and `tests/` (12 green):**
 - QLT-008 + QLT-013 are prerequisites for QLT-009 (annotating `TVTask` and bare `dict`s
   clarifies the types `NetworkClient.call`/`en_to_ru` should return). Sequencing holds.
-- QLT-005/006/007 cluster: a single refactor of `yaml_to_dict` (raise instead of `None`)
-  plus `.get`→`getattr` resolves all three; QLT-005's `yaml_to_dict` change is the
-  prerequisite for QLT-016's recommendation (wire `WrongDataSettings` into
-  `get_default_data_settings`).
-- **QLT-019 rollout risk (user boundary):** changing `ReportSettings` to `extra="forbid"`
-  can break existing report YAMLs that rely on undocumented pass-through keys. Mitigation:
-  audit the 16 bundled `settings/reports/**/*.yaml` first; keep `test_models.py::
-  test_report_settings_valid` green. `Data`/`DataDefaults` may retain `allow` if Mediascope
-  passthrough keys are needed (document the rationale).
+- QLT-005/006/007 cluster: the `yaml_to_dict` raise-instead-of-`None` refactor is already applied at HEAD (QLT-005 rejected); the remaining cluster items are QLT-006 (`.get`→`getattr`) and QLT-007 (None guard), and QLT-016's recommendation to wire `WrongDataSettings` into `get_default_data_settings` (`core/services.py:93-101`) remains open.
+- **QLT-019 — superseded rollout guidance (architecture-first ruling):** do **not** change `ReportSettings`/`DataDefaults`/`Data` to `extra="forbid"` — that would break the two-layer overlay, because the DEFAULT layer's subtype blocks and the CLIENT layer's API-parameter keys are absorbed precisely via `extra="allow"` and forwarded into the API JSON by `build_task`. The mitigation for the residual typo risk is template conformance: parameter names in templates must exactly match the names consumed by `build_task`. See [`docs/00-overview/settings-layers-architecture.md`](../../../docs/00-overview/settings-layers-architecture.md) and the re-graded TPL-002 in `99-validation/05-...`.
 - QLT-014 (adding stubs), QLT-010 (enum comparison), QLT-018 (widened `except`), QLT-020
   (English translation) are non-breaking / behaviour-preserving.
 - QLT-013 (annotating `TVTask`) will likely convert the current "inferred None" errors into
@@ -392,7 +462,7 @@ cross-phase table — cross-reference, not merge.
 **Backward compatibility:** Every recommendation preserves existing test contracts. The
 12 shipped tests mock `create_report`/use plain-dict `data_settings`, so none assert the
 buggy behaviour — no test is a remediation blocker. The sole behaviour change at a user
-boundary is QLT-019's `ReportSettings` strictness, gated as above.
+boundary was QLT-019's `ReportSettings` strictness — now ruled out by the architecture-first guidance above.
 
 ## Evidence Index
 
@@ -402,7 +472,7 @@ boundary is QLT-019's `ReportSettings` strictness, gated as above.
 | `mypy --ignore-missing-imports` → still 4 `import-untyped` | reproduced (QLT-014) |
 | `ruff check src/mko_get_mediascope_data/` → exit 0, no violations | reproduced (supports "ruff passes cleanly") |
 | `pytest` → 12 passed | reproduced (green controls; mocked paths confirm coverage gaps, not the findings) |
-| `yaml_to_dict('nonexistent.yaml')` → `None` | reproduced (QLT-005) |
+| `yaml_to_dict('nonexistent.yaml')` → `None` (at `code_ref d093d9c`; raises `FileNotFoundError` at HEAD — QLT-005 rejected) | reproduced at code_ref (QLT-005) |
 | `Data().get('slices')` → `AttributeError` | reproduced (QLT-006) |
 | `ReportSettings(period=date_filter-only).period.last_time.time_unit` → `AttributeError` | reproduced (QLT-007) |
 | `en_to_ru([1,2,3])` → `AttributeError` escapes `except TypeError` | reproduced (QLT-018) |
@@ -410,24 +480,25 @@ boundary is QLT-019's `ReportSettings` strictness, gated as above.
 | `git grep '\bTask\b'` → only tasks.py:10,14 | reproduced (QLT-015) |
 | `git grep raise NoReportFoundError\|WrongDataSettings` → 0; no `errors` import in src/ | reproduced (QLT-016) |
 | `git grep core.logger` / `from ...logger import` → 0 | reproduced (QLT-017) |
-| Grep Cyrillic `[А-яЁё]` in `core/` → 45 hits, 6 modules | reproduced (QLT-020) |
-| `git rev-parse --short HEAD` → `d093d9c` | code_ref matches HEAD (no drift) |
+| Grep Cyrillic `[А-яЁё]` in `core/` → 45 hits, 6 modules at `code_ref d093d9c`; 0 hits at HEAD (commit b04d177) | recorded (QLT-020) |
+| `git rev-parse --short HEAD` | `d093d9c` at validation time; HEAD is now `8ed385f` — see re-validation note |
 | `pyproject.toml:134–145` (mypy lacks `disallow_untyped_defs`) | source (QLT-013 root cause) |
 | `pyproject.toml:166–177` (dev deps: `pandas-stubs` only, no `types-*` stubs) | source (QLT-014) |
 | `AGENTS.md` rule 1 (English Only) + rule 10 (Enums) + rule 9 (Type Safety) + rule 12 (no `print`) | source (QLT-010/019/020/016 anchors) |
 | `.kilo/commands/audit/phases/10-audit-code-quality.md` severity taxonomy | rubric of record |
-| `99-validation/01-...` (ENT-003/007 confirmed; yaml_to_dict cluster tabled) | cross-phase sibling |
+| `99-validation/01-...` (ENT-003/007 rejected at HEAD; see re-validation note) | cross-phase sibling |
 | `99-validation/05-...` / `04-data-pipeline/findings.md:242` | QLT-016 recommendation provenance |
-| `02-config-secrets/findings.md:41,108` (CFG-005 = yaml_to_dict None) (ENT-003/CFG-005) | cross-phase sibling |
+| `02-config-secrets/findings.md:41,108` (CFG-005 = yaml_to_dict None) (ENT-003/CFG-005) | cross-phase sibling (all three rejected at HEAD) |
 
 ## Disposition Tally
 
 | Disposition | Count |
 |---|---|
-| confirmed | 16 |
+| confirmed | 15 |
 | re-typed | 0 |
 | re-graded | 0 |
 | merged | 0 |
+| rejected | 1 |
 | not substantiated | 0 |
 | unsettled | 0 |
 | **Total** | **16** |

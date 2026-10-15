@@ -221,6 +221,8 @@ __marimo__/
 /dist/
 /mko_get_mediascope_data.egg-info/
 data/*
+/.ai/tmp/*
+
 !data/output/.gitkeep
 src/mko_get_mediascope_data/settings/connections/*
 !src/mko_get_mediascope_data/settings/connections/mediascope_RENAME_.json

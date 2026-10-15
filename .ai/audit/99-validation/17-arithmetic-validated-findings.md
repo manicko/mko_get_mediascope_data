@@ -55,6 +55,32 @@ and the Phase 04/16 PIPE-001 cross-references.
 | 3. No `:<digits>` in any locator (Anchor) field | PASS | All anchors use `path::Symbol` format; line numbers appear only inside evidence fences |
 | 4. Every "ran" claim has output pasted | PASS | NUM-001/002/003 carry runtime probes; NUM-004 is `static` (no runtime claim) |
 
+## Conformance
+
+**Validated against:** Phase 17 baseline; **HEAD at review:** `8ed385f`
+(code-identical to `b04d177`).
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). All 4 findings re-verified at HEAD; NUM-001's mechanism confirmed
+exactly as recorded: `pivot_df_frequency` (`core/utils.py:214`) sorts
+`frequencyDistInterval` columns with `int(x[1:-2])`, range-format values raise
+`ValueError`, the broad `except Exception` (utils.py:250-252) logs and returns
+the long-format frame, and `DefaultDataStrategy.prepare` catches only
+`KeyError`, so the wrong-shape CSV is written and the run reports success
+(`logger.info(f"Task {item.name} is ready.")` reports.py:152;
+`console.print("[green]✅ Report completed successfully[/green]")` app.py:51 —
+both English at HEAD since `b04d177`). Updates applied: the Russian log-text
+citations inside the evidence fences are annotated as `code_ref` records.
+Mapping: NUM-001 → D-08/D-09/D-15 (a silently wrong pivot is a data-correctness
+failure that must at minimum warn), W-02 slice 2 (failure visibility);
+NUM-002/003 → D-13 / W-04 (float/NaN formatting policy belongs to the
+configurable output conventions); NUM-004 → D-13 / W-04 (determinism contract
+belongs to the declared output contract). Required new test
+(`test_pivot_df_frequency_handles_range_intervals`) is a W-01-adjacent gate:
+the suite still has no `pivot_df_frequency` coverage (verified by reading
+`tests/test_utils.py` and `tests/test_reports.py`).
+
 ## Findings
 
 | ID | Disposition | Severity | Anchor resolves | Disambiguator exists |
@@ -90,7 +116,7 @@ and `return df` (line 252) yields the original long-format frame.
 
 **Evidence reproduced:**
 ```text
-Ошибка 'invalid literal for int() with base 10: '0-'' при обработке частот.
+Ошибка 'invalid literal for int() with base 10: '0-'' при обработке частот.   # at code_ref d093d9c
 Traceback (most recent call last):
   File "...core/utils.py", line 240, in pivot_df_frequency
     sorted(
@@ -103,6 +129,10 @@ RESULT shape: (18, 4)
 RESULT columns: ['regionName', 'frequencyDistInterval', 'FrequencyDistPer', 'RtgPerSum']
 Has frequencyDistInterval col? True   # pivot NOT applied → long format returned
 ```
+*(At HEAD the same failure logs through `logger.exception(f"Error '{err}'
+while processing frequencies.")` — `core/utils.py:251`, English since commit
+`b04d177`; the Russian text above is the `code_ref` record.)*
+
 Open-ended `[N+]` format pivots correctly:
 ```text
 RESULT shape: (3, 11)
@@ -118,8 +148,10 @@ Has frequencyDistInterval col? True   # pivot applied → wide format
 3. `prepare` returns the non-`None` long-format df (reports.py:451).
 4. `extract_data` (reports.py:320-332): `df is None` is `False`, so `csv_to_file` writes the
    wrong-shape CSV.
-5. Worker (reports.py:152): `logger.info(f"Задача {item.name} гетова.")` — no failure surfaced.
-6. `app.py:52`: `console.print("[green]✅ Отчёт успешно завершён[/green]")` — success reported.
+5. Worker (reports.py:152): `logger.info(f"Task {item.name} is ready.")` (English at
+   HEAD; `f"Задача {item.name} готова."` at `code_ref d093d9c`) — no failure surfaced.
+6. `app.py:51`: `console.print("[green]✅ Report completed successfully[/green]")` (English at
+   HEAD; `"[green]✅ Отчёт успешно завершён[/green]"` at `code_ref d093d9c`) — success reported.
 
 **Severity grading checked against Phase 17 taxonomy:**
 - Band assigned: CRITICAL ✓
@@ -141,7 +173,6 @@ The symbol exists and is stable at the cited location. Narrowing the `except` an
 The finding correctly records `new test needed: test_pivot_df_frequency_handles_range_intervals`. ✓
 
 ### NUM-002 — confirmed — [HIGH] NaN/None statistic values render as empty CSV cells
-
 **Anchor resolved:** `core/utils.py::csv_to_file` (lines 167-200). The `to_csv` call with
 `decimal=","`/`sep=";"` and no `na_rep` is at lines 188-198. ✓
 

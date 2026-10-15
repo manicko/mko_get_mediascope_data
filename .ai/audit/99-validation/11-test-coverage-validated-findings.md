@@ -15,10 +15,12 @@ validator: "99-validate"
 
 Seven findings (1 CRITICAL, 3 HIGH, 1 MEDIUM, 2 LOW). All seven anchors resolve to
 the cited location, all seven disambiguator tokens exist inside their primary anchors,
-and all seven claims reproduce under the re-execution performed at `d093d9c` (HEAD).
+and all seven claims reproduce under the re-execution performed at `d093d9c` (then-HEAD;
+current HEAD `8ed385f` is a docs-only commit on top of `e8fd1867`, code-identical).
 **7 confirmed, 0 rejected, 0 re-graded, 0 unsettled.**
 
-No finding was downgraded, re-typed, or withdrawn. The green test status (12 passed) and
+No finding was downgraded, re-typed, or withdrawn. The green test status (23 passed at
+HEAD; 12 passed at `code_ref d093d9c`) and
 green ruff ("All checks passed!") are confirmed methodology, never verdicts, and do not
 substantiate the findings they are cited alongside. The sole imprecision found is a
 cross-reference error inside the ID-Conflict Note (phase 09's prefix is `EXT`, not
@@ -28,7 +30,8 @@ verdict.
 ## Scope
 
 **Examined:** `core/reports.py` (`TVMediaReport.create_report`),
-`core/services.py` (module-scope `app_service` singleton + module-scope `dictConfig`),
+`core/services.py` (module-scope `app_service` singleton + module-scope `dictConfig` at
+`code_ref d093d9c`; deferred singleton via `get_app_service()` at HEAD),
 `core/models.py` (enums), `core/network.py` (`NetworkClient.call`), `core/tasks.py`,
 `core/utils.py` (`yaml_to_dict`, `csv_to_file`), `core/paths.py`, `app.py`,
 `__init__.py` (0-byte), `pyproject.toml`
@@ -38,14 +41,14 @@ verdict.
 `.kilo/commands/audit/phases/{11,01}-audit-*.md`, `.ai/audit/templates/audit-findings.md`.
 
 **Runtime probes performed:**
-- `uv run pytest` → `collected 12 items / 12 passed in 19.37s` (matches findings)
+- `uv run pytest` → `collected 23 items / 23 passed in ~20s` (12 passed at `code_ref d093d9c`)
 - `uv run ruff check src tests` → `All checks passed!` (matches findings)
 - `uv run mypy src` → `Found 61 errors in 7 files (checked 14 source files)`; mypy 1.19.1
 - `import pytest_cov` → `ModuleNotFoundError`; `import basedpyright` → `ModuleNotFoundError`
 - `platformdirs.user_config_dir('mko_get_mediascope_data')` → real user dir (re-polluted)
 - FS-pollution re-probe after a fresh `pytest` run: `log.log` size, `settings/` children,
   empty `output/finance/raw_data`
-- `git rev-parse --short HEAD` → `d093d9c`; `git ls-files src` → 36; `git ls-files tests` → 7
+- `git rev-parse --short HEAD` → `8ed385f` (code_ref was `d093d9c`); `git ls-files src` → 36; `git ls-files tests` → 7
 - `Test-Path .github / Makefile / Makefile.ps1 / .pre-commit-config.yaml` → all `False`
 - `Get-ChildItem .git/hooks | ? Name -notmatch '.sample'` → 0 active hooks
 - grep over `tests/` for `mock_network_client`, `tmp_report_dir`, `@pytest.mark.slow`,
@@ -56,6 +59,26 @@ clean-environment run with an uninitialized user config dir (the import-time
 `TypeError` — ENT-003 — is established by phase 01 and its mechanism confirmed here by
 source read of `yaml_to_dict` returning `None`); Jupyter `sys.stdout.reconfigure` on
 `ipykernel.iostream.OutStream` (inferred from the unconditional call site).
+
+## Conformance
+
+**Validated against:** commit `d093d9c` (Phase 11 baseline)
+**HEAD at re-validation:** `8ed385f` (commit `e8fd1867` code-identical to `b04d177`)
+**Survival at HEAD:** 7 confirmed, 0 rejected, 0 re-graded, 0 unsettled. All anchors resolve at HEAD. Mechanism/lines: TST-002 singleton moved from module-scope `services.py:163` to lazy `get_app_service()` at `services.py:191-199`; test `mocker.patch` lines shifted 41-44→43-46 and 47-50→48-52.
+**Correction type:** line-number + count updates — pytest 12→23, git HEAD d093d9c→8ed385f, singleton/singleton line references, test mock line references.
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). All findings re-verified; TST-002's residual pollution pinned to
+`test_run_report_with_real_models` (real `get_app_service()`, line 55) with the
+observed `<user export>/finance/raw_data` side effect; TST-001's mechanism
+confirmed (`TVMediaReport.create_report` mocked at test_services.py:49-52 and
+the mocked `result2table` returns an empty DataFrame at line 35, so no CSV or
+output-file assertion exists). Mapping: TST-001..007 → test gates for every
+work item W-01…W-05 in `.ai/problems/01-delivery-plan.md` (each slice must add
+the behavior test the suite currently lacks: period warnings, worker isolation,
+error-artifact serialisation, region selection, output configuration);
+TST-002 → W-02 slice 1 cannot be verified until the suite is hermetic.
 
 ---
 
@@ -76,8 +99,9 @@ source read of `yaml_to_dict` returning `None`); Jupyter `sys.stdout.reconfigure
 **Anchor resolved:** `core/reports.py::TVMediaReport.create_report` — method at line 164;
 body `self.period = await self.get_period()` (166), `await self.processing_tasks()` (167).
 The disambiguator `await self.processing_tasks()` is at line 167. In `tests/test_services.py`
-the matching `mocker.patch` is at lines 41-50 (NetworkClient.call at 41-44, create_report
-at 47-50); the only assertions are at lines 56-58.
+the matching `mocker.patch` is at lines 43-52 (NetworkClient.call at 43-46, create_report
+at 49-52 at HEAD; 41-44 and 47-50 at `code_ref d093d9c`); the only assertions are at lines
+58-60 (56-58 at `code_ref d093d9c`).
 
 **Claim tested:** `create_report` is the entry to `get_period` → `processing_tasks` →
 `worker` → `send_task`/`wait_task`/`extract_data` → `prepare_data` → `csv_to_file` →
@@ -87,11 +111,12 @@ CSV file existing, a `task_done` accounting, a skip, or a crash.
 
 **Evidence (source — test doubles):**
 ```text
-tests/test_services.py:41-44:
+tests/test_services.py:43-46 (41-44 at code_ref):
     mocker.patch(
         "mko_get_mediascope_data.core.network.NetworkClient.call",
         side_effect=mock_call_side_effect,
     )
+tests/test_services.py:49-52 (47-50 at code_ref):
     mocker.patch(
         "mko_get_mediascope_data.core.reports.TVMediaReport.create_report",
         new_callable=AsyncMock,
@@ -101,7 +126,7 @@ tests/test_services.py:41-44:
 
 **Evidence (assertion surface):**
 ```text
-tests/test_services.py:56-58:
+tests/test_services.py:58-60 (56-58 at code_ref):
     assert len(export_paths) == 1
     assert export_paths[0].name == "raw_data"      # only checks the path string
     assert export_paths[0].parts[-2] == "finance"  # only checks the path string
@@ -162,6 +187,10 @@ src/mko_get_mediascope_data/core/services.py:163: app_service = AppService(app_p
 src/mko_get_mediascope_data/core/services.py:164: log_config = app_service.app_config.logging_settings
 src/mko_get_mediascope_data/core/services.py:166: logging.config.dictConfig(log_config.model_dump())
 ```
+**At HEAD** (commit `706eed0` deferred the singleton): the module-scope singleton no longer exists;
+it lives in `get_app_service()` (`services.py:188-199`): `_app_service: AppService | None = None` (188),
+`def get_app_service()` (191), `AppService(app_paths=APP_PATHS, resolver=PathResolver(...))` (195-198).
+Importing `services.py` no longer instantiates `AppService` or configures logging.
 
 **Rubric grading:** Phase 11 HIGH = "a property the harness depends on that nothing holds
 it to… state carried forward between runs… process-wide state a test shares with
@@ -169,12 +198,34 @@ production code." The singleton is process-wide, `log.log` is appended every run
 `check_done=True` reads stale real output. Matches HIGH (not CRITICAL: the green is
 contaminated rather than affirmatively false). No re-grade.
 
-**Load-bearing artefact:** Code (`core/services.py` module scope) plus the `platformdirs`
-user-config dir (environment). Corroborated by phase 01 ENT-002 (same singleton, same
-import-time side effect) — cross-referenced, not re-filed.
+**Load-bearing artefact:** At `code_ref d093d9c`: code (`core/services.py` module scope)
+plus the `platformdirs` user-config dir (environment). **At HEAD** (commit `706eed0`):
+the module-scope singleton is **removed** — `app_service = AppService(...)` and
+`logging.config.dictConfig(...)` no longer execute at import; they now live inside
+`get_app_service()` (`services.py:188-199`), called lazily. The remaining gap
+(the `log.log` file-append side effect on `get_app_service()` call and non-hermetic
+user dir) is corroborated by phase 01 ENT-002 (same deferred-singleton pattern, same
+user-config dir) — cross-referenced, not re-filed.
 
-**Recommendation carry-out:** Targets `core/services.py` (defer singleton) + `tests/conftest.py`
-(hermetic fixture). Both exist and are stable. ✓
+**Recommendation carry-out:** "Defer singleton into a `get_app_service()` factory" —
+**implemented at HEAD** (services.py:191). The hermetic-fixture target
+(`tests/conftest.py` `tmp_report_dir` fixture) still exists and is stable. ✓
+
+**Conformance note 2026-10-15 (re-verified at HEAD):** the residual pollution
+path is now pinned to one test. At HEAD the import-time singleton is gone, so
+the real-user-dir writes come from
+`tests/test_services.py::test_run_report_with_real_models`, which calls the
+**real** `get_app_service()` (line 55) instead of the isolated
+`local_app_service` fixture defined in the same file (lines 90-99, which builds
+an `AppService` over `tmp_path`). Its `run_report` call resolves the real
+`export_folder` and creates `<user export folder>/finance/raw_data` — observed
+on the dev machine (directory created 2026-10-14 20:36), and the run appends to
+the real `log.log`. Full-suite baseline at HEAD: **23 tests, all passing**
+(`uv run pytest`, 2026-10-15). Fix: route the test through the
+`local_app_service` fixture (or an equivalent `tmp_path`-backed `AppService`),
+so the suite is hermetic again. Mapping: affects every implementor slice in the
+plan (W-01…W-05) — a test that writes into the user config area can mask
+resume logic (`check_done`) and pollute exports during development.
 
 ### TST-003 — confirmed — [HIGH] Doubles replace the network + report-execution boundaries the only end-to-end test purports to cover
 
@@ -184,20 +235,21 @@ line 28. `mock_report_service` is constructed at line 26 (`# Fake MediaVortexTas
 
 **Claim tested:** The doubles inventory removes exactly the boundaries the test claims to
 cover: `NetworkClient.call` (retry/backoff/semaphore pipeline in `core/network.py`) at
-test_services.py:41-44, and `TVMediaReport.create_report` (the entire worker→CSV pipeline)
-at test_services.py:47-50. The real `MediaVortexTask` is never constructed (`get_connection`
-is stubbed at test_services.py:36-39). `tests/test_network.py` observes only the retry-exhaustion
-path (`ConnectTimeout` → `RuntimeError`); the success-return, semaphore, jitter, and
-4xx-immediate-raise paths are never asserted.
+test_services.py:43-46 (41-44 at `code_ref d093d9c`), and `TVMediaReport.create_report` (the
+entire worker→CSV pipeline) at test_services.py:49-52 (47-50 at `code_ref d093d9c`).
+The real `MediaVortexTask` is never constructed (`get_connection` is stubbed at
+test_services.py:38-41, was 36-39 at `code_ref d093d9c`). `tests/test_network.py`
+observes only the retry-exhaustion path (`ConnectTimeout` → `RuntimeError`); the
+success-return, semaphore, jitter, and 4xx-immediate-raise paths are never asserted.
 
 **Evidence (doubles present, real connection absent):**
 ```text
-tests/test_services.py:41-44  -> mocker.patch("...NetworkClient.call", side_effect=...)
-tests/test_services.py:47-50  -> mocker.patch("...TVMediaReport.create_report", new_callable=AsyncMock)
-tests/test_services.py:26      -> mock_report_service = MagicMock()   # # Fake MediaVortexTask
-tests/test_services.py:36-39   -> async def mock_call_side_effect: if func.__name__=="get_connection": return mock_report_service
-tests/test_reports.py:23        -> report.network_client.call = AsyncMock(return_value=dummy_df)
-grep "MediaVortexTask" in tests/ -> 1 match (comment only: test_services.py:25: # Fake MediaVortexTask)
+tests/test_services.py:43-46 (41-44 at code_ref)  -> mocker.patch("...NetworkClient.call", side_effect=...)
+tests/test_services.py:49-52 (47-50 at code_ref)  -> mocker.patch("...TVMediaReport.create_report", new_callable=AsyncMock)
+tests/test_services.py:28 (26 at code_ref)         -> mock_report_service = MagicMock()   # # Fake MediaVortexTask (comment at line 27)
+tests/test_services.py:38-41 (36-39 at code_ref)   -> async def mock_call_side_effect(func, *args, **kwargs): if func.__name__=="get_connection": return mock_report_service
+tests/test_reports.py:23                           -> report.network_client.call = AsyncMock(return_value=dummy_df)
+grep "MediaVortexTask" in tests/ -> 1 match (comment only: test_services.py:27: # Fake MediaVortexTask)
 ```
 
 **Rubric grading:** Phase 11 HIGH = "a gap that will be mistaken for coverage and is silent
@@ -472,26 +524,30 @@ TST-001/TST-003 share the "subject-under-test doubled" root cause and are fixed 
 doubling in `test_services.py`); TST-002 + TST-003 (both flow from the singleton/hermeticity
 rewrite).
 
-**No fix has been applied** — all seven findings remain in the `d093d9c` tree unmodified.
+**No fix has been applied for 6 of 7 findings** — TST-002's singleton has been
+partially remediated at HEAD (commit `706eed0`: module-scope instantiation
+deferred to `get_app_service()`; see the TST-002 load-bearing-artefact note), but
+TST-001/003/004/005/006/007 remain in the current `code_ref: d093d9c` tree unmodified.
+At `code_ref d093d9c`, all seven findings were unmodified.
 
 ## Evidence Index
 
 | Probe | Result | Supports |
 |---|---|---|
-| `uv run pytest` | `collected 12 items / 12 passed in 19.37s` | TST-001 (green despite mocked pipeline), TST-003 (only end-to-end test mocks subject) |
+| `uv run pytest` | `collected 23 items / 23 passed` (12 passed at `code_ref d093d9c`) | TST-001 (green despite mocked pipeline), TST-003 (only end-to-end test mocks subject) |
 | `uv run ruff check src tests` | `All checks passed!` | TST-004 (ruff green but not gate-loaded) |
 | `uv run mypy src` | `Found 61 errors in 7 files (checked 14 source files)`; mypy 1.19.1 | TST-005 (red + 0 test files in scope) |
 | `import pytest_cov` | `ModuleNotFoundError: No module named 'pytest_cov'` | TST-005 (no coverage gate) |
 | `import basedpyright` | `ModuleNotFoundError: No module named 'basedpyright'` | TST-005 (command mis-installed) |
-| `grep create_report\|NetworkClient.call\|get_connection tests/` | matches only in `test_services.py` (41-48) | TST-001, TST-003 (doubling) |
-| `grep MediaVortexTask tests/` | 1 match (comment `test_services.py:25`) | TST-003 (real client never constructed) |
+| `grep create_report\|NetworkClient.call\|get_connection tests/` | matches only in `test_services.py` (43-52 at HEAD; 41-48 at `code_ref d093d9c`) | TST-001, TST-003 (doubling) |
+| `grep MediaVortexTask tests/` | 1 match (comment `test_services.py:27` at HEAD; `:25` at `code_ref d093d9c`) | TST-003 (real client never constructed) |
 | `grep mock_network_client\|tmp_report_dir tests/` | conftest.py:10, conftest.py:24 only | TST-006 (unused fixtures) |
 | `grep @pytest.mark.slow tests/` | no matches (only `@pytest.mark.asyncio`/`@parametrize`) | TST-006 (inert marker) |
-| `grep dummy_df tests/` | conftest.py:17 def + test_services.py:21 local copy | TST-007 (duplicate helper) |
+| `grep dummy_df tests/` | conftest.py:17 def + test_services.py:23 (was `:21` at code_ref) local copy | TST-007 (duplicate helper) |
 | FS re-probe after `pytest` | `log.log` 6691 B (appended); `settings/` children present; `output/finance/raw_data` empty | TST-002 (non-hermetic, real user dir) |
 | `Test-Path .github\|Makefile\|Makefile.ps1\|.pre-commit-config.yaml` | all `False` | TST-004 (no merge gate) |
 | `Get-ChildItem .git/hooks` non-`.sample` | 0 items | TST-004 (0 active hooks) |
-| `git rev-parse --short HEAD` | `d093d9c` | matches `code_ref` (all findings) |
+| `git rev-parse --short HEAD` | `8ed385f` (code_ref was `d093d9c`; drift from remediation) | drift noted |
 | `git ls-files src` / `tests` | 36 / 7 | GATES (all cited paths tracked) |
 | `grep id_prefix .ai/audit/*/findings.md` | ENT, CFG, ASY, PIPE, TPL, EXT, QLT, TST | VAL-001 / namespace integrity |
 

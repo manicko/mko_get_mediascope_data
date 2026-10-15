@@ -55,15 +55,34 @@ error in PIPE-008.
 - REPRO G: `DefaultDataStrategy.prepare` with missing columns → returns `None`, log contains column name but no task name
 - REPRO H: `get_period` with out-of-range `date_filter` → inverted period `(2024-01-01, 1900-02-01)`, no warning
 - grep: `log_error` across `core/` → 7 matches, all assignments, zero reads
-- grep: `print(` across `core/` → 4 active calls (services.py:117,124,154; reports.py:265)
+- grep: `print(` across `core/` → 4 active calls at `code_ref d093d9c`; 0 active at HEAD (5 commented-out: reports.py:58, 102, 257, 290, 333 — commit 606c899)
 - `ruff check` on `core/` and `app.py` → all checks passed
-- `git rev-parse --short HEAD` → `d093d9c` (matches `code_ref`)
+- `git rev-parse --short HEAD` → `8ed385f` (code_ref was `d093d9c`; drift from post-validation remediation, see Conformance)
 - `git ls-files` on all 12 cited paths → all tracked
-- `pytest` → 12 passed; `create_report` mocked in `test_services.py`, report object mocked in `test_reports.py`
+- `pytest` → 23 passed (`create_report` mocked in `test_services.py`, report object mocked in `test_reports.py`)
 
 **Not verified:** Live Mediascope API calls (no credentials); full end-to-end report run
 (`MediaVortexTask` not connected). All 11 findings reproduce via runtime probes with
 mocked `NetworkClient`/`MediaVortexTask`, matching the findings' own methodology.
+
+## Conformance
+
+**Validated against:** commit `d093d9c` (Phase 04 baseline)
+**HEAD at re-validation:** `8ed385f` (commit `e8fd1867` code-identical to `b04d177`)
+**Survival at HEAD:** all 11 findings survive — anchors resolve, disambiguators exist, claims reproduce. Mechanism corrections: `print()` calls replaced with `logger.info()` (commit `606c899`); Russian log text translated to English (commit `b04d177`).
+**Correction type:** runtime-probe + evidence-index updates — `pytest` 12→23, `git rev-parse` d093d9c→8ed385f, `print()` scan 4→0 active (5 commented-out), PIPE-001/008 Russian→English log text.
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). All 11 findings re-verified at HEAD (11/11 via
+`.ai/tmp/doc_probe_reverify_audit.py`); three sections gained precision notes:
+PIPE-005 (inverted period → `iter_period_slices` yields zero intervals → silent
+exit-0 run), PIPE-007 (exception hangs the run before reaching the error path;
+recovery-critical per D-09), PIPE-009 (`log_error` is the hook for the D-08/D-15
+warning-vs-error split). Mapping: PIPE-001/OUT-003 → W-02 slice 2; PIPE-002 →
+D-09/D-17, gap G-02, W-02 slice 1; PIPE-003/004/005 → D-08/D-15, gap G-01, W-02
+slice 3; PIPE-006 → D-17, W-02 slice 4; PIPE-007/008/009 → D-09, W-02 slices 1-2;
+PIPE-011 → D-10, gap G-03.
 
 ---
 
@@ -90,10 +109,10 @@ mocked `NetworkClient`/`MediaVortexTask`, matching the findings' own methodology
 
 **Claim tested:** `csv_to_file` opens output with `mode="x"` (pandas exclusive-create), catches
 `FileExistsError` with `logger.warning` + bare `return`, and raises nothing to the caller.
-`extract_data` (reports.py:325-332) calls `csv_to_file` via `asyncio.to_thread` without inspecting
+`extract_data` (reports.py:325-332 at `code_ref d093d9c`; 295-326 at HEAD) calls `csv_to_file` via `asyncio.to_thread` without inspecting
 the return value and does not set `task.status = False` on a skip. The worker's `else` branch
-(reports.py:151-152) logs `Задача {item.name} готова` ("ready") for any task whose `status` remains `True`.
-
+(reports.py:151-152) logs `Задача {item.name} готова` ("ready") for any task whose `status` remains
+`True`. At HEAD the else-branch log reads `Task {item.name} is ready.` (English, commit `b04d177`).
 **Evidence (runtime probe REPRO C):**
 ```text
 1st write -> files: ['report1.csv.gz']
@@ -246,6 +265,16 @@ matches. No re-grade.
 **Load-bearing artefact:** Code (`core/reports.py::TVMediaReport.get_period`). The inverted period
 feeds PIPE-004's zero-task path — dependency is valid. ✓
 
+**Conformance note 2026-10-15 (re-probed at HEAD):** the downstream path is now
+pinned precisely — `slice_period` delegates to `iter_period_slices`
+(`core/utils.py`), which returns immediately when `overall_start > overall_end`,
+so the inverted period yields **zero intervals**; `processing_tasks` then runs an
+empty queue and `run_report` returns normally with a success message and exit
+code 0 (no warning). Mapping: owner decision D-08 (missing data must warn, never
+interrupt), D-15 (no error file for missing data), gap G-01, work item W-02
+slice 3. The recommendation to raise conflicts with D-08 as written; W-02 slice
+3 specifies "warn and continue" instead.
+
 **Recommendation carry-out:** "Intersect explicitly; raise `NoReportFoundError` when
 `period[0] > period[1]` after clamping." `NoReportFoundError` exists (errors.py:1). Target
 `TVMediaReport.get_period` is stable. ✓
@@ -304,20 +333,27 @@ the missing coverage overlaps the HIGH worker fix." No re-grade.
 still reaches `to_yaml`." Target `MediaReport.worker` exists and is stable. Resolves PIPE-002 as
 well. ✓
 
+**Conformance note 2026-10-15:** owner decision D-09 makes the failed-task
+description critical (a persistent failure must remain diagnosable across
+re-runs), so this finding moves from observability to recovery-critical; it is
+covered by work item W-02 slices 1-2 together with PIPE-002. Note also that in
+the current code the raised exception never even reaches the error path — the
+run hangs first (see the PIPE-002 / ASY-001 note).
+
 ### PIPE-008 — confirmed — [LOW] `KeyError` in strategy logged with column but not task name
 
 **Anchor resolved:** `core/reports.py::DefaultDataStrategy.prepare` — method at line 436. The
 disambiguator `except KeyError as err:` is at line 452.
 
 **Claim tested:** `DefaultDataStrategy.prepare` catches `KeyError` and logs
-`f"Ошибка '{err}' при обработке данных."` at line 453 — `err` carries the column name(s), but
+`f"Error '{err}' while processing data."` at line 453 (English; `f"Ошибка '{err}' при обработке данных."` at `code_ref d093d9c`) — `err` carries the column name(s), but
 `prepare`'s signature `(self, report, df)` has no reference to the `TVTask` being processed, so
 the log message cannot include `task.name`/`task.interval`.
 
 **Evidence (runtime probe REPRO G):**
 ```text
 prepare returned: None
-log record: Ошибка '"None of [Index(['missing_col', 'stat_x'], ...)] are in the [columns]"' при обработке данных.
+log record: Error '"None of [Index(['missing_col', 'stat_x'], ...)] are in the [columns]"' while processing data.
 (column name present in err, but NO task name / interval in message)
 ```
 
@@ -345,6 +381,12 @@ returns exactly these 7 assignment sites and **zero reads**. Consequently, the `
 (reports.py:313-314, `log_error=True`), the `df.empty` branch (reports.py:317-318, `log_error=False`),
 and the `prepare_data is None` branch (reports.py:321-323, `log_error=False`) all behave identically
 downstream: `status=False` → `to_yaml`, no CSV.
+
+**Conformance note 2026-10-15:** this flag is exactly the hook the owner's
+decisions need — D-15 requires "no data" to become a **warning** (no error
+file) while a processing failure must still produce the error file (D-09), so
+`log_error` (or an explicit reason field) becomes observable in work item W-02
+slice 2. Mapping: D-08 / D-15, gap G-01, W-02 slice 2.
 
 **Evidence (grep across core/):**
 ```text
@@ -474,13 +516,14 @@ fully valid and confirmed; only the recommendation's target name is wrong.
 
 | Cross-phase pair | Phase 01 finding | Phase 02 finding | Phase 04 finding | Shared root cause | Disposition |
 |---|---|---|---|---|---|
-| print() in core/ | ENT-005 (MEDIUM) | CFG-010 (LOW) | — (acknowledged, not re-claimed) | `print()` in `core/services.py` (117,124,154) and `core/reports.py` (265) | cross-reference; all confirmed; no conflict |
+| print() in core/ | ENT-005 (MEDIUM) | CFG-010 (LOW) | — (acknowledged, not re-claimed) | `print()` in `core/services.py` (117,124,154) and `core/reports.py` (265) at `code_ref d093d9c`; 0 active at HEAD (logger.info, commit 606c899) | cross-reference; all confirmed at code_ref; print() removed at HEAD |
 | yaml_to_dict None return | ENT-003 (CRITICAL) | CFG-005 (MEDIUM) | — | `core/utils.py::yaml_to_dict` catches errors, returns `None` | cross-reference; both confirmed |
 | last_time field-name drift | — | CFG-001 (HIGH) | PIPE-003 notes it | Templates use `period_type`/`period_num`; model requires `time_unit`/`unit_count` | cross-reference; CFG-001 blocks template-driven path, PIPE-003 reproduces with `date_filter`-only config |
 
 **Phase 1 ownership check:** Phase 04 examines `get_period`, `worker`, `extract_data`,
 `csv_to_file`, `wait_task`, `processing_tasks`, strategies, `to_yaml`, `TVTask` — all data-pipeline
-behaviours. The `print()` calls at `reports.py:265` and `services.py:117,124,154` are correctly
+behaviours. The `print()` calls at `reports.py:265` and `services.py:117,124,154` (at `code_ref d093d9c`)
+were replaced with `logger.info()` at HEAD (commit `606c899`) and are correctly
 **not** re-claimed as PIPE findings (they are owned by ENT-005 / CFG-010). `app.py:52`'s
 `console.print` is Rich-formatted CLI output — allowed by AGENTS.md. No phase claims a concern
 that another phase owns exclusively and reaches an opposite conclusion.
@@ -542,8 +585,8 @@ the `d093d9c` tree. No fix has been applied — all 11 findings remain in the cu
 | grep `log_error` across `core/` | 7 assignments, 0 reads | PIPE-009 |
 | `to_yaml` absolute/relative/None folder | absolute → export folder; relative → CWD/data/output; None → silent no-op | PIPE-010 |
 | `TVRegTaskStrategy.generate` source read | `done_files` + `continue`, no `logger.warning` | PIPE-011 |
-| `print()` AST scan across `core/` | 4 active calls at services.py:117,124,154; reports.py:265 | cross-ref ENT-005, CFG-010 |
+| `print()` AST scan across `core/` | 4 active calls at `code_ref d093d9c`; 0 active at HEAD (5 commented-out — commit 606c899) | cross-ref ENT-005, CFG-010 |
 | `ruff check src/.../core/ src/.../app.py` | all checks passed | methodology (Phase 04 Tools claim) |
-| `git rev-parse --short HEAD` | `d093d9c` | matches `code_ref` |
+| `git rev-parse --short HEAD` | `8ed385f` (code_ref was `d093d9c`; drift from remediation) | drift noted |
 | `git ls-files` on 12 cited paths | all tracked | anchor validity (all 11 findings) |
-| `pytest` full suite | 12 passed | test coverage gap confirmed |
+| `pytest` full suite | 23 passed | test coverage gap confirmed |

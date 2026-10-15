@@ -53,6 +53,23 @@ composition exists for this project). Static control-flow analysis used instead.
 **Not verified:** Runtime behaviour under load or cancellation — no Docker services to start;
 tests mock `create_report` entirely and provide no coverage of the worker pool lifecycle.
 
+## Conformance
+
+**Validated against:** commit `d093d9c` (Phase 03 baseline)
+**HEAD at re-validation:** `8ed385f` (commit `e8fd1867` code-identical to `b04d177`)
+**Survival at HEAD:** 6 confirmed (ASY-001/002/003/005/006/007), 1 not substantiated (ASY-004), 0 rejected, 0 re-graded, 0 unsettled
+**Correction type:** mechanism nuance — ASY-001 confirmed via probe that both `RuntimeError` (retry exhaustion, network.py:126) and `BadRequestError` (400 response, network.py:76) trigger the HANG. Line numbers verified against HEAD.
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). All findings re-verified at HEAD; ASY-001's section gained the
+no-traceback nuance and the three-failure-class split (see the finding).
+Mapping: ASY-001 → D-09 / D-17, gap G-02, work item W-02 (worker exception
+isolation + persistent error artifact); ASY-002 → gap G-02 / W-02 (the direct
+`get_tv_region()` call stays as-is unless the region redesign R-01 touches it);
+ASY-004 → owner decision D-04 (the two-level limits are intentionally
+independent); ASY-005 → D-09 / D-17, work item W-02 slice 4 (poll deadline).
+
 ---
 
 ## Findings
@@ -94,6 +111,21 @@ async def worker(self):
 out of `worker` before line 153, so `task_done()` is never called for that item.
 `processing_tasks` then blocks forever at `await self.task_queue.join()` (line 161).
 
+**Conformance note 2026-10-15 (re-probed against the real `MediaReport.worker`):**
+two additional facts verified at HEAD. (1) The hang prints **no traceback** — the
+worker task object is held only in the local `task_group` list
+(`processing_tasks`, line 159) and is never awaited, so the event loop's
+"Task exception was never retrieved" message never surfaces; the observable
+symptom is a console that stops advancing and a process that never exits.
+(2) Failure classes must be kept distinct: failures **before** the pool
+(validation, missing/malformed templates, connection and availability checks in
+`create_report` → `get_period`, reports.py:164-167) abort the run with a printed
+error and exit code 1 — visible; **logical** failures (`status=False`: no task
+key, empty result, missing columns) write the error YAML and the run continues;
+only **exceptions raised inside a worker** hang silently. Mapping: D-09 (never
+stop an export; failed-task description is critical), D-17 (no fail-fast),
+gap G-02, work item W-02 (slices 1-2).
+
 **Disambiguator:** `task_done` — present at line 153. ✓
 
 **Evidence (source inspection):**
@@ -113,6 +145,23 @@ network.py:88:   except FileNotFoundError as err:  raise
 network.py:113:  except Exception as err:  raise
 network.py:126:  raise RuntimeError("Network retry limit exceeded")
 ```
+
+**Probe-confirmed failure classes (re-validation, HEAD `8ed385f`):** Two distinct exception
+classes propagate out of `worker` before `task_done()` and each independently triggers the
+deadlock:
+
+1. **`RuntimeError`** — raised at `network.py:126` after retry exhaustion (all transient
+   retries consumed). The `except Exception` at `network.py:113` re-raises it unchanged.
+2. **`BadRequestError`** — raised at `network.py:76` by the vendor client's status-code
+   mapper for a 400 response (see `.venv/.../mediascope_api/core/errors.py`); the
+   `except BadRequestError as err: raise` at `network.py:76` propagates it immediately.
+
+Both were directly reproduced: the worker hangs at `queue.join()` (reports.py:161) in
+neither case reaching `task_done()` (reports.py:153). The `RuntimeError` path is the
+retry-exhaustion consequence of ASY-007; the `BadRequestError` path is a non-transient
+client error that is **not** retried (the `RETRIABLE_EXCEPTIONS` set at network.py:24-35
+excludes it). Both are non-recoverable from `worker`'s perspective because no
+`try/finally` wraps the `await` chain.
 
 **Rubric grading:** Phase 03 CRITICAL = "a queue `task_done` that is never called so `join()`
 deadlocks forever, hanging every invocation." The worker has no `try/finally` to guarantee

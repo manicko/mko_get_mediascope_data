@@ -13,15 +13,37 @@ validator: "99-validate"
 
 ## Summary
 
-10 findings (3 HIGH, 4 MEDIUM, 3 LOW). All 10 anchors resolve to a real code
-artifact or YAML token, and all 10 claims reproduce under runtime probe or static
-inspection. **10 confirmed, 0 rejected, 0 re-graded, 0 unsettled.**
+10 findings (2 HIGH, 3 MEDIUM, 4 LOW after re-grade; 3 HIGH, 4 MEDIUM, 3 LOW at
+`code_ref d093d9c`). All 10 anchors resolved at `code_ref d093d9c`; CFG-005's central
+claim no longer reproduces at HEAD and is rejected as falsified, CFG-006 is re-graded
+MEDIUM → LOW and CFG-002 HIGH → MEDIUM (mechanism corrections), CFG-007's
+mechanism/reachability is corrected, and CFG-010 is rejected as falsified at HEAD —
+see the re-validation note. **8 confirmed
+(2 re-graded), 2 rejected (falsified at HEAD), 0 unsettled.**
 
 The phase 02 findings' severity taxonomy is the rubric of record. Each finding's
-blast radius was assessed against the phase's own bands (CRITICAL–LOW). No finding
-was downgraded, re-typed, or withdrawn. Two validation-level findings (VAL-001,
-VAL-002) are recorded separately — a scope-section reference to a non-existent file
-(`core/net.py`) and an anchor that uses a line number instead of a token.
+blast radius was assessed against the phase's own bands (CRITICAL–LOW). The 2026-10-15
+re-validation pass found that post-`code_ref` remediation falsified CFG-005 and
+CFG-010; its mechanism and the mechanisms of CFG-006 and CFG-002 changed, and those
+findings are re-graded accordingly. The originally recorded imprecision paragraphs
+for each finding are superseded. CFG-007's mechanism and reachability are corrected.
+Original finding texts are preserved below as the `code_ref d093d9c` record.
+
+> **Re-validation revision (2026-10-15, HEAD `e8fd1867`; code identical to baseline
+> `b04d177`).** `yaml_to_dict` (`core/utils.py:343-367`) now returns `dict[str, Any]`
+> and raises `FileNotFoundError`/`YAMLError` with logging instead of returning
+> `None`. Consequently CFG-005 is **rejected as falsified at HEAD**; CFG-006 (missing
+> defaults templates) and CFG-002 (malformed `tv_reg/crosstab.yaml`) keep their
+> defects but lose the None-return amplification their original gradings cited, and
+> are re-graded (MEDIUM → LOW and HIGH → MEDIUM respectively) under the phase rubric's
+> present-state rule; CFG-007's mechanism and reachability are corrected (the
+> `Data(statistics=None)` `ValidationError` is real but preempted for `ru` by the
+> `en_to_ru(None)` `TypeError`). A second pass on the same day additionally
+> **rejected CFG-010 as falsified at HEAD**: no active `print()` calls remain in
+> `core/` (commit `606c899` replaced them with `logger.info()`), so the layer
+> discipline the finding cited is restored; the five commented-out `print()` lines
+> in `core/reports.py` (58, 102, 257, 290, 333) are hygiene drift, not violations.
+> Original finding texts are preserved below as the `code_ref d093d9c` record.
 
 ## Scope
 
@@ -36,16 +58,33 @@ report (cross-phase), findings template.
 **Runtime probes performed:**
 - `ReportSettings(**rep)` for all 32 template entries → 2 PASS, 30 FAIL
 - `yaml.safe_load` on `tv_reg/crosstab.yaml` → `ParserError` at line 162
-- `yaml_to_dict('/nonexistent')` → returns `None` (confirmed)
-- `yaml_to_dict('tv_reg/crosstab.yaml')` → returns `None` (YAML error caught)
-- `LoggingSettings(**None)` → `TypeError: argument after ** must be a mapping`
-- `AppService` instantiation with empty user dir → `TypeError` at import (confirmed)
+- `yaml_to_dict('/nonexistent')` → returns `None` (confirmed at `code_ref d093d9c`; raises `FileNotFoundError` at HEAD — CFG-005 rejected)
+- `yaml_to_dict('tv_reg/crosstab.yaml')` → returns `None` (at `code_ref d093d9c`; raises `ParserError` at HEAD)
+- `LoggingSettings(**None)` → `TypeError: argument after ** must be a mapping` (at `code_ref d093d9c`; not reachable at HEAD)
+- `AppService` instantiation with empty user dir → `TypeError` at import (confirmed at `code_ref d093d9c`; at HEAD the deferred singleton means the first `get_app_service()` call raises `FileNotFoundError` — no import-time crash)
 - `Data(statistics=None)` → `ValidationError` (confirmed)
-- `hasattr(defaults, subtype.value)` for all subtypes → 3 return `False`
-- `print()` AST scan across all `core/*.py` → 4 active calls (2 commented)
+- `hasattr(defaults, subtype.value)` for all subtypes → 3 return `False` (at `code_ref d093d9c`; see CFG-007 for HEAD reachability)
+- `print()` AST scan across all `core/*.py` → 4 active calls (2 commented) at `code_ref d093d9c`; 0 active at HEAD (CFG-010 rejected)
 - `pydantic-settings` import search in `src/` → zero matches
 
 **Not verified:** Live API calls (no credentials); log output during a real run.
+
+## Conformance
+
+**Validated against:** commit `d093d9c` (Phase 02 baseline)
+**HEAD at re-validation:** `8ed385f` (commit `e8fd1867` code-identical to `b04d177`)
+**Survival at HEAD:** 8 confirmed (CFG-001/002/003/004/006/007/008/009; CFG-002 and CFG-006 re-graded), 2 rejected as falsified at HEAD (CFG-005, CFG-010), 0 unsettled
+**Correction type:** git-HEAD evidence update — line 634 in Evidence Index cited `git rev-parse --short HEAD → d093d9c`; updated to `8ed385f`.
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). Findings verified again at HEAD; CFG-007's two-path mechanism
+(`en_to_ru(None)` `TypeError` for `data_lang: "ru"` vs `Data(**merged)`
+`ValidationError` for `data_lang: "en"`) was re-probed and matches this report.
+Mapping: CFG-001 → D-06 / D-11 (repair all bundled templates; nothing deleted;
+templates intentionally incomplete) and G-05 / W-01; CFG-003 → D-12 / W-06
+(credential best-practice decision pending); CFG-007 → G-05 / W-01 (template
+repair covers adding the missing subtype blocks).
 
 ---
 
@@ -54,15 +93,15 @@ report (cross-phase), findings template.
 | ID | Disposition | Severity | Band (rubric) vs. Carried | Anchor resolves |
 |---|---|---|---|---|
 | CFG-001 | confirmed | HIGH | HIGH vs. HIGH | yes |
-| CFG-002 | confirmed | HIGH | HIGH vs. HIGH | yes* |
+| CFG-002 | confirmed (re-graded) | MEDIUM | HIGH vs. MEDIUM (re-graded at HEAD) | yes* |
 | CFG-003 | confirmed | HIGH | HIGH vs. HIGH | yes |
 | CFG-004 | confirmed | MEDIUM | MEDIUM vs. MEDIUM | yes |
-| CFG-005 | confirmed | MEDIUM | MEDIUM vs. MEDIUM | yes |
-| CFG-006 | confirmed | MEDIUM | MEDIUM vs. MEDIUM | yes |
+| CFG-005 | rejected (falsified at HEAD) | MEDIUM (at code_ref) | MEDIUM vs. falsified at HEAD | yes |
+| CFG-006 | confirmed (re-graded) | LOW | MEDIUM vs. LOW (re-graded at HEAD) | yes |
 | CFG-007 | confirmed | MEDIUM | MEDIUM vs. MEDIUM | yes |
 | CFG-008 | confirmed | LOW | LOW vs. LOW | yes |
 | CFG-009 | confirmed | LOW | LOW vs. LOW | yes |
-| CFG-010 | confirmed | LOW | LOW vs. LOW | yes |
+| CFG-010 | rejected (falsified at HEAD) | LOW (at code_ref) | LOW vs. falsified at HEAD | yes |
 
 \* CFG-002's anchor `settings/defaults/tv_reg/crosstab.yaml::1` uses a bare line
 number. The token `period_type` or `DATA_DEFAULTS` would be more precise (VAL-002).
@@ -103,33 +142,39 @@ fixing templates alone does not change the schema.
 in all templates; replace stale enum values with `crosstab`/`timeband`/`simple`;
 add `media`/`relative_path`. Targets: all 15 template files. Stable. ✓
 
-### CFG-002 — confirmed — [HIGH] Malformed YAML in `tv_reg/crosstab.yaml`
+### CFG-002 — confirmed (re-graded) — [MEDIUM]
+
+**REJECTED — falsified at HEAD `e8fd1867`.** The anchor `settings/defaults/tv_reg/crosstab.yaml::1`
+no longer exists: the malformed YAML makes `yaml.safe_load` raise `ParserError` at line 162.
 
 **Anchor resolved:** `settings/defaults/tv_reg/crosstab.yaml::1` — file exists,
 line 1 is `{`. (See VAL-002 for anchor-format note.)
 
 **Claim tested:** 13 `{` vs 12 `}` — unbalanced flow mapping. `yaml.safe_load`
 raises `ParserError` at line 162. `yaml_to_dict` catches `YAMLError`, logs it,
-returns `None` implicitly.
+and re-raises, so the `ParserError` surfaces to the caller.
 
 **Evidence (runtime probes):**
 ```text
 brace_count: open=13, close=12, difference=1
 yaml.safe_load error: ParserError — "expected ',' or '}', but got '<stream end>'"
   at line 162, column 2
-yaml_to_dict('tv_reg/crosstab.yaml') → None
+yaml_to_dict('tv_reg/crosstab.yaml') → raises ParserError (logged at utils.py:362-364)
 ```
 
 **Asserted cause tested separately:** The missing `}` is at the end of the file
 (line 162 is the closing `}` of the outer dict, but the inner `DATA_DEFAULTS` dict
 on line 31 is never closed — the `}` on line 31 closes the `'options'` dict, not
-`DATA_DEFAULTS`). `yaml_to_dict` (utils.py:343-360) has no `return` in either
-`except` block → implicit `return None`. Verified against source.
+`DATA_DEFAULTS`). `yaml_to_dict` (utils.py:343-367) logs and re-raises in both
+`except` blocks; no `None` return exists at HEAD. Verified against source.
 
-**Rubric grading:** The malformed template is a "template gap" (LOW), but the
-`yaml_to_dict` silent-None-return is "a production control silently disabled"
-(HIGH). The finding encompasses both: the broken input triggers the silent
-control failure. HIGH is defensible. No re-grade.
+**Rubric grading (re-graded HIGH → MEDIUM at HEAD):** at `code_ref d093d9c` this
+finding was graded HIGH because the `yaml_to_dict` silent `None`-return was
+"a production control silently disabled" (HIGH) and the broken input triggered
+that silent control failure. At HEAD the `ParserError` is raised and logged — the
+silent control no longer exists — so the present-state grade is the unconsumable
+shipped template itself: "ineffective or unconsumed configuration" (MEDIUM). The
+malformed-YAML defect is unchanged and still fails every TV_REG defaults load.
 
 **Load-bearing artefact:** Template file (`settings/defaults/tv_reg/crosstab.yaml`).
 
@@ -213,7 +258,20 @@ matches the rubric. No re-grade.
 exists, raise project-specific error. Target: `AppService.get_connection` at
 services.py:100. Stable. ✓
 
-### CFG-005 — confirmed — [MEDIUM] `yaml_to_dict` returns `None` on error
+### CFG-005 — rejected (falsified at HEAD) — [MEDIUM at code_ref]
+
+**REJECTED — falsified at HEAD `e8fd1867`.** `yaml_to_dict` (`core/utils.py:343-367`)
+returns `dict[str, Any]` (signature line 343; body `return yaml.safe_load(cfg) or {}`
+at line 361) and raises with `logger.error` logging on `yaml.YAMLError` (362-364)
+and `FileNotFoundError` (365-367) — it never returns `None`. The mypy union errors
+cited at `code_ref d093d9c` no longer reproduce (the return type no longer includes
+`None`), and no shipped test asserts the old `None` behaviour. The phase-01 sibling
+ENT-003 is rejected on the same ground. Residual observations (informational, no
+finding filed): exception types outside `YAMLError`/`FileNotFoundError` (e.g.
+`PermissionError`, `UnicodeDecodeError`) propagate uncaught and unlogged, and the
+None-guards in `AppService.app_config` (`core/services.py:40-44`, `48-52`) are now
+unreachable dead code. The claim, probes, and grading below are preserved as the
+`code_ref d093d9c` record.
 
 **Anchor resolved:** `core/utils.py::yaml_to_dict` (line 343-360).
 
@@ -249,15 +307,24 @@ both correct. No re-grade.
 **Recommendation carry-out:** Return `{}` on error or raise typed exception;
 broaden `except` to `OSError`. Targets: `yaml_to_dict` at utils.py:343. Stable. ✓
 
-### CFG-006 — confirmed — [MEDIUM] Missing defaults templates for valid enum combos
+### CFG-006 — confirmed (re-graded) — [LOW]
+
+**Re-graded MEDIUM → LOW at HEAD `e8fd1867` (mechanism corrected).** The missing
+templates remain (verified at HEAD: `TV/simple`, `TV_REG/timeband`, `TV_REG/simple`
+absent). At HEAD a missing file makes `yaml_to_dict` raise a logged `FileNotFoundError`
+(`core/utils.py:365-367`) from `get_default_data_settings` (`core/services.py:93-101`)
+— the `DataDefaults(**None)` → `TypeError` path is unreachable. The None-return
+amplification that justified MEDIUM at `code_ref d093d9c` no longer exists; the
+present-state defect is the placeholder/template gap itself, graded LOW per the
+phase-02 rubric. The text below is the `code_ref d093d9c` record.
 
 **Anchor resolved:** `core/services.py::AppService.get_default_data_settings`
-(line 66-74).
+(services.py:93-101 at HEAD; 66-74 at `code_ref d093d9c`).
 
 **Claim tested:** `get_default_data_settings` builds path
 `defaults/{media}/{type}.yaml`. Missing: `TV/simple`, `TV_REG/timeband`,
-`TV_REG/simple`. Missing file → `yaml_to_dict` returns `None` →
-`DataDefaults(**None)` → `TypeError`.
+`TV_REG/simple`. Missing file → `yaml_to_dict` raises `FileNotFoundError` at HEAD (returned `None` at
+`code_ref d093d9c`) → `get_default_data_settings` fails with that exception.
 
 **Evidence (runtime probe):**
 ```text
@@ -270,11 +337,12 @@ Defaults template matrix:
   TV_REG/simple:   MISSING
 ```
 
-**Asserted cause tested separately:** `get_default_data_settings` (services.py:66)
-constructs the path from `report_settings.media.value.lower()` and
-`report_settings.report_type.value.lower()`. No fallback if the file is absent.
-The path is passed directly to `yaml_to_dict`, which returns `None` for missing
-files. `DataDefaults(**None)` crashes. Verified against source.
+**Asserted cause tested separately:** `get_default_data_settings` (services.py:93-101;
+66-74 at `code_ref d093d9c`) constructs the path from
+`report_settings.media.value.lower()` and `report_settings.report_type.value.lower()`.
+No fallback if the file is absent. The path is passed directly to `yaml_to_dict`,
+which raises `FileNotFoundError` for missing files (it returned `None` at `code_ref
+d093d9c`). Verified against source.
 
 **Rubric grading:** Missing template files are "placeholder and template gaps"
 (LOW), but the yaml_to_dict None-return amplifies the failure to a TypeError.
@@ -286,18 +354,20 @@ and `settings/defaults/` templates.
 
 **Recommendation carry-out:** Ship the 3 missing templates or raise a specific
 error. Targets: `settings/defaults/` directory, `get_default_data_settings` at
-services.py:66. Stable. ✓
+services.py:93-101. Stable. ✓
 
 ### CFG-007 — confirmed — [MEDIUM] 3 ReportSubtype values have no matching defaults key
 
 **Anchor resolved:** `core/services.py::AppService.merge_data_settings`
-(line 77-93).
+(L104-121 at HEAD; 77-93 at `code_ref d093d9c`).
 
 **Claim tested:** `merge_data_settings` does
 `hasattr(defaults, subtype.value)`. `NAT_TV_CHANNELS_ATV`, `NAT_TV_CHANNELS_BA`,
 `NAT_TV_CHANNELS_SOC_DEM` have no key in any defaults template → override skipped
 → `statistics` stays `None` (from `DATA_DEFAULTS`) → `Data(statistics=None)`
-fails (`dict|list` type doesn't allow `None`).
+fails (`dict|list` type doesn't allow `None`). (`statistics: dict[str, Any] | list[Any]`
+at `models.py:127` — `default_factory=list` applies only when the key is absent,
+not when it is explicitly `None`.)
 
 **Evidence (runtime probes):**
 ```text
@@ -312,6 +382,8 @@ hasattr check on tv/crosstab defaults:
 
 Data(statistics=None) → ValidationError: Input should be a valid dict or list
 Data() → statistics=[] (default_factory works when key absent)
+# probe captured at code_ref d093d9c; at HEAD tv/crosstab.yaml and tv_reg/crosstab.yaml
+# do not parse (ParserError L138 / L162), so the probe runs only for TV/timeband.
 ```
 
 **Asserted cause tested separately:** `DATA_DEFAULTS` in templates has
@@ -321,6 +393,14 @@ leaving `statistics=None` in `data_settings`. `Data(**data_settings)` then
 receives `statistics=None`, which violates `dict[str, Any] | list[Any]`.
 Verified against source and runtime.
 
+**Reachability at HEAD:** for `data_lang == "ru"` the earlier
+`en_to_ru(None)` `TypeError` (`core/services.py:117-118`; phase-05 finding
+TPL-003) preempts `Data(**data_settings)`; the `Data(statistics=None)`
+`ValidationError` is reachable only for a non-`ru` report whose subtype has no
+block in a parseable defaults file (`TV/timeband` today, since it has no subtype
+blocks). The missing-subtype-block defect itself is unchanged. MEDIUM carried =
+MEDIUM on the rubric ("ineffective or unconsumed configuration").
+
 **Rubric grading:** "Ineffective or unconsumed configuration" (MEDIUM). Three
 subtype values produce no configuration that reaches the data model. MEDIUM
 matches the rubric. No re-grade.
@@ -329,8 +409,8 @@ matches the rubric. No re-grade.
 and `core/models.py::Data` (statistics type).
 
 **Recommendation carry-out:** Add subtype blocks to defaults, or guard `Data`
-against `None`. Targets: `merge_data_settings` at services.py:77, `Data` model
-at models.py:124. Stable. ✓
+against `None`. Targets: `merge_data_settings` at services.py:104-121 (77-93 at
+`code_ref d093d9c`), `Data` model at models.py:124-128. Stable. ✓
 
 ### CFG-008 — confirmed — [LOW] Non-atomic template copy
 
@@ -386,7 +466,15 @@ looks like a configuration switch. LOW matches. No re-grade.
 **Recommendation carry-out:** Implement `BaseSettings` for env overrides, or
 remove the dependency. Targets: `pyproject.toml`, `core/network.py`. Stable. ✓
 
-### CFG-010 — confirmed — [LOW] `print()` in core modules
+### CFG-010 — rejected (falsified at HEAD) — [LOW at code_ref] `print()` in core modules
+
+**REJECTED — falsified at HEAD `e8fd1867`.** No active `print()` calls remain in
+`src/`: the four call sites (`core/services.py:117/124/154`,
+`core/reports.py:265`) were replaced with `logger.info()` in commit `606c899`, and
+both modules now define a module-level logger. The five commented-out `print()`
+lines in `core/reports.py` (58, 102, 257, 290, 333) are hygiene drift, not
+layer-discipline violations. The claim, AST output, and grading below are
+preserved as the `code_ref d093d9c` record and do not reproduce at HEAD.
 
 **Anchor resolved:** `core/services.py::AppService.run_report` (line 110-160).
 Print calls at services.py:117, 124, 154; reports.py:265.
@@ -488,16 +576,19 @@ not follow the controlled template pattern.
 
 | Cross-phase pair | Phase 01 finding | Phase 02 finding | Shared root cause | Disposition |
 |---|---|---|---|---|
-| yaml_to_dict None return | ENT-003 (CRITICAL) | CFG-005 (MEDIUM) | `utils.py:yaml_to_dict` catches errors, returns `None` instead of raising | cross-reference; both confirmed |
-| print() in core | ENT-005 (MEDIUM) | CFG-010 (LOW) | `print()` calls in `core/services.py` and `core/reports.py` | cross-reference; both confirmed |
+| yaml_to_dict None return | ENT-003 (CRITICAL) | CFG-005 (MEDIUM) | `utils.py:yaml_to_dict` catches errors, returns `None` instead of raising | cross-reference; both rejected at HEAD — `yaml_to_dict` raises (utils.py:343-367) |
+| print() in core | ENT-005 (MEDIUM) | CFG-010 (LOW) | `print()` calls in `core/services.py` and `core/reports.py` | cross-reference; both rejected at HEAD — `print()` replaced with `logger.info()` (commit 606c899) |
 
-**Severity divergence rationale:** Phase 01 (entry-architecture) grades
-`yaml_to_dict` returning `None` as CRITICAL (import-time crash makes the tool
-unusable); Phase 02 (config-secrets) grades it as MEDIUM (ineffective config
-error handling). Phase 01 grades `print()` as MEDIUM (layer-discipline at entry
-layer); Phase 02 grades it as LOW (minor issue in config context). Both are
-correct under their respective taxonomies — these are cross-references, not
-conflicts.
+**Severity divergence rationale:** Phase 01 (entry-architecture) graded
+`yaml_to_dict` returning `None` as CRITICAL (import-time crash made the tool
+unusable) and Phase 02 grades it MEDIUM (ineffective config error handling);
+both gradings were anchored at `code_ref d093d9c`, and at HEAD both findings are
+rejected because `yaml_to_dict` raises. Phase 01 graded `print()` as MEDIUM
+(layer-discipline at entry layer) and Phase 02 as LOW (minor issue in
+config context); both gradings were likewise anchored at `code_ref d093d9c`, and
+at HEAD both findings are rejected because the `print()` calls were replaced
+with `logger.info()` (commit `606c899`). These are
+cross-references, not conflicts.
 
 No findings were filed under a phase that does not own the concern. No two
 phases reach opposite conclusions about the same fact.
@@ -507,7 +598,7 @@ phases reach opposite conclusions about the same fact.
 ## Rollout Safety Assessment
 
 **CFG-002 fix (add missing `}`) must land before CFG-006 can be fully validated
-for TV_REG** — the malformed YAML prevents `yaml_to_dict` from returning a dict,
+for TV_REG** — the malformed YAML makes `yaml_to_dict` raise `ParserError`,
 so the missing `TV_REG/timeband` and `TV_REG/simple` templates cannot be tested
 until the existing `TV_REG/crosstab.yaml` parses.
 
@@ -515,9 +606,10 @@ until the existing `TV_REG/crosstab.yaml` parses.
 templates must use valid field names/enum values before the data-settings merge
 chain (defaults → overlay → validate) can be exercised.
 
-**CFG-005 and CFG-006 share the None-return root cause** — fixing `yaml_to_dict`
-to raise (or return `{}`) addresses both the import-time crash (CFG-005) and
-the missing-defaults-template crash (CFG-006).
+**CFG-005 and CFG-006 shared the None-return root cause** — at HEAD `yaml_to_dict`
+raising is already the implemented behaviour (CFG-005 rejected); CFG-006's remaining
+remedy is shipping the missing templates or raising a specific error from
+`get_default_data_settings` (services.py:93-101).
 
 **CFG-003 rename rollout risk:** Renaming the template from
 `mediascope_RENAME_.json` to `mediascope.json` may invalidate users who
@@ -529,7 +621,8 @@ asserting the post-init credential filename is recommended.
 **CFG-001 + CFG-003 + CFG-005 combined:** The phase 01 validation report
 confirmed that fixing the singleton bootstrap (ENT-002/003) and the
 `pydantic-settings` dependency (CFG-009) would require care in `tests/` —
-`test_services.py:6` imports `app_service` directly at module scope.
+`test_services.py:6` imports `app_service` directly at module scope (resolved at
+HEAD: commit `63bb1c0` migrated the tests to `get_app_service()`).
 
 All 10 recommendations name concrete, stable targets (functions, classes,
 template files, line-level code sites). All fix targets were verified to exist
@@ -544,15 +637,15 @@ in the `d093d9c` tree.
 | `ReportSettings(**rep)` on all 32 template entries | 2 PASS, 30 FAIL | CFG-001 |
 | `yaml.safe_load(tv_reg/crosstab.yaml)` | `ParserError` at line 162 | CFG-002 |
 | Brace count in `tv_reg/crosstab.yaml` | 13 open, 12 close | CFG-002 |
-| `yaml_to_dict('/nonexistent')` | returns `None` | CFG-005 |
-| `yaml_to_dict('tv_reg/crosstab.yaml')` | returns `None` | CFG-002, CFG-005 |
-| `AppService()` with empty user dir | `TypeError: LoggingSettings(**None)` | CFG-005, ENT-003 |
+| `yaml_to_dict('/nonexistent')` | returns `None` at `code_ref d093d9c`; raises `FileNotFoundError` at HEAD | CFG-005 (rejected) |
+| `yaml_to_dict('tv_reg/crosstab.yaml')` | returns `None` at `code_ref d093d9c`; raises `ParserError` at HEAD | CFG-002, CFG-005 |
+| `AppService()` with empty user dir | `TypeError: LoggingSettings(**None)` at `code_ref d093d9c`; deferred singleton at HEAD — first `get_app_service()` raises `FileNotFoundError` | CFG-005, ENT-003 |
 | `Data(statistics=None)` | `ValidationError` | CFG-007 |
 | `hasattr(DataDefaults, 'NAT_TV_CHANNELS_ATV')` | `False` | CFG-007 |
 | Defaults template matrix (6 combos) | 3 exist, 3 missing/malformed | CFG-002, CFG-006 |
-| `print()` AST scan across `core/*.py` | 4 active calls | CFG-010, ENT-005 |
+| `print()` AST scan across `core/*.py` | 4 active calls at `code_ref d093d9c`; 0 active at HEAD (commit 606c899) | CFG-010, ENT-005 |
 | `rg pydantic_settings src/` | no results | CFG-009 |
 | `connection_config` path vs template name | `mediascope.json` vs `mediascope_RENAME_.json` | CFG-003 |
 | `pyproject.toml` line 21 | `pydantic-settings>=2.12.0` | CFG-009 |
 | `__init__.py` size | 0 bytes | ENT-004 |
-| `git rev-parse --short HEAD` | `d093d9c` | matches `code_ref` |
+| `git rev-parse --short HEAD` | `8ed385f` (HEAD at re-validation; `code_ref` was `d093d9c`) | drift noted |

@@ -17,6 +17,29 @@ problems_only: true
 
 All 8 findings in `.ai/audit/09-external-api/findings.md` (code_ref `d093d9c`) are **CONFIRMED** against live source inspection. Runtime probe `uv run pytest tests/test_network.py` → 1 passed in ~20s (matches findings' 19.77s). Four VAL findings recorded for minor citation/precision issues.
 
+## Conformance
+
+**Validated against:** commit `d093d9c` (Phase 09 baseline)
+**HEAD at re-validation:** `8ed385f` (code-identical to baseline `b04d177`)
+**Survival at HEAD:** all 8 findings survive — every anchor resolves, every disambiguator exists, every claim reproduces. Mechanism corrections noted per-finding below (EXT-001 refactors, EXT-003 log text, EXT-005 dead `except HTTPError`, EXT-006 line drift).
+**Correction type:** line-number + mechanism notes — `get_connection` moved from services.py:100-108 to 127-135; `send_task` POST call refactored (builder/sender API); EXT-005 dead `except HTTPError` at network.py:101-111; Russian "готова" → English "is ready" (commit `b04d177`).
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). All 8 findings re-verified at HEAD against the project source AND the
+installed vendor library (`.venv/Lib/site-packages/mediascope_api/`).
+Corrections applied in this review: EXT-004 (the `sleep_time=40` argument binds
+to `NetworkClient.call`'s own parameter — `network.py:63` — and never reaches
+the vendor `get_status(self, tsk)`; effective poll gap ~22–82 s per status
+check); EXT-008 (`get_curl_request` exposure confirmed latent-only; added the
+verified `json-error-<timestamp>.txt` CWD side effect of vendor
+`_req_to_json`); EXT-005 and EXT-008 gained decision mappings.
+Mapping: EXT-001 → D-16 (idempotency is best-effort; duplicates possible);
+EXT-003/004/005 → D-08/D-09/D-17, gap G-02, work item W-02 (retry policy and
+poll deadline); EXT-006 → no dedicated work item (advisory; session churn
+accepted until R-01 reworks the connection layer); EXT-007/008 → D-09, W-02
+slice 2 (diagnostic artefacts).
+
 ## Per-Finding Validation
 
 ### EXT-001 — Non-idempotent task submission can produce duplicate task creation
@@ -34,7 +57,7 @@ All 8 findings in `.ai/audit/09-external-api/findings.md` (code_ref `d093d9c`) a
 **Evidence:**
 - `network.py:24-35`: `RETRIABLE_EXCEPTIONS = (asyncio.TimeoutError, aiohttp.ClientError, ConnectionError, OSError, socket.error)`.
 - `network.py:90-98`: `call` catches, logs, and re-raises; retry loop in `call` (network.py:72-74: `asyncio.to_thread(func, *args, **kwargs)`) re-invokes on those exceptions.
-- `reports.py:263`: `send_task` builds `body` and calls `self._network.call(self.api_client.send_task, body, task=self.task)`.
+- `reports.py:252-263` (at HEAD; `:263` at `code_ref d093d9c`): `send_task` calls `self.network_client.call(self.sender, task_json)` (and `self.network_client.call(self.builder, ...)` at 258-260) — both route through the retried `call`. At `code_ref d093d9c` the call was `self._network.call(self.api_client.send_task, body, task=self.task)`; the refactor changed variable/method names (`_network`→`network_client`, removed `api_client` intermediary) but the POST-through-retried-`call` mechanism is unchanged.
 - vendor `net.py:189-193`: `send_request`/`_send_request` — no `Idempotency-Key` or dedup header set.
 - vendor `tasks.py:944-979`: `_send_task`/`send_task` POSTs without dedup semantics.
 - `tests/test_services.py`: mocks `create_report`; no idempotency test exists.
@@ -74,7 +97,7 @@ All 8 findings in `.ai/audit/09-external-api/findings.md` (code_ref `d093d9c`) a
 
 ---
 
-### EXT-003 — Unhandled terminal statuses (CANCELLED) cause workers to emit "готова" for failed/cancelled tasks
+### EXT-003 — Unhandled terminal statuses (CANCELLED) cause workers to emit "is ready" for failed/cancelled tasks
 <!-- finding_ref: EXT-003 -->
 
 | field | value |
@@ -84,7 +107,7 @@ All 8 findings in `.ai/audit/09-external-api/findings.md` (code_ref `d093d9c`) a
 | anchor | `src/mko_get_mediascope_data/core/reports.py` `wait_task` / `worker` |
 | status | CONFIRMED |
 
-**Claim rederived:** `wait_task` (reports.py:271-293) polls task status and breaks on `("DONE", "FAILED", "CANCELLED")` with no branch handling — it does not set `task.status = False` for FAILED/CANCELLED. Because `task.status` stays `True`, the worker proceeds to `extract_data` and downstream logging emits "готова" (ready/done) even for failed or cancelled tasks. `worker` (reports.py:134-153) calls `task_done()` only on success path via `self._tasks_queue.task_done()`.
+**Claim rederived:** `wait_task` (reports.py:271-293) polls task status and breaks on `("DONE", "FAILED", "CANCELLED")` with no branch handling — it does not set `task.status = False` for FAILED/CANCELLED. Because `task.status` stays `True`, the worker proceeds to `extract_data` and downstream logging emits `Task {item.name} is ready.` (English at HEAD; `готова` at `code_ref d093d9c`) even for failed or cancelled tasks. `worker` (reports.py:134-153) calls `task_done()` only on success path via `self._tasks_queue.task_done()`.
 
 **Evidence:**
 - `reports.py:288-293`:
@@ -93,7 +116,7 @@ All 8 findings in `.ai/audit/09-external-api/findings.md` (code_ref `d093d9c`) a
       break
   ```
   No `else`/branch — `task.status` never flipped to `False` on failure.
-- `reports.py:292-293`: worker logs `"готова"` (ready) regardless of terminal status because `task.status` remains truthy.
+- `reports.py:292-293` (at HEAD): worker logs `Task {item.name} is ready.` (English; `готова` at `code_ref d093d9c`) regardless of terminal status because `task.status` remains truthy.
 - `reports.py:148-153`: `extract_data` called without checking terminal status.
 - `tests/test_reports.py`: does not cover `wait_task` terminal-status branches.
 
@@ -122,6 +145,20 @@ All 8 findings in `.ai/audit/09-external-api/findings.md` (code_ref `d093d9c`) a
 
 **VAL-003 (reclassified):** Findings file cites `1198`s total backoff; recomputed `Σ(uniform(20,80)) + Σ(40·1.2^(a-1))` for default 10-attempt path ≈ 1038s. Arithmetic is imprecise (factor ~0.87x) but band (HIGH quota waste) is unaffected. Reclassified as VAL-003, finding remains CONFIRMED.
 
+**Conformance correction 2026-10-15 (verified against vendor source):** the
+`sleep_time=40` argument never reaches the vendor. `network_client.call(...)`
+declares its own `sleep_time` parameter (`network.py:63`), so the value binds
+there and the vendor method is invoked as `get_status(task.key)` only — the
+vendor signature is `get_status(self, tsk)`
+(`.venv/Lib/site-packages/mediascope_api/mediavortex/tasks.py:1208`), with no
+`sleep_time` parameter at all. Consequence for the effective cadence: each poll
+iteration sleeps `asyncio.sleep(2)` (reports.py:278) plus the `call` pre-call
+smoothing `uniform(40*0.5, 40*2)` = **uniform(20 s, 80 s)**
+(network.py:66-69) → an effective gap of **~22–82 seconds per status poll**,
+plus the same smoothing on the retry path. The anchor line "network.py
+`get_status`" in the findings table is a naming slip: `NetworkClient` has no
+`get_status` method; the smoothing logic lives in `NetworkClient.call`.
+
 **Disambiguator:** Fixed `sleep_time=40` baseline vs. adaptive/early-return-on-terminal-status optimization.
 
 **Verdict:** CONFIRMED (with VAL-003 arithmetic note).
@@ -142,7 +179,8 @@ All 8 findings in `.ai/audit/09-external-api/findings.md` (code_ref `d093d9c`) a
 
 **Evidence:**
 - vendor `net.py:468-482`: `_raise_error` maps status→`MediascopeApiError` subclass (429→`TooManyRequestsError`, 500→`MediascopeApiError`).
-- `network.py:113`: `except Exception: raise` in `call` — does not special-case 429.
+- `network.py:113`: `except Exception: raise` in `call` — does not special-case 429. **`429 → TooManyRequestsError` lands here, bypassing the retry path entirely.**
+- `network.py:101-111`: `except HTTPError as err:` (`HTTPError` imported from `requests.exceptions`) — **dead code**: the vendor client raises `MediascopeApiError` subclasses, never `requests.HTTPError`, so this handler (which would have special-cased 4xx/5xx status codes) never fires. The `status_forcelist=[502,503,504]` at vendor `net.py:74-75` excludes 429, so neither the project layer nor the vendor layer retries 429.
 - vendor `net.py:74-75`: `requests.adapters.HTTPAdapter(max_retries=Retry(total=5, backoff_factor=1, status_forcelist=[502,503,504]))`.
 - `AGENTS.md:52`: "client errors (4xx) raise immediately" — contradicts 429 retryability.
 - `tests/test_network.py`: only `ConnectTimeout`; no 429/502/503/504 classification test.
@@ -165,10 +203,10 @@ All 8 findings in `.ai/audit/09-external-api/findings.md` (code_ref `d093d9c`) a
 | anchor | `src/mko_get_mediascope_data/core/services.py` `get_connection` / vendor `tasks.py` `MediaVortexTask` |
 | status | CONFIRMED |
 
-**Claim rederived:** `get_connection` calls `MediaVortexTask(...)` per report (services.py:100-108). Vendor `MediaVortexTask` is a singleton via `__new__` (tasks.py:30-35) — BUT `__init__` re-runs on every `MediaVortexTask(...)` call, constructing a fresh `MediascopeApiNetwork` → new `Session()` + `HTTPAdapter` each time (vendor net.py:73-82). No `close`/context manager on vendor classes; `MediaReport.__exit__` is a no-op (reports.py:119-120). Sessions accumulate per report.
+**Claim rederived:** `get_connection` calls `MediaVortexTask(...)` per report (services.py:101-107 at `code_ref d093d9c`; **127-135 at HEAD**). Vendor `MediaVortexTask` is a singleton via `__new__` (tasks.py:30-35) — BUT `__init__` re-runs on every `MediaVortexTask(...)` call, constructing a fresh `MediascopeApiNetwork` → new `Session()` + `HTTPAdapter` each time (vendor net.py:73-82). No `close`/context manager on vendor classes; `MediaReport.__exit__` is a no-op (reports.py:119-120). Sessions accumulate per report.
 
 **Evidence:**
-- `services.py:100-108` (actual lines 101-107): `get_connection` → `MediaVortexTask(...)` per report.
+- `services.py:127-135` (at HEAD; `:101-107` at `code_ref d093d9c`): `get_connection` → `MediaVortexTask(...)` per report.
 - vendor `tasks.py:30-35`: `__new__` returns cached instance; `__init__` not guarded by `self._initialized`.
 - vendor `net.py:73-82`: `Session()` + `HTTPAdapter` constructed in `MediascopeApiNetwork.__init__`.
 - `reports.py:119-120`: `__exit__` does not close any network resource.
@@ -231,6 +269,16 @@ All 8 findings in `.ai/audit/09-external-api/findings.md` (code_ref `d093d9c`) a
 
 **Disambiguator:** PII exposure risk = (a) project error-handler logging full args (confirmed active), (b) vendor `get_curl_request` exposure (latent — only if called and logged). Both are real; project layer is the active path.
 
+**Conformance note 2026-10-15 (verified):** (b) is confirmed as latent-only —
+the bearer token is printed inside the explicit debug helper `get_curl_request`
+(vendor `net.py:439-448`), which nothing on the automatic path calls.
+Additionally verified side effect on the vendor boundary: on a JSON decode
+failure `_req_to_json` writes `json-error-<timestamp>.txt` **into the current
+working directory** (vendor `net.py:451-465`) — the only place either side
+materialises request/response content to disk. Mapping: D-09 (the failed-task
+description is the sanctioned diagnostic artefact), W-02 slice 2 (its
+serialisation becomes `yaml.safe_dump`).
+
 **Verdict:** CONFIRMED (with VAL-004 citation note).
 
 ---
@@ -252,7 +300,7 @@ All 8 findings in `.ai/audit/09-external-api/findings.md` (code_ref `d093d9c`) a
 | ASY-002 | EXT-003 | Worker does not propagate cancellation; EXT-003's status-reset bug compounds ASY-002's cancellation gap | amplifies |
 | ASY-005 | EXT-004 | Deadline-aware polling vs. EXT-004's fixed `sleep_time=40` baseline — same `wait_task` path | overlapping |
 | ASY-007 | EXT-001 | Metrics observability — ASY-007's no-metrics gap mirrors EXT-007 at the network layer | analogous |
-| PIPE-002 | EXT-003 | `task.status` truthy-conflation — PIPE-002's extract-after-fail overlaps EXT-003's "готова" for failed tasks | overlapping |
+| PIPE-002 | EXT-003 | `task.status` truthy-conflation — PIPE-002's extract-after-fail overlaps EXT-003's "is ready" (`готова` at `code_ref d093d9c`) for failed tasks | overlapping |
 | PIPE-006 | EXT-003 | Failed-task → `extract_data` path; EXT-003 enables PIPE-006 by not flipping status | root-cause |
 | PIPE-007 | EXT-003 | CANCELLED→extract_data; EXT-003's missing terminal-status branch is prerequisite | dependent |
 | CFG-003 | EXT-006 | `connection_config` path resolution feeds `MediaVortexTask` instantiation — config path affects per-report Session creation rate | supporting |

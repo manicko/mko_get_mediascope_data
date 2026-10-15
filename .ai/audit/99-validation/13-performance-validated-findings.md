@@ -21,8 +21,8 @@ all three substantive claims reproduce under static source analysis of `core/net
 The two runtime probes the report relies on (Semaphore cap = 5 in Appendix A; `result2table`
 materializing 10 000 rows in Appendix E) could not be re-run verbatim in this environment (no
 live Mediascope API, and the probes import the vendored client), but each is **structurally
-confirmed** by source inspection and the backoff-formula recompute. The test run (12 passed)
-matches the reported count.
+confirmed** by source inspection and the backoff-formula recompute. The test run (23 passed at
+HEAD; 12 passed at `code_ref d093d9c`) matches the reported count.
 
 Two supporting-evidence imprecisions are recorded as VAL findings: PERF-003's grep repro
 overstates a match count (claims 1 match for `perf_counter|timeit|elapsed|duration`; the tree
@@ -62,7 +62,31 @@ and Appendix E (result2table materializes 10 000 rows). Both structurally confir
 **Not verified:** live Mediascope API (no credentials); end-to-end `create_report` run (all
 tests mock `create_report` entirely — see Evidence Index).
 
-## Findings
+## Conformance
+
+**Validated against:** commit `d093d9c` (Phase 13 baseline)
+**HEAD at re-validation:** `8ed385f` (commit `e8fd1867` code-identical to `b04d177`)
+**Survival at HEAD:** all 3 findings survive — no per-task clock calls in worker/wait_task/send_task/extract_data (reports.py:134-332); sole per-task signal is `logger.info("=")` at reports.py:265 (was `print("=", end="", flush=True)` at code_ref — same line, function upgraded to logging); report-level timing moved services.py:110→137, :116→143, :153→179.
+**Correction type:** pytest 12→23; git HEAD d093d9c→8ed385f; `print("=")`→`logger.info("=")`; services.py line-number shift; test mock line shift (47-50→49-52); PERF-003 cross-reference to ENT-005 noted as rejected at HEAD.
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). All 3 findings re-verified at HEAD. Scope precision confirmed: the
+semaphore + initial-jitter cost applies to `send_task`'s local `build_task`
+(reports.py:258-260) and `extract_data`'s local `result2table`
+(reports.py:309-311); `csv_to_file` is dispatched via bare
+`asyncio.to_thread` (reports.py:325) and is NOT semaphore-gated, and
+`DefaultDataStrategy.prepare` runs synchronously in the event loop — the
+finding's own text already states this correctly. PERF-002's vendor-side
+mechanism confirmed (`get_result` / `result2table` hold the full `resultBody`
+in memory — `.venv/Lib/site-packages/mediascope_api/mediavortex/tasks.py:1422-1424, 1455-1458`).
+Mapping: PERF-001..003 → advisory; no dedicated work item in
+`.ai/problems/01-delivery-plan.md`. The retry-policy half of the PERF-001
+neighborhood overlaps W-02 slice 4 (poll deadline) and the EXT-005 retry
+classification fix (429/5xx currently un-retried) — coordinate if W-02 grows a
+performance slice; PERF-003's counters overlap EXT-007.
+
+---
 
 | ID | Disposition | Severity | Anchor resolves | Disambiguator exists |
 |---|---|---|---|---|
@@ -195,15 +219,17 @@ merge candidate per Fix Order — co-located in `extract_data`.)
 
 ### PERF-003 — confirmed — [MEDIUM] No per-task latency measurement or attribution
 
-**Block 1 — Claim re-derived.** `AppService.run_report` (services.py:110-160) emits only
-report-level timing via `print`: `start_time = datetime.now()` (line 116), `end_time` (line
-153), and a total (services.py:154-158). `MediaReport.worker` (reports.py:134-153),
-`wait_task` (271-293), `send_task` (252-269), and `extract_data` (295-332) contain **no clock
-calls** — confirmed by reading each method. The sole per-task signal is a bare
-`print("=", end="", flush=True)` at reports.py:265 (no timing context).
+**Block 1 — Claim re-derived.** `AppService.run_report` (services.py:137-186 at HEAD; 110-160
+at `code_ref d093d9c`) emits only report-level timing via `logger`: `start_time = datetime.now()`
+(line 143 at HEAD; 116 at code_ref), `end_time` (line 179; 153), and a total (services.py:180-184; 154-158).
+`MediaReport.worker` (reports.py:134-153), `wait_task` (271-293), `send_task` (252-263), and
+`extract_data` (295-332) contain **no clock calls** — confirmed by reading each method. The sole
+per-task signal is a bare `logger.info("=")` at reports.py:265 (was `print("=", end="", flush=True)`
+at `code_ref d093d9c` — same line, upgraded to the logging layer at HEAD, but still no timing context).
 
 **Block 2 — Support that is only a green control.** The 12-passing tests mock
-`create_report` entirely (tests/test_services.py:47-50) and provide no per-task timing
+`create_report` entirely (tests/test_services.py:49-52 at HEAD; 47-50 at `code_ref
+d093d9c`) and provide no per-task timing
 assertion; `test_network.py` covers only retry exhaustion. No green control substantiates the
 absence of latency instrumentation — the finding rests on direct source inspection.
 
@@ -223,10 +249,12 @@ New test required: `test_worker_emits_per_task_duration` (currently absent). Mus
 
 **Block 6 — Cross-phase.** Cross-referenced EXT-007 (Phase 09, validated: NetworkClient emits
 no metrics), ASY-006 (Phase 03: queue depth non-observable), ENT-005 (Phase 01: `print()`
-discipline). PERF-003 is the per-task *latency* attribution surface — distinct from EXT-007's
-retry-metrics gap. The unbounded poll (PIPE-006 / ASY-005, Phases 04/03) and the `sleep_time=40`
-amplification (EXT-004, Phase 09) are the escalation triggers for "stuck vs slow," owned
-elsewhere. No conflict; no merge.
+discipline — **rejected at HEAD**; `print()` replaced with `logger.info` at commit `606c899`,
+but PERF-003's `logger.info("=")` at reports.py:265 is a different concern: it is the sole
+per-task signal with no timing context, surviving as MEDIUM). PERF-003 is the per-task *latency*
+attribution surface — distinct from EXT-007's retry-metrics gap. The unbounded poll
+(PIPE-006 / ASY-005, Phases 04/03) and the `sleep_time=40` amplification (EXT-004, Phase 09)
+are the escalation triggers for "stuck vs slow," owned elsewhere. No conflict; no merge.
 
 ## Validation-Level Findings (VAL-)
 
@@ -394,7 +422,7 @@ no public API signature changes, no config-schema changes, no output-format chan
 | `call` wraps every invocation in Semaphore + initial jitter before it | network.py:59-124 (lines 66-74) | ✓ static read |
 | `async with self._semaphore` wraps only `to_thread` | network.py:73-74 | ✓ static read |
 | Backoff computed outside Semaphore; not held across backoff | network.py:71-124 | ✓ static read |
-| `send_task` routes local `build_task` through `call` | reports.py:110,258-260 | ✓ static read |
+| `send_task` routes local `build_task` through `call` | reports.py:258-260 (was `:110,258-260` at code_ref) | ✓ static read |
 | `extract_data` routes local `result2table` through `call` | reports.py:309-311 | ✓ static read |
 | `csv_to_file` via bare `to_thread`, no Semaphore | reports.py:325 | ✓ static read |
 | `DefaultDataStrategy.prepare` is `async def`, no `await` | reports.py:436-454 | ✓ static read |
@@ -404,8 +432,8 @@ no public API signature changes, no config-schema changes, no output-format chan
 | Queue `maxsize` bounds count, not bytes | reports.py:115 | ✓ static read |
 | `max_tasks=100` default; not passed by `services.py` | reports.py:92; services.py:138-147 | ✓ static read |
 | No per-task clock calls in `worker`/`wait_task`/`send_task`/`extract_data` | reports.py:134-332 | ✓ static read |
-| Only report-level timing in `run_report` | services.py:116-120,153-158 | ✓ static read |
-| `print("=", end="", flush=True)` is sole per-task signal | reports.py:265 | ✓ static read |
+| Only report-level timing in `run_report` | services.py:143-146,180-184 (was `:116-120,153-158` at code_ref) | ✓ static read |
+| `logger.info("=")` is sole per-task signal (was `print("=", end="", flush=True)`) | reports.py:265 | ✓ static read |
 | `perf_counter|timeit|elapsed|duration` grep in `core/` | 0 matches (not 1) | ✓ grep |
 | Backoff formula recompute (sleep_time=40) | Python probe | ✓ matches Appendix B |
 | Semaphore caps `call()` at 5 | asyncio.Semaphore(5), network.py:51,55 | ✓ structure (probe not re-run) |

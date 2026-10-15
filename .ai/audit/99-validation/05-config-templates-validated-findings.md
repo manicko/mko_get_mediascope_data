@@ -15,22 +15,21 @@ validation_revision: "2026-10-14"
 ## Summary
 
 Six findings (1 CRITICAL, 2 HIGH, 1 MEDIUM, 1 LOW; one further finding, TPL-006, is rejected as a merge-semantics finding and re-typed into TPL-001 as LOW kitId drift). All six primary anchors
-resolve to a real code symbol or YAML token, and all six claims reproduce under
-runtime probe or static inspection. **5 confirmed (one re-graded), 1 rejected as a merge-defect and re-typed into TPL-001, 0 unsettled.**
+resolve to a real code symbol or YAML token, and all claims were tested by runtime probe or static inspection; TPL-006's central claim is rejected (see the re-validation note). **5 confirmed (one re-graded), 1 rejected as a merge-defect and re-typed into TPL-001, 0 unsettled.**
 
 Two cross-phase overlaps with Phase 02 (config-secrets) are noted: TPL-001
 shares a root cause with CFG-001 (same 30/32 failure), and TPL-004/TPL-005
-cascade from the same `yaml_to_dict` None-return defect that CFG-005 identifies.
+cascade from the same `yaml_to_dict` error-path defect that CFG-005 identifies (mechanism stale at HEAD — see Current-Tree Accuracy Addendum).
 Both are cross-references; no Phase 05 finding was downgraded because of a Phase
 02 finding.
 
 Three validation-level findings (VAL-001, VAL-002, VAL-003) are recorded
-separately: a brace-count mismatch in the TPL-004 evidence, an inaccurate
+separately: a block-label mislabel in the TPL-006 kitId evidence (VAL-001, superseded by the 2026-10-14 revision), an inaccurate
 claim about the `tv_yaml_content` conftest fixture using `time_unit`/`unit_count`,
 and a previously-unreported YAML structural defect in `nat_tv_tvreport.yaml` that
 distorts parsed `options` blocks.
 
-> **Re-validation revision (2026-10-14, HEAD `b04d177`).** The project owner
+> **Re-validation revision (2026-10-14, verified against code baseline `b04d177`; the current HEAD `8ed385f` is a docs-only commit on top of it, so every code line reference in this revision remains valid).** The project owner
 > identified an architectural error in the original validation: TPL-006 treated
 > the intended two-layer settings architecture as a merge defect. This revision
 > re-adjudicates TPL-006 and TPL-002 against that architecture — the DEFAULT
@@ -63,7 +62,7 @@ templates, all 3 bundled `settings/defaults/**/*.yaml` files,
 
 **Runtime probes performed:**
 - `ReportSettings(**rep)` for all 32 entries across 16 templates → 2 PASS, 30 FAIL
-- `yaml.safe_load` on `defaults/tv/crosstab.yaml` → OK (5 keys)
+- `yaml.safe_load` on `defaults/tv/crosstab.yaml` → OK (5 keys) at `code_ref d093d9c`; `ParserError` at line 138 at HEAD (see Current-Tree Accuracy Addendum)
 - `yaml.safe_load` on `defaults/tv_reg/crosstab.yaml` → `ParserError` at line 162
 - Brace count: `tv/crosstab.yaml` 13 open / 13 close (balanced); `tv_reg/crosstab.yaml`
   13 open / 12 close (unbalanced, diff=1)
@@ -72,13 +71,14 @@ templates, all 3 bundled `settings/defaults/**/*.yaml` files,
 - `en_to_ru(['researchDate', 'tvCompanyEName'])` → `['researchDate', 'tvCompanyName']`
 - `Data(**merged)` for the one validating template (`nat_tv_brands_tefal.yaml[0]`) →
   15 keys, 3 declared (`options`, `statistics`, `slices`)
-- `options.kitId` in default `DATA_DEFAULTS` and subtype blocks of `tv/crosstab.yaml`
-  → kitId=1 (DYNAMICS_BY_SPOTS), kitId=7 (TOP_NAT_TV_ADVERTISERS), kitId=7 (TOP_NAT_TV_PROGRAMS)
+- `options.kitId` in subtype blocks of `tv/crosstab.yaml` → kitId=1 (DYNAMICS_BY_SPOTS L61,
+  DYNAMICS_BY_SPOTS_DICT L89), kitId=7 (TOP_NAT_TV_PROGRAMS L129); `DATA_DEFAULTS.options`
+  is `Null` (L17) and `TOP_NAT_TV_ADVERTISERS` declares no kitId (duplicate `issueType`
+  at L107-108) — corrected in the 2026-10-14 revision
 - `options.kitId` in templates → kitId=1 (TOP_NAT_TV_PROGRAMS, `nat_tv_tvreport.yaml[1]`,
   from `yaml.safe_load`), kitId=7 (DYNAMICS_BY_SPOTS, `last_category/nat_tv_brands_weekly_reach.yaml[0]`)
-- `ReportSettings.model_dump()` with extra fields → extras (`options`, `company_filter`,
-  `category_name`, `folder`) appear in dump due to `extra='allow'`
-- `pytest` (full suite, 12 tests) → 12 passed
+- `ReportSettings.model_dump()` for the only validating template (`nat_tv_brands_tefal.yaml[0]`) → no extras; `extra='allow'` absorbs template-defined API-parameter keys, which are forwarded into the API JSON by `build_task` (see revised TPL-002)
+- `pytest` (full suite, 23 tests) → 23 passed
 
 **Not verified:** Live Mediascope API calls (no credentials); behavior inside Jupyter
 kernels (no kernel available). `en_to_ru` correct-function probe used a static list,
@@ -86,6 +86,31 @@ not a real Mediascope response.
 
 **Tools:** `uv run python` (runtime probes), `yaml.safe_load` (YAML parsing),
 `rg`/grep tool (source scan), `read` tool (source inspection), `pytest` (test suite).
+
+## Conformance
+
+**Validated against:** commit `d093d9c` (Phase 05 baseline)
+**HEAD at re-validation:** `8ed385f` (docs-only commit on top of `e8fd1867`, which is code-identical to `b04d177`)
+**Survival at HEAD:** 5 confirmed (one re-graded), 1 rejected/re-typed (TPL-006). All anchors resolve; TPL-001/TPL-004/TPL-005 mechanism notes updated at HEAD via the Current-Tree Accuracy Addendum.
+**Correction type:** pytest count 12→23, HEAD `e8fd1867`→`8ed385f`.
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). All findings re-verified at HEAD by probe (2 of 32 bundled entries
+validate; both crosstab DEFAULT templates raise `ParserError`; `tv/simple`,
+`tv_reg/timeband`, `tv_reg/simple` are absent). TPL-003's section already
+carries the two-path mechanism (`en_to_ru(None)` `TypeError` for
+`data_lang: "ru"`; `Data(**merged)` `ValidationError` for `data_lang: "en"`),
+re-probed at HEAD. Added: **DISC-07** — `defaults/tv/crosstab.yaml` parses
+correctly at commit `3408747` and fails from commit `b04d177` (the i18n
+translation commit) onward with `yaml.safe_load` `ParserError` at line 138 (the
+`TOP_NAT_TV_PROGRAMS.slices` sequence is closed with `}` instead of `]`), so
+the TV defaults outage is a regression introduced by that commit, not a
+long-standing defect (probe: `.ai/tmp/doc_probe_git_defaults.py`). Mapping:
+TPL-001/002/004/005 → D-06 / D-11 (repair all bundled templates; nothing
+deleted; templates intentionally incomplete), gap G-05, work item W-01;
+TPL-006 → D-20 (no `kitId` meaning asserted; the owner will supply the current
+API mapping; DISC-11).
 
 ---
 
@@ -115,7 +140,7 @@ reconciliation; see the revised TPL-006 section and Appendix D.
 
 **Anchor resolved (primary):**
 `src/mko_get_mediascope_data/core/services.py::AppService.get_report_settings`
-— line 61: `ReportSettings(**rep)` inside the generator loop.
+— line 88: `ReportSettings(**rep)` inside the generator loop.
 
 **Anchor resolved (secondary):**
 `src/mko_get_mediascope_data/core/models.py::LastTimeModel` —
@@ -196,10 +221,10 @@ Reconcile `kitId` values in `options` blocks against the in-file legend (`defaul
 
 **Claim re-framed:** The original finding claimed that 12 merged keys are
 "consumed nowhere by Pydantic and stored as untyped `Any` extras". The first
-half is inaccurate: all 12 keys (`ad_filter`, `basedemo_filter`, `break_filter`,
+half is inaccurate: all 12 extra keys (`ad_filter`, `basedemo_filter`, `break_filter`,
 `company_filter`, `date_filter`, `daytype_filter`, `frequency_dist_conditions`,
-`location_filter`, `options`, `program_filter`, `slices`, `sortings`,
-`statistics`, `targetdemo_filter`, `weekday_filter`) are **consumed downstream**.
+`location_filter`, `program_filter`, `sortings`, `targetdemo_filter`,
+`weekday_filter`) are **consumed downstream**.
 The merged dict becomes `Data` (`services.py:122-125`), the task strategies
 re-dump it (`reports.py:365`/`386`), it becomes `TVTask.settings` (`tasks.py:19`),
 and `send_task` forwards it as `build_task(report_type, **task.settings)`
@@ -271,7 +296,7 @@ silent `kitId` fallback is recommended after TPL-001 is resolved.
 
 **Anchor resolved (primary):**
 `src/mko_get_mediascope_data/core/services.py::AppService.merge_data_settings`
-— line 90: `data_settings["slices"] = utils.en_to_ru(data_settings["slices"])`.
+— line 118: `data_settings["slices"] = utils.en_to_ru(data_settings["slices"])`.
 
 **Anchor resolved (secondary):**
 `src/mko_get_mediascope_data/core/utils.py::en_to_ru` — `len(slices_en)` on
@@ -362,6 +387,12 @@ yaml.safe_load('defaults/tv_reg/crosstab.yaml') -> ParserError:
 
 yaml_to_dict('defaults/tv_reg/crosstab.yaml') -> None
   (YAMLError caught and logged, implicit return None)
+
+HEAD update (2026-10-15, re-probed): `yaml_to_dict` no longer returns None -
+it raises (commit `706eed0` fixed the mechanism; see Phase 01 ENT-003), so the
+current-tree failure for BOTH files is a raised `ParserError` from
+`get_default_data_settings`, not a silent None. `defaults/tv/crosstab.yaml` also
+fails at HEAD (see DISC-07 below).
 ```
 
 **Asserted cause tested separately:** Brace-depth trace in `tv_reg/crosstab.yaml`:
@@ -377,6 +408,18 @@ yaml_to_dict('defaults/tv_reg/crosstab.yaml') -> None
 
 The sibling `tv/crosstab.yaml` closes `options` at line 26 and `DATA_DEFAULTS`
 at line 19 with a separate `},` — the brace structure is correct there.
+
+**DISC-07 (added 2026-10-15, probe-verified):** that last sentence is stale at
+HEAD. `defaults/tv/crosstab.yaml` parses correctly at commit `3408747` (5 keys:
+`DATA_DEFAULTS`, `DYNAMICS_BY_SPOTS`, `DYNAMICS_BY_SPOTS_DICT`,
+`TOP_NAT_TV_ADVERTISERS`, `TOP_NAT_TV_PROGRAMS`) and breaks from commit
+`b04d177` (the i18n comment-translation commit) onward:
+`yaml.safe_load` raises `ParserError` at line 138, where the
+`TOP_NAT_TV_PROGRAMS.slices` sequence is closed with `}` instead of `]`.
+Consequence at HEAD: **both** crosstab DEFAULT templates are malformed, so even
+a fully valid crosstab report entry cannot run. Probe:
+`.ai/tmp/doc_probe_git_defaults.py`. Mapping: gap G-05, work item W-01
+(template repair).
 
 **Rubric grading:** Phase 05 HIGH = "a defaults-merge that drops a subtype-specific
 override" is not the precise match; the closer rubric entry for HIGH is
@@ -441,10 +484,7 @@ The credential-file naming mismatch
 is a Phase 02 (config-secrets) concern, correctly noted as out of scope here.
 
 **Asserted cause tested separately:** `get_default_data_settings`
-(services.py:66-74) constructs the path and calls `yaml_to_dict` directly.
-`yaml_to_dict` (utils.py:343-348) catches `FileNotFoundError`, logs via
-`logger.error`, and returns `None` — there is no `return {}` fallback.
-`DataDefaults(**None)` raises `TypeError`. Verified against source.
+(services.py:93-101) constructs the path and calls `yaml_to_dict` directly, with no existence check or fallback. At `code_ref d093d9c`, `yaml_to_dict` (utils.py:343-348) caught the error, logged via `logger.error`, and returned `None`, so `DataDefaults(**None)` raised `TypeError`; at HEAD `b04d177` `yaml_to_dict` (utils.py:343-367) raises `FileNotFoundError`/`ParserError` instead — the crash surface moved but the missing-file path is still an opaque error rather than `WrongDataSettings` (mechanism stale at HEAD; see Current-Tree Accuracy Addendum).
 
 **Rubric grading:** Phase 05 MEDIUM = "a missing default file produces a
 usable configuration or a crash" — inverted: the finding is that a missing
@@ -458,10 +498,7 @@ and `core/utils.py::yaml_to_dict`).
 
 **Fix:** In `get_default_data_settings`, check `path.exists()` before calling
 `yaml_to_dict`; if absent, raise `WrongDataSettings` with a clear message naming
-the `(media, report_type)` pair. Alternatively, fix `yaml_to_dict` to return
-`{}` on `FileNotFoundError` (this also addresses CFG-005). Targets:
-`get_default_data_settings` at services.py:66; `yaml_to_dict` at utils.py:343.
-Stable. ✓
+the `(media, report_type)` pair. The `yaml_to_dict` side of this fix is already superseded — at HEAD `b04d177` `yaml_to_dict` raises instead of returning `None` (utils.py:343-367) — so only the existence check remains. Targets: `get_default_data_settings` at services.py:93-101. Stable. ✓
 
 **Verify:** No existing test covers a missing defaults-file path.
 A new test for `get_default_data_settings` with a `TV_REG`/`timeband` combo
@@ -500,7 +537,7 @@ L268, and every `*_filter` L219-238). Implementing a deep merge, or removing
 
 **Real residual (template/default data, not merge):** `kitId` values and
 comments are inconsistent with the in-file legend (`1`=Russia all … `6`=Moscow;
-`7` is undefined.):
+`7` is undefined):
 - `TOP_NAT_TV_PROGRAMS` default kitId=7 (L129, commented "Russia all") is
   stale — `7` is undefined in the legend. `nat_tv_tvreport.yaml[1]` kitId=1
   (L54) is correct; the shallow override correctly selects it.
@@ -559,7 +596,7 @@ Five findings are substantiated by direct evidence. TPL-002 is confirmed but re-
 |---|---|---|---|
 | VAL-001 | LOW | confirmed | TPL-006 evidence mislabels `tv/crosstab.yaml` line 61 as "TOP_NAT_TV_ADVERTISERS block" — it is in `DYNAMICS_BY_SPOTS` |
 | VAL-002 | LOW | confirmed | TPL-001 fix-order claims `tv_yaml_content` conftest fixture uses `time_unit`/`unit_count` — it uses `"last_time": null`; correct keys are in `test_models.py` |
-| VAL-003 | LOW | confirmed | `nat_tv_tvreport.yaml` has an extra `},` (line 35) causing YAML parser to shift `options` from entry [0] into entry [1] — not reported as a TPL finding |
+| VAL-003 | LOW | confirmed | `nat_tv_tvreport.yaml` entry [0] (TOP_NAT_TV_ADVERTISERS) is closed at line 26 without an `options` block while the `options` block at lines 53-61 is parsed as entry [1]'s — not reported as a TPL finding (the original `},`-shift line reference no longer matches at HEAD; the observable state is unchanged) |
 
 ### VAL-001 — [LOW] TPL-006 evidence mislabels `tv/crosstab.yaml` line 61 block
 
@@ -681,7 +718,7 @@ Fixing TPL-003 (guard `en_to_ru` or default `slices` to `[]`) would expose
 the subsequent `Data(statistics=None)` `ValidationError` that CFG-007
 identifies. Both share the root cause: missing subtype defaults blocks.
 
-**Test stability:** `pytest` (12 tests, all passing) must remain green. Key
+**Test stability:** `pytest` (23 tests, all passing) must remain green. Key
 dependencies:
 - `tests/test_models.py::test_report_settings_valid` — uses correct `time_unit`/`unit_count`
   keys, asserts `ReportSettings` construction succeeds. Must stay green.
@@ -698,10 +735,12 @@ remain in the current `code_ref: d093d9c` tree unmodified.
 
 ## Current-Tree Accuracy Addendum (HEAD `b04d177`)
 
-The validated evidence above was pinned to `code_ref: d093d9c`, which is
-absent from the current repository object store (`git cat-file -t d093d9c` →
-not found; `git rev-parse HEAD` → `b04d177`). During the 2026-10-14
-re-validation the following current-tree facts were established. They do not
+The validated evidence above was pinned to `code_ref: d093d9c` (an ancestor of
+the current HEAD `8ed385f`; `git merge-base --is-ancestor d093d9c HEAD` → true).
+Throughout this revision, 'HEAD `b04d177`' denotes the commit at which the
+re-validation probes were executed; the current HEAD `e8fd1867` is a docs-only
+commit on top of `b04d177`, so all code line references remain valid. During the
+2026-10-14 re-validation the following current-tree facts were established. They do not
 change any finding's verdict; they correct the *mechanisms* some findings
 cite:
 
@@ -734,7 +773,7 @@ cite:
 | 2 passing entries: `nat_tv_brands_tefal.yaml[0]`, `[1]` | TPL-001 |
 | `LastTimeModel` `extra="forbid"` rejects `period_type`/`period_num` | TPL-001 |
 | `ReportType` enum values: `crosstab`/`timeband`/`simple` only | TPL-001 |
-| 15 template files lack `media` or `relative_path` (15 entries) | TPL-001 |
+| 22 template entries across the 15 stale files lack `media` or `relative_path` | TPL-001 |
 | `Data.model_fields` → 3 declared; `model_config` `extra="allow"` | TPL-002 |
 | 15 merged keys, 3 declared, 12 extras (runtime probe on tefal merge) | TPL-002 |
 | `rg kitId` in `core/reports.py:189` → `self.data_settings.options.get("kitId", 1)` | TPL-002 |
@@ -762,7 +801,7 @@ cite:
 | `paths.py:59` → `connection_config` returns `connections/mediascope.json` | TPL-005 |
 | Shipped credential file: `settings/connections/mediascope_RENAME_.json` | TPL-005 |
 | `pyproject.toml` test config: `pythonpath=["src"]`, `asyncio-mode=auto` | — |
-| `pytest` (full suite) → 12 passed | test stability |
+| `pytest` (full suite) → 23 passed | test stability |
 | `.kilo/commands/audit/phases/05-audit-config-templates.md` — severity taxonomy | scope |
 | `.ai/audit/99-validation/02-config-secrets-validated-findings.md` — cross-phase | cross-phase |
 
@@ -801,7 +840,7 @@ BLOCK 1: Report templates -> ReportSettings
 ======================================================================
 BLOCK 2: Default data templates -> DataDefaults
 ======================================================================
-  OK   defaults\tv\crosstab.yaml
+  OK   defaults\tv\crosstab.yaml   (at code_ref d093d9c; ParserError at L138 at HEAD — see Appendix C)
   OK   defaults\tv\timeband.yaml
   FAIL defaults\tv_reg\crosstab.yaml: ParserError: while parsing a flow mapping
   in "...defaults\tv_reg\crosstab.yaml", line 1, column 1

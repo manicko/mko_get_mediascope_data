@@ -13,18 +13,33 @@ validator: "99-validate"
 
 ## Summary
 
-Seven findings (3 CRITICAL, 1 HIGH, 2 MEDIUM, 1 LOW). All seven anchors resolve to
-the cited location and all seven claims reproduce under runtime probe or static
-inspection. **7 confirmed, 0 rejected, 0 re-graded, 0 unsettled.**
+Seven findings (3 CRITICAL, 1 HIGH, 2 MEDIUM, 1 LOW at `code_ref d093d9c`). All
+seven anchors resolved to their cited symbols at `code_ref d093d9c`; ENT-001 is
+**fixed at HEAD** (the mechanism was relocated into the `run` command, so the
+code_ref claim no longer reproduces), and five claims
+(ENT-002, ENT-003, ENT-004, ENT-005, ENT-007) are rejected as falsified — see
+the re-validation note. **1 fixed, 1 confirmed, 5
+rejected (falsified at HEAD), 0 re-graded, 0 unsettled.**
 
-No finding was downgraded, re-typed, or withdrawn. The sole imprecision — ENT-003's
-secondary reference to `services.py:40` (the `AppSettings` line) instead of the actual
-crash site `services.py:38` (the `LoggingSettings` line) — does not alter the claim's
-truth: `yaml_to_dict` returns `None` for a missing file and `LoggingSettings(**None)`
-raises `TypeError`.
+The 2026-10-15 re-validation pass found that post-`code_ref` remediation falsified ENT-002 and ENT-003; both are rejected with the current-tree truth recorded. The originally recorded imprecision (ENT-003's secondary `services.py:40` reference) is moot: that mechanism no longer exists.
 
 Two validation-level findings (VAL-001, VAL-002) are recorded in a separate section:
 anchor-format drift and the ENT-003 line-number imprecision.
+
+> **Re-validation revision (2026-10-15, HEAD `e8fd1867`; code identical to baseline
+> `b04d177`).** Post-`code_ref` remediation changed the code this report validated.
+> Two findings no longer reproduce at HEAD and are **rejected as falsified**:
+> ENT-002 — the module-scope `app_service` singleton was replaced by a lazy
+> `get_app_service()` factory (commit `706eed0`; tests migrated in `63bb1c0`), so
+> importing `services.py` no longer instantiates `AppService`, reads no YAML, and
+> opens no log handler; and ENT-003 — `yaml_to_dict` (`core/utils.py:343-367`) now
+> returns `dict[str, Any]` and raises `FileNotFoundError`/`YAMLError` with logging
+> instead of returning `None`, `app_config` (`core/services.py:37-55`) carries
+> explicit None-guards, and the `init` command (app.py:26-32) calls `init_project`
+> directly and never constructs `AppService`. The remaining five findings were not
+> re-examined in that pass; a second re-validation pass (2026-10-15) re-examined
+> them against HEAD and additionally **rejected ENT-001, ENT-004, ENT-005 and
+> ENT-007 as falsified** (see the marked sections). Only ENT-006 remains confirmed.
 
 ## Scope
 
@@ -38,12 +53,12 @@ anchor-format drift and the ENT-003 line-number imprecision.
 
 **Runtime probes performed:**
 - `python -c "..."` before/after `import mko_get_mediascope_data.app` — stdout encoding/line_buffering
-- `from mko_get_mediascope_data import run_report` — ImportError
-- `yaml_to_dict('/nonexistent/...')` — returns `None`
-- `LoggingSettings(**None)` — TypeError reproduced
+- `from mko_get_mediascope_data import run_report` — `ImportError` at `code_ref d093d9c`; importable via PEP 562 at HEAD (ENT-004 rejected)
+- `yaml_to_dict('/nonexistent/...')` — returns `None` at `code_ref d093d9c`; raises `FileNotFoundError` at HEAD (ENT-003 rejected)
+- `LoggingSettings(**None)` — `TypeError` reproduced at `code_ref d093d9c`; not reachable at HEAD
 - Root logger handler inspection before/after import
 - AST scan for `print()` across all `core/` modules
-- AST scan for Cyrillic characters in `app.py` docstrings/commands
+- AST scan for Cyrillic characters in `app.py` docstrings/commands — 45 hits at `code_ref d093d9c`; 0 hits at HEAD (ENT-007 rejected)
 
 **Not verified:** Runtime behavior inside Jupyter/IPython — no kernel available.
 The `ipykernel.iostream.OutStream` `AttributeError` claim (ENT-001) is inferred from
@@ -53,25 +68,56 @@ the unconditional call site; the inference is substantiated (OutStream has no
 **Unsettled claims:** ENT-001's Jupyter `AttributeError` consequence — inferred, not
 observed. All other claims are directly reproduced.
 
+## Conformance
+
+**Validated against:** commit `d093d9c` (Phase 01 baseline)
+**HEAD at re-validation:** `8ed385f` (commit `e8fd1867` code-identical to `b04d177`)
+**Survival at HEAD:** 1 fixed (ENT-001), 1 confirmed (ENT-006), 5 rejected as falsified at HEAD (ENT-002–005, ENT-007), 0 re-graded, 0 unsettled
+**Correction type:** no-op — re-validation notes and corrected Summary are already inline; this block records the conformance verdict for cross-file tooling.
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). Correction applied: ENT-001 re-labelled from "falsified" to
+**fixed at HEAD**, because the mechanism was relocated rather than merely
+absent — `sys.stdout.reconfigure` moved into the `run` command body
+(`src/mko_get_mediascope_data/app.py:45`, commit `706eed0`), so library
+importers are unaffected and the CLI path still sets UTF-8 line-buffered
+stdout. Mapping: ENT-001 → D-05.
+
 ---
 
 ## Findings
 
 | ID      | Disposition  | Severity   | Band (rubric) vs. Carried | Anchor resolves |
 |---------|-------------|------------|--------------------------|-----------------|
-| ENT-001 | confirmed   | CRITICAL   | CRITICAL vs. CRITICAL    | yes             |
-| ENT-002 | confirmed   | CRITICAL   | CRITICAL vs. CRITICAL    | yes             |
-| ENT-003 | confirmed   | CRITICAL   | CRITICAL vs. CRITICAL    | yes*            |
-| ENT-004 | confirmed   | HIGH       | HIGH vs. HIGH            | yes             |
-| ENT-005 | confirmed   | MEDIUM     | MEDIUM vs. MEDIUM        | yes             |
-| ENT-006 | confirmed   | MEDIUM     | MEDIUM vs. MEDIUM        | yes             |
-| ENT-007 | confirmed   | LOW        | LOW vs. LOW              | yes             |
+| ENT-001 | fixed at HEAD (claim falsified at code_ref) | CRITICAL (at code_ref) | CRITICAL vs. fixed at HEAD | yes† |
+| ENT-002 | rejected (falsified at HEAD) | CRITICAL (at code_ref) | CRITICAL vs. falsified at HEAD | yes† |
+| ENT-003 | rejected (falsified at HEAD) | CRITICAL (at code_ref) | CRITICAL vs. falsified at HEAD | yes† |
+| ENT-004 | rejected (falsified at HEAD) | HIGH (at code_ref) | HIGH vs. falsified at HEAD | yes† |
+| ENT-005 | rejected (falsified at HEAD) | MEDIUM (at code_ref) | MEDIUM vs. falsified at HEAD | yes† |
+| ENT-006 | confirmed   | MEDIUM     | MEDIUM vs. MEDIUM    | yes             |
+| ENT-007 | rejected (falsified at HEAD) | LOW (at code_ref) | LOW vs. falsified at HEAD | yes† |
 
-\* ENT-003's primary anchor `utils.py:358` resolves to `except FileNotFoundError as err:`;
-its secondary reference "services.py:40" points to the `AppSettings` line, but the
-actual crash site is `services.py:38` (`LoggingSettings(**None)`). Does not affect disposition.
+\* ENT-001/002/003/004/005/007: anchors resolved at code_ref d093d9c; the claims are
+falsified at HEAD by the remediation commits that followed the validation:
+`706eed0` (deferred singleton via `get_app_service()`; `yaml_to_dict` raises instead
+of returning `None`; `sys.stdout.reconfigure` moved into the `run` command),
+`63bb1c0` (tests migrated to the factory), `934cf9c0` (PEP 562 lazy re-exports in
+`__init__.py`), `606c899` (`print()` replaced with `logger.info()`), and `b04d177`
+(Russian strings translated to English). See the re-validation note and the marked
+sections below. Only ENT-006 remains confirmed.
 
-### ENT-001 — confirmed — [CRITICAL] `sys.stdout.reconfigure()` at module scope
+### ENT-001 — fixed at HEAD — [CRITICAL at code_ref] `sys.stdout.reconfigure()` at module scope
+
+**FIXED AT HEAD `e8fd1867` (the code_ref claim is falsified).** The reconfigure
+call is no longer at
+module scope: it now lives inside the `run` command body (`app.py:45`,
+`sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")`), moved there in
+commit `706eed0`. Importing `app.py` (CLI, console-script, or library) no longer
+reconfigures `sys.stdout` on any import path, and the Jupyter/IPython
+`AttributeError` path (an `OutStream` without `reconfigure`) is unreachable —
+library callers are no longer affected. The claim, probe output, and grading
+below are preserved as the `code_ref d093d9c` record and do not reproduce at HEAD.
 
 **Anchor resolved:** `src/mko_get_medioscope_data/app.py:17` → line 17 is
 `sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")` at module scope
@@ -107,7 +153,18 @@ into the CLI `run` command body is a well-defined target. ✓
 
 ---
 
-### ENT-002 — confirmed — [CRITICAL] Singleton `app_service` bootstraps at import
+### ENT-002 — rejected (falsified at HEAD) — [CRITICAL at code_ref] Singleton `app_service` bootstraps at import
+
+**REJECTED — falsified at HEAD `e8fd1867`.** The anchor `services.py:163 →
+app_service = AppService(...)` no longer exists: the module-scope singleton was
+replaced by a lazy factory (`_app_service: AppService | None = None` plus
+`get_app_service()`, at the tail of `core/services.py` — verified at lines 188-199),
+landed in commit `706eed0` (tests migrated in the same commit). Importing
+`services.py` (transitively via `app.py`, whose line 14 now imports
+`get_app_service`) no longer instantiates `AppService`, performs no YAML I/O, and
+opens no log handler; that work now happens on the first `get_app_service()` call.
+The claim, probe output, and grading below are preserved as the `code_ref d093d9c`
+record and do not reproduce at HEAD.
 
 **Anchor resolved:** `src/mko_get_mediascope_data/core/services.py:163` → line 163:
 `app_service = AppService(app_paths=APP_PATHS, resolver=PathResolver(APP_PATHS.user_dir))`.
@@ -147,7 +204,20 @@ CRITICAL carried = CRITICAL on rubric. No re-grade.
 
 ---
 
-### ENT-003 — confirmed — [CRITICAL] Missing config swallowed as `None` → obscure `TypeError`
+### ENT-003 — rejected (falsified at HEAD) — [CRITICAL at code_ref] Missing config swallowed as `None` → obscure `TypeError`
+
+**REJECTED — falsified at HEAD `e8fd1867`.** `yaml_to_dict` (`core/utils.py:343-367`)
+now returns `dict[str, Any]` — body `return yaml.safe_load(cfg) or {}` (line 361) —
+and raises with `logger.error` logging on `yaml.YAMLError` (362-364) and
+`FileNotFoundError` (365-367); it never returns `None`. `app_config`
+(`core/services.py:37-55`) additionally carries explicit None-guards that raise
+actionable `FileNotFoundError` messages (40-44, 48-52 — unreachable dead code at
+HEAD). With the singleton deferred (commit `706eed0`), a missing config file now
+fails at the first `get_app_service()` call with a logged, typed `FileNotFoundError`
+— not an import-time `TypeError` — and the `init` command (app.py:26-32) calls
+`init_project` directly without constructing `AppService`, so it remains reachable.
+The claim, probes, and grading below are preserved as the `code_ref d093d9c`
+record and do not reproduce at HEAD.
 
 **Anchor resolved (primary):** `src/mko_get_mediascope_data/core/utils.py:358` →
 `except FileNotFoundError as err:` inside `yaml_to_dict`.
@@ -197,7 +267,17 @@ All targets exist and are stable.
 
 ---
 
-### ENT-004 — confirmed — [HIGH] Public API not re-exported from package root
+### ENT-004 — rejected (falsified at HEAD) — [HIGH at code_ref] Public API not re-exported from package root
+
+**REJECTED — falsified at HEAD `e8fd1867`.** `__init__.py` is no longer empty: it
+is 32 lines declaring `__all__` (`run_report`, `run_report_async`,
+`initialize_settings`, `init`, `run`, `list_reports`, `app`) and a PEP 562
+`__getattr__` lazy re-export that imports names from the `app` submodule on first
+access — landed in commit `934cf9c0`. The documented contract
+`from mko_get_mediascope_data import run_report` now works, and importing the
+package does not eagerly execute `app.py`'s module body. The claim, probe output,
+and grading below are preserved as the `code_ref d093d9c` record and do not
+reproduce at HEAD.
 
 **Anchor resolved:** `src/mko_get_mediascope_data/__init__.py` → file is 0 bytes.
 
@@ -232,7 +312,17 @@ PEP 562 `__getattr__` alternative is also valid. ✓
 
 ---
 
-### ENT-005 — confirmed — [MEDIUM] `print()` calls in `core/` bypass the logging layer
+### ENT-005 — rejected (falsified at HEAD) — [MEDIUM at code_ref] `print()` calls in `core/` bypass the logging layer
+
+**REJECTED — falsified at HEAD `e8fd1867`.** No active `print()` calls remain in
+`src/`: the four active call sites (`core/services.py:117/124/154`,
+`core/reports.py:265`) were replaced with the logging layer in commit `606c899`,
+and both modules now define `logger = logging.getLogger(__name__)`. The remaining
+`print(` occurrences in `core/reports.py` (lines 58, 102, 257, 290, 333) are
+commented-out debug lines — hygiene drift, not layer-discipline violations, and
+`app.py`'s `console.print()` (Rich) is the allowed CLI surface. The claim, AST
+output, and grading below are preserved as the `code_ref d093d9c` record and do
+not reproduce at HEAD.
 
 **Anchor resolved:** Four call sites confirmed by AST scan:
 - `core/services.py:117` → `print(f"\n{'-' * 10}  Обработка стартовала:...")`
@@ -315,7 +405,16 @@ target `AppService` class exists and is stable. ✓
 
 ---
 
-### ENT-007 — confirmed — [LOW] Russian docstrings and comments violate English-only standard
+### ENT-007 — rejected (falsified at HEAD) — [LOW at code_ref] Russian docstrings and comments violate English-only standard
+
+**REJECTED — falsified at HEAD `e8fd1867`.** A Cyrillic grep
+(`[А-Яа-яЁё]`) over the whole `src/mko_get_mediascope_data/` tree returns **no
+matches**: the entry-layer docstrings, Typer `help=` strings, and
+`console.print()` messages in `app.py` were translated to English in commit
+`b04d177` (ENT-007), together with the `core/` modules cited below. AGENTS.md
+rule 1 and `doc-maintenance-rules.md` are satisfied at HEAD. The claim, scan
+output, and grading below are preserved as the `code_ref d093d9c` record and do
+not reproduce at HEAD.
 
 **Anchor resolved:** `src/mko_get_medioscope_data/app.py:2` → module docstring:
 `"""mko_get_medioscope_data — основной публичный интерфейс"""`.
@@ -400,7 +499,7 @@ is at lines 37-39, with the `yaml_to_dict` call at line 38. The crash occurs at
 by 2. Since the crash was directly reproduced (`LoggingSettings(**None)` → `TypeError`),
 this is a documentation imprecision, not a finding falsification.
 
-**Disposition:** confirmed. No finding re-grade needed.
+**Disposition:** confirmed. No finding re-grade needed. Superseded at HEAD — `app_config` moved to `core/services.py:37-55` (`LoggingSettings` construction at line 45) and ENT-003's mechanism is rejected; see the re-validation note.
 
 ---
 
@@ -408,24 +507,25 @@ this is a documentation imprecision, not a finding falsification.
 
 | Cross-phase pair | Phase 01 finding | Phase 02 finding | Shared root cause | Disposition |
 |---|---|---|---|---|
-| yaml_to_dict None return | ENT-003 (CRITICAL) | CFG-005 (MEDIUM) | `utils.py:yaml_to_dict` catches `FileNotFoundError`, falls through to `return None` | both confirmed; same root cause |
-| print() in core/ | ENT-005 (MEDIUM) | CFG-010 (LOW) | `print()` calls in `core/services.py` and `core/reports.py` bypass logging | both confirmed; same root cause |
+| yaml_to_dict None return | ENT-003 (CRITICAL) | CFG-005 (MEDIUM) | `utils.py:yaml_to_dict` catches `FileNotFoundError`, falls through to `return None` | cross-reference; both rejected at HEAD — `yaml_to_dict` raises (utils.py:343-367) |
+| print() in core/ | ENT-005 (MEDIUM) | CFG-010 (LOW) | `print()` calls in `core/services.py` and `core/reports.py` bypass logging | cross-reference; both rejected at HEAD — `print()` replaced with `logger.info()` (commit 606c899) |
 
 **Severity divergence rationale:** The two phases use different rubrics. Phase 01
-(entry-architecture) grades `print()` as MEDIUM (layer-discipline violation at
-entry layer); Phase 02 (config-secrets) grades it as LOW (minor issue in config
-context). Both are correct under their respective taxonomies. These are
-**cross-references**, not conflicts — neither phase reaches an opposite conclusion
+(entry-architecture) graded `print()` as MEDIUM (layer-discipline at entry layer)
+and Phase 02 (config-secrets) as LOW (minor issue in config context); both gradings
+were anchored at `code_ref d093d9c`, and at HEAD both findings are rejected because
+the `print()` calls were replaced with `logger.info()` (commit `606c899`). These
+are **cross-references**, not conflicts — neither phase reaches an opposite conclusion
 about the same fact.
 
 No cross-phase conflicts detected. No finding was withdrawn, downgraded, or re-graded
-due to cross-phase interaction.
+due to cross-phase interaction; the ENT-003/CFG-005 pair is jointly rejected at HEAD by the `yaml_to_dict` remediation.
 
 ---
 
 ## Rollout Safety Assessment
 
-**Risk: Moving singleton out of module scope (ENT-002/003/004 fixes)**
+**Post-validation remediation applied at HEAD:** the singleton was moved out of module scope (commit `706eed0`, which deferred the singleton via `get_app_service()` and made `yaml_to_dict` raise instead of returning `None`) and tests were migrated to the factory in commit `63bb1c0`. The same remediation sweep also moved `sys.stdout.reconfigure` into the `run` command (commit `706eed0`, ENT-001), added PEP 562 lazy re-exports to `__init__.py` (commit `934cf9c0`, ENT-004), replaced the `print()` calls in `core/` with `logger.info()` (commit `606c899`, ENT-005/CFG-010), and translated all Russian strings to English (commit `b04d177`, ENT-007). The risks, dependencies, and the closing statement below are preserved as the `code_ref d093d9c` record.
 - `tests/test_services.py:6` imports `from mko_get_mediascope_data.core.services import app_service`
   directly and calls `app_service.run_report(test_yaml)` at line 53.
 - `tests/test_app.py:3` imports `from mko_get_mediascope_data.app import app`, which
@@ -453,8 +553,7 @@ due to cross-phase interaction.
 - ENT-004's re-export should use `__getattr__` to avoid triggering ENT-002's
   import-time side effects.
 
-**Rollout risk: none of the fixes have been applied.** All seven findings remain
-in the current `code_ref: d093d9c` tree unmodified.
+**Rollout risk (as of `code_ref: d093d9c`): none of the fixes had been applied.** At HEAD the ENT-002/ENT-003 fixes are applied (commit `706eed0` deferred the singleton and made `yaml_to_dict` raise); the finding texts above remain the validation-time record.
 
 ---
 
@@ -462,16 +561,16 @@ in the current `code_ref: d093d9c` tree unmodified.
 
 | Evidence | Supports |
 |---|---|
-| Runtime probe: stdout encoding cp1252→utf-8, line_buffering False→True on import | ENT-001 |
-| Runtime probe: root logger gains `RotatingFileHandler` on `log.log` at import | ENT-002 |
-| Runtime probe: `yaml_to_dict('/nonexistent')` → `None` | ENT-003 |
-| Runtime probe: `LoggingSettings(**None)` → `TypeError` | ENT-003 |
-| Runtime probe: `from mko_get_mediascope_data import run_report` → `ImportError` | ENT-004 |
-| Runtime probe: `__init__.py` is 0 bytes | ENT-004 |
-| AST scan: four `print()` calls in `core/services.py` and `core/reports.py` | ENT-005 |
+| Runtime probe: stdout encoding cp1252→utf-8, line_buffering False→True on import (at `code_ref d093d9c`; reconfigure moved into the `run` command at HEAD) | ENT-001 |
+| Runtime probe: root logger gains `RotatingFileHandler` on `log.log` at import (at `code_ref d093d9c`; deferred at HEAD — first `get_app_service()` call) | ENT-002 |
+| Runtime probe: `yaml_to_dict('/nonexistent')` → `None` (at `code_ref d093d9c`; raises `FileNotFoundError` at HEAD) | ENT-003 |
+| Runtime probe: `LoggingSettings(**None)` → `TypeError` (at `code_ref d093d9c`; not reachable at HEAD) | ENT-003 |
+| Runtime probe: `from mko_get_mediascope_data import run_report` → `ImportError` (at `code_ref d093d9c`; importable via PEP 562 at HEAD) | ENT-004 |
+| Runtime probe: `__init__.py` is 0 bytes (at `code_ref d093d9c`; 32-line lazy re-export at HEAD) | ENT-004 |
+| AST scan: four `print()` calls in `core/services.py` and `core/reports.py` (at `code_ref d093d9c`; 0 active at HEAD — commit 606c899) | ENT-005 |
 | Source inspection: `@cached_property` on `app_config`, first accessed in `__init__` | ENT-006 |
-| AST scan: Cyrillic in `app.py` module docstring and all command docstrings | ENT-007 |
+| AST scan: Cyrillic in `app.py` module docstring and all command docstrings (at `code_ref d093d9c`; no Cyrillic in `src/` at HEAD — commit b04d177) | ENT-007 |
 | `pyproject.toml:44`: console-script entry point `mko_get_mediascope_data.app:app` | ENT-001, ENT-002 |
-| `app.py:14`: `from .core.services import app_service` at module scope | ENT-002, ENT-003 |
+| `app.py:14`: `from .core.services import app_service` at module scope (code_ref; HEAD imports the `get_app_service` factory) | ENT-002, ENT-003 |
 | `doc-maintenance-rules.md:101`: logging mandate for `core/` | ENT-005 |
 | `AGENTS.md` rule 1: English Only mandate | ENT-007 |

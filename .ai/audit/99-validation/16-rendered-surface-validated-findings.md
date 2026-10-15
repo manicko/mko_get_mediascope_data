@@ -53,6 +53,27 @@ here; the source claim is independently verifiable by static read.
 
 ---
 
+## Conformance
+
+**Validated against:** Phase 16 baseline; **HEAD at review:** `8ed385f`
+(code-identical to `b04d177`).
+
+**Conformance review 2026-10-15** — reviewed against the code at HEAD and the
+owner decision register (D-05: the audit is a lead source, not a source of
+truth). All 6 findings re-verified at HEAD; OUT-001 and OUT-003 were
+**re-probed** rather than read (`.ai/tmp/doc_probe_reverify_audit.py`): the
+error YAML written for a failed task contains `!!python/tuple` and
+`yaml.safe_load` raises `ConstructorError`; the duplicate-write path returns
+`None` and raises nothing (one file remains on disk). OUT-003's HIGH re-grade
+is therefore corroborated by execution, not only by inspection. Mapping:
+OUT-001 → D-09 (the failed-task description is critical and must be
+machine-readable) and W-02 slice 2 (`yaml.safe_dump`); OUT-002 → D-13 / W-04
+(platform-dependent line endings become configurable); OUT-003 → D-09 / D-17,
+W-02 slice 1; OUT-004 → D-13 / W-04 (declared output contract); OUT-005 →
+D-09 (add `interval` to the error artefact); OUT-006 → W-02 slice 2.
+
+---
+
 ## Findings
 
 | ID | Disposition | Severity | Band (rubric) vs. Carried | Anchor resolves |
