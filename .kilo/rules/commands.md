@@ -32,7 +32,7 @@ Use `.\Makefile.ps1` in PowerShell 7+:
 | Lint | `uv run ruff check <path>` |
 | Auto-fix (incl. import sorting, I001) | `uv run ruff check --fix <path>` |
 | Lint templates | `.\Makefile.ps1 lint-templates` (or `$env:PYTHONPATH='src/backend'; uv run djlint src/backend/templates/`) |
-| Typecheck | `uv run basedpyright <path>` |
+| Typecheck | `uv run mypy <path>` |
 | Add dep | `uv add <pkg>` / `uv add --dev <pkg>` |
 
 > `ruff check --fix` handles import sorting (I001). `ruff format` only reformats (line wraps, quotes) and does **NOT** sort imports — `.\Makefile.ps1 format` runs `ruff check --fix src/`, not `ruff format`.

@@ -9,7 +9,7 @@ from mko_get_mediascope_data.core.network import NetworkClient
 @pytest.fixture
 def mock_network_client():
     client = NetworkClient(max_attempts=2, sleep_time=0)
-    client.call = AsyncMock()
+    client.call = AsyncMock()  # type: ignore[method-assign]
     return client
 
 

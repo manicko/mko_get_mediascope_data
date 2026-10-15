@@ -21,7 +21,7 @@ def test_report_settings_valid():
         "relative_path": "tv/test",
         "period": {"last_time": {"unit_count": 1, "time_unit": "m"}},
     }
-    settings = ReportSettings(**data)
+    settings = ReportSettings.model_validate(data)
     assert settings.media == MediaType.TV
     assert settings.report_type == ReportType.crosstab
 
@@ -30,7 +30,8 @@ def test_period_model_validation():
     with pytest.raises(ValidationError):
         PeriodModel()  # neither date_filter nor last_time
 
-    valid = PeriodModel(last_time=LastTimeModel(**{"unit_count": 4, "time_unit": "m"}))
+    valid = PeriodModel(last_time=LastTimeModel.model_validate({"unit_count": 4, "time_unit": "m"}))
+    assert valid.last_time is not None
     assert valid.last_time.unit_count == 4
 
 
@@ -46,9 +47,9 @@ def test_merge_data_settings_en_does_not_translate(mocker):
     report_settings = ReportSettings(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         data_lang="en",
-        period={"last_time": {"unit_count": 1, "time_unit": "m"}},
+        period={"last_time": {"unit_count": 1, "time_unit": "m"}},  # type: ignore[arg-type]
     )
 
     result = AppService.merge_data_settings(defaults, report_settings)

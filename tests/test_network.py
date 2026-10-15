@@ -1,5 +1,5 @@
 import pytest
-from requests.exceptions import ConnectTimeout
+from requests.exceptions import ConnectTimeout  # type: ignore[import-untyped]
 
 from mko_get_mediascope_data.core.network import NetworkClient
 
