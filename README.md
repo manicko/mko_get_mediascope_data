@@ -93,5 +93,27 @@ run_report("settings/reports/nat_tv_brands_last.yaml")
 - Recommended: [uv](https://docs.astral.sh/uv/) package manager
 
 ## 📖 Documentation
+
+Project documentation (start here):
+
+| Document | Read it if you want to know… |
+|---|---|
+| [Product Overview](docs/00-overview/product-overview.md) | what the tool is for, who uses it, and how it is expected to behave |
+| [Current Behavior](docs/00-overview/current-behavior.md) | exactly what the CLI and library do today — inputs, outputs, errors (verified against the code) |
+| [Data Flow](docs/00-overview/data-flow-architecture.md) | how settings, period, and API data move and are transformed |
+| [System Architecture](docs/00-overview/system-architecture.md) | components, call direction, diagrams, and trade-offs |
+| [Open Questions](docs/00-overview/open-questions.md) | open product questions, decisions, and known defects |
+| [Settings Layers](docs/00-overview/settings-layers-architecture.md) | the DEFAULT/CLIENT settings merge in depth |
+| [Async & Concurrency](docs/00-overview/async-concurrency-architecture.md) | the two-level concurrency model in depth |
+
+Note: the verified CLI command surface (`list-reports` with a hyphen; no
+`--no-verbose` flag) and the current validation status of the bundled report
+templates are documented in
+[Current Behavior](docs/00-overview/current-behavior.md). Where the examples in
+this README differ from the verified behavior, the Current Behavior document is
+authoritative.
+
+External:
 - Official Mediascope API: [mediascope-api-lib](https://github.com/MEDIASCOPE-JSC/mediascope-api-lib)
+- Doc maintenance rules: [docs/00-overview/doc-maintenance-rules.md](docs/00-overview/doc-maintenance-rules.md)
 

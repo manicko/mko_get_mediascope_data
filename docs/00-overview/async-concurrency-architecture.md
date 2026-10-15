@@ -8,6 +8,12 @@ tags:
   - pipeline
 related:
   - doc-maintenance-rules
+  - settings-layers-architecture
+  - product-overview
+  - current-behavior
+  - data-flow-architecture
+  - system-architecture
+  - open-questions
 ---
 
 ## Purpose
