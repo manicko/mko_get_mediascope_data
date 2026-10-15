@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from mediascope_api.core.errors import AuthorizationError, BadRequestError
-from requests.exceptions import ConnectTimeout  # type: ignore[import-untyped]
+from requests.exceptions import ConnectTimeout
 
 from mko_get_mediascope_data.core.network import NetworkClient
 
