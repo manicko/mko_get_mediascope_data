@@ -8,8 +8,9 @@ from mko_get_mediascope_data.core.paths import AppPaths, PathResolver
 from mko_get_mediascope_data.core.services import AppService, get_app_service
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
-async def test_run_report_with_real_models(tmp_path, mocker, tv_yaml_content):
+async def test_run_report_with_real_models(tmp_path, mocker, tv_yaml_content, dummy_df):
     """Test uses real ReportSettings + DataDefaults.
         Mocks only the network and report creation — everything else works as in production.
     """
@@ -20,9 +21,7 @@ async def test_run_report_with_real_models(tmp_path, mocker, tv_yaml_content):
     test_yaml.write_text(tv_yaml_content, encoding="utf-8")
 
     # ==================== 2. Mock only the network ====================
-    dummy_df = pd.DataFrame(
-        {"id": ["1"], "periodFrom": ["2025-01-01"], "periodTo": ["2025-12-31"]}
-    )
+    # dummy_df is provided by the conftest fixture
 
     # Fake MediaVortexTask
     mock_report_service = MagicMock()

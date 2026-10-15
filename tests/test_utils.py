@@ -32,3 +32,18 @@ def test_csv_to_file(tmp_path):
 def test_get_files_suffix():
     assert get_files_suffix({"method": "gzip"}) == ".csv.gz"
     assert get_files_suffix(None) == ".csv"
+
+
+def test_csv_to_file_writes_to_report_dir(tmp_report_dir):
+    """Verify csv_to_file writes a compressed CSV into the report directory."""
+    df = pd.DataFrame({"col": [1, 2]})
+    csv_to_file(
+        df,
+        tmp_report_dir,
+        file_prefix="report",
+        add_time=False,
+        compression={"method": "gzip"},
+    )
+    files = list(tmp_report_dir.glob("*.csv.gz"))
+    assert len(files) == 1
+    assert files[0].parent == tmp_report_dir
