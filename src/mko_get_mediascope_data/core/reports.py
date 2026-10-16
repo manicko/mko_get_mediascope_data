@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from datetime import date
 from os import PathLike
+from typing import Any
 
 from mediascope_api.mediavortex.tasks import MediaVortexTask
 from pandas import DataFrame
@@ -52,8 +54,8 @@ class Report:
         self,
         report_settings: ReportSettings,
         data_settings: Data,
-        export_path: PathLike,
-        check_done: bool = True,
+        export_path: PathLike[str],
+        check_done: bool | None = True,
     ):
         # print('init Report')
 
@@ -67,7 +69,7 @@ class Report:
         self.type: ReportType = self.report_settings.report_type
         self.subtype: ReportSubtype = self.report_settings.report_subtype
 
-        self.done_files = {}
+        self.done_files: dict[str, Any] = {}
         self.check_done = check_done
         if check_done:
             self.done_files = self.get_done_files()
@@ -83,21 +85,19 @@ class Report:
 class MediaReport(Report):
     def __init__(
         self,
-        *args,
         report_settings: ReportSettings,
         data_settings: Data,
-        export_path: PathLike,
+        export_path: PathLike[str],
         report_service: MediaVortexTask,
         network_client: NetworkClient,
         max_tasks: int = 100,
-        **kwargs,
+        check_done: bool | None = True,
     ):
         super().__init__(
-            *args,
             report_settings=report_settings,
             data_settings=data_settings,
             export_path=export_path,
-            **kwargs,
+            check_done=check_done,
         )
         # print('init MediaReport')
         # helps to override Mediascope API connection errors limit in case of bad network
@@ -112,61 +112,96 @@ class MediaReport(Report):
 
         # limits maximum tasks sent to Mediascope API
         self.max_tasks = max_tasks
-        self.task_queue = asyncio.Queue(maxsize=self.max_tasks)
+        self.task_queue: asyncio.Queue[TVTask] = asyncio.Queue(maxsize=self.max_tasks)
 
         self.period: list[tuple[str, str]] | list[tuple[date, date]] | None = None
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    async def generate_tasks(self):
-        yield None
+    async def generate_tasks(self) -> AsyncGenerator[TVTask, None]:
+        """Generate tasks. Must be an async generator."""
+        return
+        yield
 
-    async def send_task(self, task):
+    async def send_task(self, task: TVTask) -> None:
         pass
 
-    async def wait_task(self, task):
+    async def wait_task(self, task: TVTask) -> None:
         pass
 
-    async def extract_data(self, task):
+    async def extract_data(self, task: TVTask) -> None:
         pass
 
-    async def worker(self):
-        """managing task queue sequence:
-        sends task request to the base
-        waits for response
-        extracts data or task settings in case of error
-        marks task as done
+    async def _process_item(self, item: TVTask) -> None:
+        """Execute the per-item pipeline: send, wait, extract.
+
+        Extracted from ``worker`` so the caller can wrap it with
+        ``asyncio.wait_for`` and isolate per-task failures.
+        """
+        await self.send_task(item)
+        if item.status is True:
+            await self.wait_task(item)
+        if item.status is True:
+            await self.extract_data(item)
+
+    async def worker(self, timeout: float | None = None) -> None:
+        """Manage task queue sequence: send, wait, extract, mark done.
+
+        Wraps each item in ``_process_item`` with ``asyncio.wait_for`` when
+        *timeout* is set, and isolates per-item failures via try/except/finally
+        so ``task_done()`` is always called (prevents ``queue.join()`` hang).
         """
         while True:
             item = await self.task_queue.get()
-            await self.send_task(item)
-            if item.status is True:
-                await self.wait_task(item)
-            if item.status is True:
-                await self.extract_data(item)
-            if item.status is False:
-                logger.warning(f"Calculation: '{item.name}' will be skipped.")
+            try:
+                coro = self._process_item(item)
+                if timeout is not None:
+                    await asyncio.wait_for(coro, timeout=timeout)
+                else:
+                    await coro
+                if item.status is False:
+                    logger.warning(f"Calculation: '{item.name}' will be skipped.")
+                    await asyncio.to_thread(item.to_yaml, self.export_path)
+                else:
+                    logger.info(f"Task {item.name} is ready.")
+            except TimeoutError:
+                logger.error(
+                    f"Task '{item.name}' timed out after {timeout}s — skipping."
+                )
+                item.status = False
+                item.log_error = True
+                item.error = f"Timeout after {timeout}s"
                 await asyncio.to_thread(item.to_yaml, self.export_path)
-            else:
-                logger.info(f"Task {item.name} is ready.")
-            self.task_queue.task_done()
+            except Exception as exc:
+                logger.error(f"Task '{item.name}' failed: {exc} — skipping.")
+                item.status = False
+                item.log_error = True
+                item.error = str(exc)
+                await asyncio.to_thread(item.to_yaml, self.export_path)
+            finally:
+                self.task_queue.task_done()
 
-    async def processing_tasks(self):
+    async def processing_tasks(self, timeout: float | None = None) -> None:
         """creates group of task within a max_tasks limit,
         put tasks from generator function to the queue and wits till all tasks are done
         """
-        task_group = [asyncio.create_task(self.worker()) for _ in range(self.max_tasks)]
-        [await self.task_queue.put(t) async for t in self.generate_tasks()]
+        task_group = [
+            asyncio.create_task(self.worker(timeout=timeout))
+            for _ in range(self.max_tasks)
+        ]
+        async for task in self.generate_tasks():
+            await self.task_queue.put(task)
         await self.task_queue.join()
-        [t.cancel() for t in task_group]
+        for t in task_group:
+            t.cancel()
 
-    async def create_report(self):
+    async def create_report(self, timeout: float | None = None) -> None:
         """sync function to run async part"""
         self.period = await self.get_period()
-        await self.processing_tasks()
+        await self.processing_tasks(timeout=timeout)
 
-    async def get_period(self):
+    async def get_period(self) -> list[tuple[str, str]] | list[tuple[date, date]]:
         pass
 
 
@@ -174,23 +209,39 @@ class TVMediaReport(MediaReport):
 
     def __init__(
         self,
-        *args,
+        report_settings: ReportSettings,
+        data_settings: Data,
+        export_path: PathLike[str],
+        report_service: MediaVortexTask,
+        network_client: NetworkClient,
         task_strategy: TaskGenerationStrategy | None = None,
         data_strategy: DataPreparationStrategy | None = None,
-        **kwargs,
+        max_tasks: int = 100,
+        check_done: bool | None = True,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            report_settings=report_settings,
+            data_settings=data_settings,
+            export_path=export_path,
+            report_service=report_service,
+            network_client=network_client,
+            max_tasks=max_tasks,
+            check_done=check_done,
+        )
 
         self.task_strategy = task_strategy or DefaultTVTaskStrategy()
         self.data_strategy = data_strategy or DefaultDataStrategy()
 
         # common fields (used by strategies)
         self.targets = self.report_settings.target_audiences
-        self.base_id = self.data_settings.options.get("kitId", 1)
+        options = self.data_settings.options
+        self.base_id: int | str = (
+            options.get("kitId", 1) if isinstance(options, dict) else 1
+        )
 
         self.output_columns = self.set_output_columns()
 
-    async def get_available_period(self):
+    async def get_available_period(self) -> list[date]:
         """
         Checks available dates in the Mediascope database using API
         """
@@ -198,10 +249,10 @@ class TVMediaReport(MediaReport):
             self.catalogs.get_availability_period
         )
 
-        available_period = df.loc[df["id"] == str(self.base_id)][
+        available_period: list[list[str]] = df.loc[df["id"] == str(self.base_id)][
             ["periodFrom", "periodTo"]
         ].values.tolist()
-        available_period = list(map(utils.str_to_date, available_period[0]))
+        available_period = [utils.str_to_date(d) for d in available_period[0]]
         return available_period
 
     def set_output_columns(self) -> dict[str, list[str]]:
@@ -230,19 +281,18 @@ class TVMediaReport(MediaReport):
         # check available dates in the database
         available_period = await self.get_available_period()
         try:
-            if self.report_settings.period.date_filter is None:
+            period_model = self.report_settings.period
+            last_time = period_model.last_time
+            if period_model.date_filter is None:
                 # if period is not set explicitly, build it from the last available date
+                assert last_time is not None
                 period = utils.get_last_period(
                     today=available_period[1],
-                    settings=self.report_settings.period.last_time,
-                )  # ('2023-02-01', '2023-03-22')  #
+                    settings=last_time,
+                )
             else:
-                period = self.report_settings.period.date_filter.copy()
-            frequency = (
-                self.report_settings.period.last_time.time_unit
-                if self.report_settings.period.last_time is not None
-                else "m"
-            )
+                period = period_model.date_filter.copy()
+            frequency = last_time.time_unit if last_time is not None else 'm'
             period = max(available_period[0], period[0]), min(
                 available_period[1], period[1]
             )
@@ -310,7 +360,7 @@ class TVMediaReport(MediaReport):
             task.log_error = True
             task.error = "Task json is not returned"
         if task.status:
-            df: DataFrame = await self.network_client.call(
+            df: DataFrame | None = await self.network_client.call(
                 self.report_service.result2table, res_json, project_name=task.target
             )
             if df is None:
@@ -336,7 +386,7 @@ class TVMediaReport(MediaReport):
                     )
                     # print(f'\n saving {task.name} to file')
 
-    async def generate_tasks(self):
+    async def generate_tasks(self) -> AsyncGenerator[TVTask, None]:
         async for task in self.task_strategy.generate(self):
             yield task
 

@@ -7,6 +7,7 @@ Exercises the real ``create_report`` -> ``get_period`` -> ``processing_tasks`` -
 mocked -- only the external Mediascope API client is doubled.
 """
 
+import asyncio
 import json
 import shutil
 from pathlib import Path
@@ -71,6 +72,23 @@ def _build_result_df(
     df = pd.DataFrame(columns=columns)
     df.loc[0] = 0
     return df
+
+
+def _yielding_sleep(real_sleep):
+    """Return an ``asyncio.sleep`` replacement that yields to the event loop.
+
+    ``asyncio.wait_for`` schedules its deadline via ``loop.call_later``,
+    not ``asyncio.sleep``, so mocking ``asyncio.sleep`` does not affect
+    the timeout.  A real ``sleep(0)`` yields control so the deadline
+    callback fires between fast poll iterations.  A plain ``AsyncMock``
+    returns immediately without yielding, which would let ``wait_task``'s
+    ``while True`` spin without ever letting the ``call_later`` timer fire.
+    """
+
+    async def _yielding(*args, **kwargs):
+        await real_sleep(0)
+
+    return _yielding
 
 
 @pytest.mark.asyncio
@@ -228,3 +246,92 @@ async def test_create_report_skips_done_files(
     mock_report_service.send_task.assert_not_called()
     mock_report_service.get_status.assert_not_called()
     mock_report_service.get_result.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_report_timeout_does_not_hang(
+    tmp_path: Path,
+    mocker,
+    tv_yaml_content: str,
+    dummy_df: pd.DataFrame,
+):
+    """Worker must not hang when ``wait_task`` polls forever.
+
+    Doubles ``get_status`` to return a non-terminal status
+    (``"IN_PROGRESS"``) so ``TVMediaReport.wait_task``'s inner ``while True``
+    poll loop would spin indefinitely.  A short ``timeout`` passed to
+    ``create_report`` breaks the loop via ``asyncio.wait_for``, marks the
+    task failed, and writes an error YAML artifact.
+
+    **M11 guard** — the outer ``asyncio.wait_for(..., timeout=10)``
+    ensures that if ``task_done`` is ever removed (mutation M11), the test
+    fails within 10 s instead of hanging the suite past 240 s.
+    """
+
+    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
+    yaml_data = json.loads(tv_yaml_content)
+    report_settings = ReportSettings(**yaml_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = _build_hermetic_app_service(tmp_path)
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns --------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask — get_status never terminal -------
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    # Non-terminal status — wait_task inner loop never breaks
+    mock_report_service.get_status.return_value = {"taskStatus": "IN_PROGRESS"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep to yield (enables wait_for timer) ------
+    # asyncio.wait_for schedules its deadline via loop.call_later (not
+    # asyncio.sleep), so the mock does not affect the timeout timer.
+    # A real sleep(0) yields control so the deadline callback can fire
+    # between wait_task iterations.
+    real_sleep = asyncio.sleep
+    mocker.patch("asyncio.sleep", new=_yielding_sleep(real_sleep))  # noqa: N812
+
+    # ---- 7. Export path ------------------------------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    # ---- 8. Construct report with check_done=False ---------------------
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 9. Run with short inner timeout, bounded by outer wait_for ---
+    # Inner timeout (0.5 s): breaks the infinite wait_task poll loop.
+    # Outer timeout (10 s): catches M11 — if task_done is missing,
+    #   queue.join() hangs and the outer wait_for fires at 10 s.
+    await asyncio.wait_for(report.create_report(timeout=0.5), timeout=10.0)
+
+    # ---- 10. Assertions ------------------------------------------------
+    # task_done() was always called — queue is fully drained (no join hang)
+    assert report.task_queue.qsize() == 0
+
+    # Error YAML written for the timed-out task
+    error_files = list(export_path.glob("errors/*.yaml"))
+    assert len(error_files) == 1, (
+        f"Expected 1 error YAML in {export_path / 'errors'}, "
+        f"found {len(error_files)}"
+    )
