@@ -583,26 +583,35 @@ output/finance/raw_data exists: True   children: []   # empty, created by test_s
 
 ## Re-audit — post-sibling remediation (current worktree)
 
-A subsequent remediation expanded the suite from 12 → 35 tests and resolved TST-001 (real `create_report` + CSV assertions), TST-002 (hermetic `local_app_service` fixture), TST-003 (real `NetworkClient` in lifecycle test + 4 new network tests), and TST-006 (`mock_network_client` now used; `slow` marker applied). The table below records the **current** verification status of each prior finding and adds **new** findings surfaced by a mutation probe against the 35-test suite. New IDs use `TST-008`–`TST-012` to avoid collision with the `TST-007` documented in `docs/00-overview/current-behavior.md:197` (see meta-finding below).
+A subsequent remediation (Blocks A–D, commits `8bdfe3c`–`def85f0`) expanded the suite from 12 → 36 → 42 tests and resolved TST-001 (real `create_report` + CSV assertions), TST-002 (hermetic `local_app_service` fixture), TST-003 (real `NetworkClient` in lifecycle test + 4 new network tests), TST-010 (`--cov-fail-under=70` gate), TST-012 (worker timeout + exception isolation), and addressed TST-000 (namespace collision) and TST-005 (stale basedpyright refs). The table below records the **current** verification status of each finding.
 
 ### Prior-finding status (re-verified at current worktree)
 
 | ID | Prior severity | Current status | Evidence |
 |---|---|---|---|
-| TST-001 | CRITICAL | **RESOLVED** | `test_reports_lifecycle.py::test_create_report_writes_csv_and_marks_queue_done` runs the real pipeline, asserts on `*.csv.gz` output + `task_queue.qsize() == 0` (test_reports_lifecycle.py:76-143) |
-| TST-002 | HIGH | **RESOLVED** | `local_app_service` fixture injects `AppPaths(user_dir=tmp_path)` + `PathResolver(tmp_path)`; `test_services.py::test_run_report_with_real_models` now `@pytest.mark.slow` (test_services.py:130-142, 37-38) |
-| TST-003 | HIGH | **RESOLVED** | `test_reports_lifecycle.py` uses real `NetworkClient` (line 111) + real `create_report`; `test_network.py` adds 4 new tests (success/4xx/401/semaphore) |
-| TST-004 | HIGH | **PARTIALLY RESOLVED** | `.github/workflows/ci.yml` now exists (runs `ruff check src tests` + `uv run pytest`); `.pre-commit-config.yaml` added (ruff hooks only — no mypy/pytest) |
-| TST-005 | MEDIUM | **PARTIALLY RESOLVED** | `pytest-cov>=6.0.0` + `--cov` in addopts now present; coverage reported at ~70% but **no `--cov-fail-under` gate**; mypy still red (60 errors, 0 test files in scope); `basedpyright` still absent |
+| TST-001 | CRITICAL | **RESOLVED** | `test_reports_lifecycle.py::test_create_report_writes_csv_and_marks_queue_done` runs the real pipeline, asserts on `*.csv.gz` output + `task_queue.qsize() == 0` (test_reports_lifecycle.py:234-271) |
+| TST-002 | HIGH | **RESOLVED** | `local_app_service` fixture injects `AppPaths(user_dir=tmp_path)` + `PathResolver(tmp_path)`; `test_services.py::test_run_report_with_real_models` now `@pytest.mark.slow` |
+| TST-003 | HIGH | **RESOLVED** | `test_reports_lifecycle.py` uses real `NetworkClient` + real `create_report`; `test_network.py` adds tests (success/4xx/401/semaphore/default-retries) |
+| TST-004 | HIGH | **PARTIALLY RESOLVED** | `.github/workflows/ci.yml` exists (runs `ruff check src tests` + `uv run pytest` + `uv run mypy src tests`); `.pre-commit-config.yaml` added (ruff hooks only — no mypy/pytest) |
+| TST-005 | MEDIUM | **PARTIALLY RESOLVED** | `pytest-cov>=6.0.0` + `--cov-fail-under=70` in addopts; `basedpyright` refs removed from `.kilo/commands/`; mypy scope includes tests (`pyproject.toml:137`); mypy still red (22 errors in `reports.py`/`services.py`) |
 | TST-006 | LOW | **RESOLVED** | `mock_network_client` used by `test_mock_network_client_retries_on_retryable_error`; `slow` marker applied to `test_run_report_with_real_models` |
-| TST-007 | LOW | **UNRESOLVED** | `id=="1"` literal in `dummy_df`/`tv_yaml_content` still couples to `kitId` default (reports.py:189); `data_lang="en"` path still untested (see TST-008) |
+| TST-007 | LOW | **RESOLVED** | `DEFAULT_KIT_ID` constant in conftest.py:10; `tv_yaml_content` uses enum `.value` refs; `data_lang="en"` tested at test_models.py:40-62 |
+| TST-008 | MEDIUM | **RESOLVED** | `test_create_report_skips_done_files` (Block B) — `check_done=True` with pre-existing `.csv.gz`, asserts skip + no API calls |
+| TST-009 | MEDIUM | **RESOLVED** | `test_default_max_attempts_is_10` + `test_call_retries_with_default_max_attempts` (Block B) — asserts default `max_attempts == 10` and retry count |
+| TST-010 | LOW | **RESOLVED** | `--cov-fail-under=70` added to `addopts` (pyproject.toml, Block A); CI fails if coverage < 70% |
+| TST-011 | LOW | **RESOLVED** | `test_models.py::test_merge_data_settings_en_does_not_translate` (test_models.py:40-62) tests `data_lang="en"` path |
+| TST-012 | HIGH | **RESOLVED** | `worker()` refactored with `asyncio.wait_for` timeout + try/except/finally (Block C); `test_create_report_timeout_does_not_hang` catches mutation M11 |
 
-### Mutation probe results (M10–M17, current 35-test suite)
+### Mutation probe results (M10–M17, original 35-test suite)
 
 A mutation harness (`.ai/audit/11-test-coverage/_probe_mutations.py`) applies each mutation,
 runs the full suite with a 240s timeout cap, and restores the file to HEAD. The harness
 guards against the M11-class hang (removing `task_done()` caused an unbounded `queue.join()`
 wait with no timeout and no diagnostics — killed via `taskkill`).
+
+**Post-remediation (42-test suite, commits `8bdfe3c`–`def85f0`):** M10, M11, M13 are now
+**DETECTED** by the new tests (`test_create_report_skips_done_files`,
+`test_create_report_timeout_does_not_hang`, `test_default_max_attempts_is_10`).
 
 | Mutation | Target | Verdict | Why not caught |
 |---|---|---|---|
@@ -630,6 +639,8 @@ mutation M10 (continue -> yield None): 35 passed (NOT DETECTED)
 test_create_report_writes_csv_and_marks_queue_done: check_done=False (test_reports_lifecycle.py:131)
 ```
 
+**Resolution:** RESOLVED. `test_create_report_skips_done_files` (Block B, test_reports_lifecycle.py:233-281) sets `check_done=True` with a pre-existing `.csv.gz`, asserting the task is skipped and no API methods are called. Mutation M10 is now detected.
+
 #### TST-009 — [MEDIUM] Retry contract's default is unasserted: production `max_attempts=10` is never observed
 
 **Anchor:** `src/mko_get_mediascope_data/core/network.py:53` (`max_attempts: int = 10`)
@@ -645,6 +656,8 @@ test_create_report_writes_csv_and_marks_queue_done: check_done=False (test_repor
 mutation M13 (max_attempts 10 -> 1): 35 passed (NOT DETECTED)
 grep "NetworkClient(" tests/ -> every call specifies max_attempts explicitly
 ```
+
+**Resolution:** RESOLVED. `test_default_max_attempts_is_10` + `test_call_retries_with_default_max_attempts` (Block B, test_network.py) assert the default `max_attempts == 10` and verify the retry count against a transient error without explicit override. Mutation M13 is now detected.
 
 #### TST-010 — [LOW] No coverage fail-under gate; "70% coverage" is reported but not enforced
 
@@ -698,6 +711,8 @@ wait_task poll reports.py:277-293: while True: await asyncio.sleep(2); status = 
 # no timeout anywhere in the worker pipeline
 ```
 
+**Resolution:** RESOLVED. `worker()` refactored with `asyncio.wait_for(timeout=...)` wrapping `_process_item()`, plus try/except/finally ensuring `task_done()` always fires (Block C, reports.py:84-120). `test_create_report_timeout_does_not_hang` catches mutation M11 with an outer 10s guard — the test fails cleanly instead of hanging 240s.
+
 ### Meta-finding — TST-ID namespace collision (TST-000)
 
 **Anchor:** `docs/00-overview/current-behavior.md:197` ↔ `.ai/audit/11-test-coverage/findings.md:51`
@@ -723,7 +738,6 @@ from the test-coverage finding `TST-007` (fixture data hygiene in `findings.md:5
 
 `grep -r "TST-007" docs/ .ai/audit/` now returns only the test-coverage finding
 (`findings.md:51`); the template fix is exclusively `TPL-007`.
-```
 **Evidence:**
 ```text
 findings.md:51    | TST-007 | LOW | ... duplicate dummy_df ...
