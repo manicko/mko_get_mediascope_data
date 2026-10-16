@@ -1,37 +1,30 @@
-[
-  {
-    'media': 'TV',
-    'report_type':'crosstab',
-    'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
-    'compression': {'method': 'gzip'},
-    'data_lang': 'ru', # set data language
-    'relative_path':'raw_data',
-    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
-    'ad_filter': 'articleLevel2Id = 2272 and adIssueStatusId = R', #Financial services
-    'target_audiences': {
-      'all 18+': 'age >= 18',
-#      'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
-##      'all 20-45': 'age >= 25 AND age <= 55',
-##      'w 25-55': 'sex = 2 AND age >= 25 AND age <= 55'
-    },
-    'period': {
-      'date_filter': ['2024-01-01', '2024-05-31'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
-    },
-  },
-  {
-    'media': 'TV',
-    'report_type':'crosstab',
-    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # report type
-    'data_lang': 'ru', # set data language
-    'relative_path':'dict',
-    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
-    'ad_filter': 'articleLevel2Id = 2272 and adIssueStatusId = R', #Financial services
-    'target_audiences': { 'not_set': None },
-    'period': {
-      'date_filter': ['2024-01-01', '2024-05-31'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
-    }
-  }
-#  {
-
-#  }
- ]
+- media: TV
+  report_type: crosstab
+  report_subtype: DYNAMICS_BY_SPOTS
+  compression:
+    method: gzip
+  data_lang: ru
+  relative_path: raw_data
+  multiple_files: true
+  ad_filter: articleLevel2Id = 2272 and adIssueStatusId = R
+  target_audiences:
+    all 18+: age >= 18
+  period:
+    date_filter:
+    - '2024-01-01'
+    - '2024-05-31'
+    time_unit: m
+- media: TV
+  report_type: crosstab
+  report_subtype: DYNAMICS_BY_SPOTS_DICT
+  data_lang: ru
+  relative_path: dict
+  multiple_files: true
+  ad_filter: articleLevel2Id = 2272 and adIssueStatusId = R
+  target_audiences:
+    not_set: None
+  period:
+    date_filter:
+    - '2024-01-01'
+    - '2024-05-31'
+    time_unit: m

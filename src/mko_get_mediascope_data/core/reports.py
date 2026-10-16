@@ -289,10 +289,11 @@ class TVMediaReport(MediaReport):
                 raw_period: tuple[date, date] | list[date] = utils.get_last_period(
                     today=available_period[1],
                     settings=last_time,
+                    time_unit=period_model.time_unit,
                 )
             else:
                 raw_period = period_model.date_filter
-            frequency = last_time.time_unit if last_time is not None else 'm'
+            frequency = period_model.time_unit
             period: tuple[date, date] = (
                 max(available_period[0], raw_period[0]),
                 min(available_period[1], raw_period[1]),

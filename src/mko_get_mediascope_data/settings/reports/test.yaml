@@ -17,8 +17,8 @@
     },
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      'time_unit': 'm', # Split frequency: d/w/m/y
       'last_time': { #if you need the last few months #
-        'time_unit': 'm',
         'unit_count': 24,
         'include_current': False
       }

@@ -148,7 +148,7 @@ print("=== REPRO F: zero-task report (empty target_audiences) ===")
 settings_empty = ReportSettings.model_validate({
     "media": "TV", "report_type": "crosstab", "relative_path": "tv/test",
     "multiple_files": True,
-    "period": {"date_filter": ["2025-01-01", "2025-01-07"], "last_time": {"time_unit": "m", "unit_count": 1}},
+    "period": {"date_filter": ["2025-01-01", "2025-01-07"], "last_time": {"unit_count": 1}, "time_unit": "m"},
     "target_audiences": {},
 })
 rep2 = TVMediaReport(report_settings=settings_empty, data_settings=data_settings,
@@ -183,7 +183,7 @@ print("=== REPRO H: get_period silent clamp (no warning logged) ===")
 settings_far = ReportSettings.model_validate({
     "media": "TV", "report_type": "crosstab", "relative_path": "tv/test",
     "multiple_files": False,
-    "period": {"date_filter": ["1900-01-01", "1900-02-01"], "last_time": {"time_unit": "m", "unit_count": 1}},
+    "period": {"date_filter": ["1900-01-01", "1900-02-01"], "last_time": {"unit_count": 1}, "time_unit": "m"},
     "target_audiences": {"all 18+": "age >= 18"},
 })
 rep3 = TVMediaReport(report_settings=settings_far, data_settings=data_settings,

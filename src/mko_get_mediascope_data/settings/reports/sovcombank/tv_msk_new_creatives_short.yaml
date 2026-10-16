@@ -1,49 +1,36 @@
-[
-  {
-    'media': 'TV',
-    'report_type': 'crosstab',
-    'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
-    'compression': {'method': 'gzip'},
-    'data_lang': 'ru', # set data language
-    'relative_path': 'msk_tv_new_creatives',
-    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
-    'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Financial services
-    'target_audiences': {
-      'all 30+': 'age >= 30',
-    },
-    'period': {
-      'date_filter': Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
-      'last_time': { #if you need the last few months #
-        'time_unit': 'w',
-        'unit_count': 1,
-        'include_current': True
-      }
-    },
-    'options': {
-      # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
-      # Only one value can be specified
-      'kitId': 6, #6-Moscow
-      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
-      "standRtg": {
-        "useRealDuration": True,  # Calculated based on actual ad duration.
-        "standardDuration": 20  # Standard duration of 20 seconds
-      }
-    },
-
-    'slices': [
-      'researchDate', # day - can specify at most 1 time slice per task.
-      'tvCompanyEName', #TV company
-      'brandListEName',  # Brands list
-      'modelListEName',  # Products list
-      'articleList4EName',  # Product categories 4 list
-      'adEName',  # Ad
-      'adId',  # Ad ID
-      'adNotes',  # Ad description
-      'adFirstIssueDate', # Ad first air date
-    ],
-    'statistics': [
-      'RtgPerSum',  # Total reach of event group in %
-      'QuantitySum'  # Number of broadcast events
-    ],
-  }
-]
+- media: TV
+  report_type: crosstab
+  report_subtype: DYNAMICS_BY_SPOTS
+  compression:
+    method: gzip
+  data_lang: ru
+  relative_path: msk_tv_new_creatives
+  multiple_files: true
+  ad_filter: articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)
+  target_audiences:
+    all 30+: age >= 30
+  period:
+    date_filter: null
+    last_time:
+      unit_count: 1
+      include_current: true
+    time_unit: w
+  options:
+    kitId: 6
+    issueType: AD
+    standRtg:
+      useRealDuration: true
+      standardDuration: 20
+  slices:
+  - researchDate
+  - tvCompanyEName
+  - brandListEName
+  - modelListEName
+  - articleList4EName
+  - adEName
+  - adId
+  - adNotes
+  - adFirstIssueDate
+  statistics:
+  - RtgPerSum
+  - QuantitySum

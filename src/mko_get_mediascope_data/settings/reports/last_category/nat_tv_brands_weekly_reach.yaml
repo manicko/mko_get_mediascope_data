@@ -1,63 +1,44 @@
-[
-  {
-    'media': 'TV',
-    'report_type': 'crosstab',
-    'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
-    'compression': { 'method': 'gzip' },
-    'data_lang': 'ru', # set data language
-    'relative_path': 'raw_data',
-    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
-    'ad_filter': 'adId IN (4645269, 4707759, 4642934) AND adIssueStatusId = R', #bit
-    'target_audiences': {
-#      'all 30-60 BC': 'age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)',
-#      'all 18+': 'age >= 18',
-      'all 45-60 BC': 'age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)',
-    },
-    'period': {
-      'date_filter': [ '2024-01-01', '2026-12-31' ], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
-    },
-    'slices': [
-      'researchWeek', # week - can specify at most 1 time slice per task.
-    ],
-    # Set calculation options
-    'options': {
-      # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
-      # Only one value can be specified
-      'kitId': 7, #TV Index Russia all
-      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
-      'baseDate': Null, #Baseline day
-      'baseDateCalcType': "BY_RESEARCH_PERIOD", #Automatic baseline day - by period
-      'oneBaseDatePerEachDateRange': False, #for all period-slices, baseline day is the middle day of the calendar period
-      'useNbd': True, #Baseline day adjustment
-      'standRtg': {
-        'useRealDuration': False,  # Calculated based on actual ad duration.
-        'standardDuration': 20  # Standard duration of 20 seconds
-      }
-    },
-    'statistics': [
-      'CumReach000', #CumReach000
-#      'OTS000Sum', #  Total reach (000) of broadcast events in group
-      'RtgPerSum',  # Total reach of event group in %
-      'StandRtgPerSum', # Total reach of event group in %, calculated using standard duration.
-      'Rtg000Sum', # Total reach of event group in %, calculated using standard duration.
-#      'Frequency', # frequency.
-      'FrequencyDistPer',
-    ],
-    'frequency_dist_conditions': {
-      "intervals": [
-        { 'from': 1 },
-        { 'from': 2 },
-        { 'from': 3 },
-        { 'from': 5 },
-        { 'from': 7 },
-        { 'from': 10 },
-        { 'from': 15 },
-        { 'from': 20 },
-      ]
-    }
-
-  },
-  #  {
-
-  #  }
-]
+- media: TV
+  report_type: crosstab
+  report_subtype: DYNAMICS_BY_SPOTS
+  compression:
+    method: gzip
+  data_lang: ru
+  relative_path: raw_data
+  multiple_files: true
+  ad_filter: adId IN (4645269, 4707759, 4642934) AND adIssueStatusId = R
+  target_audiences:
+    all 45-60 BC: age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)
+  period:
+    date_filter:
+    - '2024-01-01'
+    - '2026-12-31'
+    time_unit: m
+  slices:
+  - researchWeek
+  options:
+    kitId: 7
+    issueType: AD
+    baseDate: null
+    baseDateCalcType: BY_RESEARCH_PERIOD
+    oneBaseDatePerEachDateRange: false
+    useNbd: true
+    standRtg:
+      useRealDuration: false
+      standardDuration: 20
+  statistics:
+  - CumReach000
+  - RtgPerSum
+  - StandRtgPerSum
+  - Rtg000Sum
+  - FrequencyDistPer
+  frequency_dist_conditions:
+    intervals:
+    - from: 1
+    - from: 2
+    - from: 3
+    - from: 5
+    - from: 7
+    - from: 10
+    - from: 15
+    - from: 20

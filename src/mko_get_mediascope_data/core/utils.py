@@ -90,6 +90,7 @@ def get_last_period(
     settings: LastTimeModel,
     today: date | None = None,
     *,
+    time_unit: Literal["d", "w", "m", "y"] = "w",
     as_strings: Literal[False] = False,
 ) -> tuple[date, date]: ...
 
@@ -98,6 +99,7 @@ def get_last_period(
     settings: LastTimeModel,
     today: date | None = None,
     *,
+    time_unit: Literal["d", "w", "m", "y"] = "w",
     as_strings: Literal[True],
 ) -> tuple[str, ...]: ...
 
@@ -105,10 +107,14 @@ def get_last_period(
     settings: LastTimeModel,
     today: date | None = None,
     *,
+    time_unit: Literal["d", "w", "m", "y"] = "w",
     as_strings: bool = False,
 ) -> tuple[date, date] | tuple[str, ...]:
     """
     Return the start and end of the period for the last N periods (days/weeks/months/years).
+
+    The ``time_unit`` is now supplied explicitly rather than read from
+    ``settings`` (it lives on ``PeriodModel``, not ``LastTimeModel``).
     """
 
     today = date.today() if today is None else today
@@ -118,7 +124,7 @@ def get_last_period(
     start_of_year = today.replace(month=1, day=1)
     start_of_week = today - relativedelta(days=today.weekday())
 
-    match settings.time_unit:
+    match time_unit:
         case "y":
             start = start_of_year.replace(year=today.year - settings.unit_count)
         case "m":
@@ -128,10 +134,10 @@ def get_last_period(
         case "d":
             start = today - relativedelta(days=settings.unit_count)
         case _:
-            raise ValueError(f"Unknown frequency: {settings.time_unit}")
+            raise ValueError(f"Unknown frequency: {time_unit}")
 
     if not settings.include_current:
-        match settings.time_unit:
+        match time_unit:
             case "y":
                 end = start_of_year - relativedelta(days=1)
             case "m":

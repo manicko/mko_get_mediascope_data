@@ -61,13 +61,14 @@ class ReportSubtype(Enum):
 class LastTimeModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
     include_current: bool = False
-    time_unit: Literal["d", "w", "m", "y"] = "w"
     unit_count: PositiveInt
 
 
 class PeriodModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     date_filter: list[date] | None = None
     last_time: LastTimeModel | None = None
+    time_unit: Literal["d", "w", "m", "y"] = "w"
 
     @model_validator(mode="after")
     def validate_exclusive(self):

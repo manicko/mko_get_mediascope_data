@@ -1,99 +1,78 @@
-[
-  {
-    'media': 'TV_REG',
-    'report_type': 'crosstab',
-    'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
-    'compression': { 'method': 'gzip' },
-    'data_lang': 'ru', # set data language
-    'relative_path': 'raw_data_m',
-    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
-    'ad_filter': 'articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R', #Meat
-    #'regions': [ 6 ],
-    'target_audiences': {
-      'all 18+': 'age >= 18',
-      'all 25-45': 'age >= 25 AND age <= 45',
-#      'all 25-45 BC': 'age >= 25 AND age <= 45 AND incomeGroup IN (2,3)',
-      'w 25-45': 'sex = 2 AND age >= 25 AND age <= 45',
-#      'w 25-45 BC': 'sex = 2 AND age >= 25 AND age <= 45 AND incomeGroup IN (2,3)',
-    },
-    'period': {
-      'date_filter': ['2023-01-01', '2024-04-30'], #[ '2022-12-26', '2024-05-12' ], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
-    },
-    'options': {
-      # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
-      # Only one value can be specified
-      'kitId': 3, #TV Index Russia all
-      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
-      "standRtg": {
-        "useRealDuration": True,  # Calculated based on actual ad duration.
-        "standardDuration": 20  # Standard duration of 20 seconds
-      }
-    },
-    'statistics': [
-      'RtgPerSum',  # Total reach of event group in %
-      'StandRtgPerSum',
-      'QuantitySum'  # Number of broadcast events
-    ]
-
-  },
-  {
-    'media': 'TV_REG',
-    'report_type': 'crosstab',
-    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # report type
-    'compression': { 'method': 'gzip' },
-    'data_lang': 'ru', # set data language
-    'relative_path': 'raw_data_d',
-    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
-    'ad_filter': 'articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R', #Meat
-    #'regions': [ 6 ],
-    'target_audiences': {
-      'all 18+': 'age >= 18',
-      'all 25-45': 'age >= 25 AND age <= 45',
-      'all 25-45 BC': 'age >= 25 AND age <= 45 AND incomeGroup IN (2,3)',
-      'w 25-45': 'sex = 2 AND age >= 25 AND age <= 45',
-      'w 25-45 BC': 'sex = 2 AND age >= 25 AND age <= 45 AND incomeGroup IN (2,3)',
-    },
-    'period': {
-      'date_filter': [ '2023-01-01', '2024-04-30' ], #[ '2022-12-26', '2024-05-12' ], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
-    },
-    'options': {
-      # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
-      # Only one value can be specified
-      'kitId': 3, #TV Index Russia all
-      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
-      "standRtg": {
-        "useRealDuration": True,  # Calculated based on actual ad duration.
-        "standardDuration": 20  # Standard duration of 20 seconds
-      }
-    },
-    'statistics': [
-      'RtgPerSum',  # Total reach of event group in %
-      'StandRtgPerSum',
-      'QuantitySum'  # Number of broadcast events
-    ]
-
-  },
-  {
-    'media': 'TV_REG',
-    'report_type': 'crosstab',
-    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # report type
-    'data_lang': 'ru', # set data language
-    'relative_path': 'dict',
-    'multiple_files': True, # If period exceeds 1 year, split exports by month/week
-    'ad_filter': 'articleLevel3Id IN (77,4972) OR articleList4Id IN (301,4984) AND adIssueStatusId = R', #Meat
-    'target_audiences': { 'not_set': None },
-    'period': {
-      'date_filter':['2023-01-01', '2024-04-30'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
-    },
-      'options': {
-      # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
-      # Only one value can be specified
-        'kitId': 3, #TV Index Russia all
-      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
-        "standRtg": {
-        "useRealDuration": True,  # Calculated based on actual ad duration.
-        "standardDuration": 20  # Standard duration of 20 seconds
-        }
-      },
-  }
-]
+- media: TV_REG
+  report_type: crosstab
+  report_subtype: DYNAMICS_BY_SPOTS
+  compression:
+    method: gzip
+  data_lang: ru
+  relative_path: raw_data_m
+  multiple_files: true
+  ad_filter: articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R
+  target_audiences:
+    all 18+: age >= 18
+    all 25-45: age >= 25 AND age <= 45
+    w 25-45: sex = 2 AND age >= 25 AND age <= 45
+  period:
+    date_filter:
+    - '2023-01-01'
+    - '2024-04-30'
+    time_unit: m
+  options:
+    kitId: 3
+    issueType: AD
+    standRtg:
+      useRealDuration: true
+      standardDuration: 20
+  statistics:
+  - RtgPerSum
+  - StandRtgPerSum
+  - QuantitySum
+- media: TV_REG
+  report_type: crosstab
+  report_subtype: DYNAMICS_BY_SPOTS_DICT
+  compression:
+    method: gzip
+  data_lang: ru
+  relative_path: raw_data_d
+  multiple_files: true
+  ad_filter: articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R
+  target_audiences:
+    all 18+: age >= 18
+    all 25-45: age >= 25 AND age <= 45
+    all 25-45 BC: age >= 25 AND age <= 45 AND incomeGroup IN (2,3)
+    w 25-45: sex = 2 AND age >= 25 AND age <= 45
+    w 25-45 BC: sex = 2 AND age >= 25 AND age <= 45 AND incomeGroup IN (2,3)
+  period:
+    date_filter:
+    - '2023-01-01'
+    - '2024-04-30'
+    time_unit: m
+  options:
+    kitId: 3
+    issueType: AD
+    standRtg:
+      useRealDuration: true
+      standardDuration: 20
+  statistics:
+  - RtgPerSum
+  - StandRtgPerSum
+  - QuantitySum
+- media: TV_REG
+  report_type: crosstab
+  report_subtype: DYNAMICS_BY_SPOTS_DICT
+  data_lang: ru
+  relative_path: dict
+  multiple_files: true
+  ad_filter: articleLevel3Id IN (77,4972) OR articleList4Id IN (301,4984) AND adIssueStatusId = R
+  target_audiences:
+    not_set: None
+  period:
+    date_filter:
+    - '2023-01-01'
+    - '2024-04-30'
+    time_unit: m
+  options:
+    kitId: 3
+    issueType: AD
+    standRtg:
+      useRealDuration: true
+      standardDuration: 20
