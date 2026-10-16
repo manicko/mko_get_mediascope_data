@@ -238,7 +238,11 @@ class TVMediaReport(MediaReport):
                 )  # ('2023-02-01', '2023-03-22')  #
             else:
                 period = self.report_settings.period.date_filter.copy()
-            frequency = self.report_settings.period.last_time.time_unit
+            frequency = (
+                self.report_settings.period.last_time.time_unit
+                if self.report_settings.period.last_time is not None
+                else "m"
+            )
             period = max(available_period[0], period[0]), min(
                 available_period[1], period[1]
             )

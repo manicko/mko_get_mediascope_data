@@ -26,7 +26,7 @@ The 2026-10-15 re-validation pass found that post-`code_ref` remediation falsifi
 Two validation-level findings (VAL-001, VAL-002) are recorded in a separate section:
 anchor-format drift and the ENT-003 line-number imprecision.
 
-> **Re-validation revision (2026-10-15, HEAD `e8fd1867`; code identical to baseline
+> **Re-validation revision (2026-10-15, HEAD `335a11e`; code identical to baseline
 > `b04d177`).** Post-`code_ref` remediation changed the code this report validated.
 > Two findings no longer reproduce at HEAD and are **rejected as falsified**:
 > ENT-002 — the module-scope `app_service` singleton was replaced by a lazy
@@ -73,7 +73,7 @@ observed. All other claims are directly reproduced.
 ## Conformance
 
 **Validated against:** commit `d093d9c` (Phase 01 baseline)
-**HEAD at re-validation:** `8ed385f` (commit `e8fd1867` code-identical to `b04d177`)
+**HEAD at re-validation:** `335a11e` (commit `e8fd1867` code-identical to `b04d177`)
 **Survival at HEAD:** 2 fixed (ENT-001, ENT-006), 5 rejected as falsified at HEAD (ENT-002–005, ENT-007), 0 re-graded, 0 unsettled
 **Correction type:** no-op — re-validation notes and corrected Summary are already inline; this block records the conformance verdict for cross-file tooling.
 
@@ -112,7 +112,7 @@ note and the marked sections below. All seven findings were remediated at HEAD.
 
 ### ENT-001 — fixed at HEAD — [CRITICAL at code_ref] `sys.stdout.reconfigure()` at module scope
 
-**FIXED AT HEAD `e8fd1867` (the code_ref claim is falsified).** The reconfigure
+**FIXED AT HEAD `335a11e` (the code_ref claim is falsified).** The reconfigure
 call is no longer at
 module scope: it now lives inside the `run` command body (`app.py:45`,
 `sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")`), moved there in
@@ -122,7 +122,7 @@ reconfigures `sys.stdout` on any import path, and the Jupyter/IPython
 library callers are no longer affected. The claim, probe output, and grading
 below are preserved as the `code_ref d093d9c` record and do not reproduce at HEAD.
 
-**Anchor resolved:** `src/mko_get_medioscope_data/app.py:17` → line 17 is
+**Anchor resolved:** `src/mko_get_mediascope_data/app.py:17` → line 17 is
 `sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")` at module scope
 (not inside any function/class).
 
@@ -158,7 +158,7 @@ into the CLI `run` command body is a well-defined target. ✓
 
 ### ENT-002 — rejected (falsified at HEAD) — [CRITICAL at code_ref] Singleton `app_service` bootstraps at import
 
-**REJECTED — falsified at HEAD `e8fd1867`.** The anchor `services.py:163 →
+**REJECTED — falsified at HEAD `335a11e`.** The anchor `services.py:163 →
 app_service = AppService(...)` no longer exists: the module-scope singleton was
 replaced by a lazy factory (`_app_service: AppService | None = None` plus
 `get_app_service()`, at the tail of `core/services.py` — verified at lines 188-199),
@@ -209,7 +209,7 @@ CRITICAL carried = CRITICAL on rubric. No re-grade.
 
 ### ENT-003 — rejected (falsified at HEAD) — [CRITICAL at code_ref] Missing config swallowed as `None` → obscure `TypeError`
 
-**REJECTED — falsified at HEAD `e8fd1867`.** `yaml_to_dict` (`core/utils.py:343-367`)
+**REJECTED — falsified at HEAD `335a11e`.** `yaml_to_dict` (`core/utils.py:343-367`)
 now returns `dict[str, Any]` — body `return yaml.safe_load(cfg) or {}` (line 361) —
 and raises with `logger.error` logging on `yaml.YAMLError` (362-364) and
 `FileNotFoundError` (365-367); it never returns `None`. `app_config`
@@ -272,7 +272,7 @@ All targets exist and are stable.
 
 ### ENT-004 — rejected (falsified at HEAD) — [HIGH at code_ref] Public API not re-exported from package root
 
-**REJECTED — falsified at HEAD `e8fd1867`.** `__init__.py` is no longer empty: it
+**REJECTED — falsified at HEAD `335a11e`.** `__init__.py` is no longer empty: it
 is 32 lines declaring `__all__` (`run_report`, `run_report_async`,
 `initialize_settings`, `init`, `run`, `list_reports`, `app`) and a PEP 562
 `__getattr__` lazy re-export that imports names from the `app` submodule on first
@@ -317,7 +317,7 @@ PEP 562 `__getattr__` alternative is also valid. ✓
 
 ### ENT-005 — rejected (falsified at HEAD) — [MEDIUM at code_ref] `print()` calls in `core/` bypass the logging layer
 
-**REJECTED — falsified at HEAD `e8fd1867`.** No active `print()` calls remain in
+**REJECTED — falsified at HEAD `335a11e`.** No active `print()` calls remain in
 `src/`: the four active call sites (`core/services.py:117/124/154`,
 `core/reports.py:265`) were replaced with the logging layer in commit `606c899`,
 and both modules now define `logger = logging.getLogger(__name__)`. The remaining
@@ -369,7 +369,7 @@ MEDIUM carried = MEDIUM on rubric. No re-grade.
 
 ### ENT-006 — fixed at HEAD (claim falsified at code_ref) — [MEDIUM at code_ref] `app_config` cached on singleton is stale
 
-**FIXED AT HEAD `e8fd1867` (the code_ref claim is falsified).** Remediation commit
+**FIXED AT HEAD `335a11e` (the code_ref claim is falsified).** Remediation commit
 `755523e` (*feat(core): add reload_config() to AppService for dynamic config reload
 (ENT-006)*) added a `reload_config()` method to `AppService`
 (`core/services.py:66-76`) that invalidates the `@cached_property` caches for both
@@ -437,7 +437,7 @@ target `AppService` class exists and is stable. ✓
 
 ### ENT-007 — rejected (falsified at HEAD) — [LOW at code_ref] Russian docstrings and comments violate English-only standard
 
-**REJECTED — falsified at HEAD `e8fd1867`.** A Cyrillic grep
+**REJECTED — falsified at HEAD `335a11e`.** A Cyrillic grep
 (`[А-Яа-яЁё]`) over the whole `src/mko_get_mediascope_data/` tree returns **no
 matches**: the entry-layer docstrings, Typer `help=` strings, and
 `console.print()` messages in `app.py` were translated to English in commit
@@ -446,8 +446,8 @@ rule 1 and `doc-maintenance-rules.md` are satisfied at HEAD. The claim, scan
 output, and grading below are preserved as the `code_ref d093d9c` record and do
 not reproduce at HEAD.
 
-**Anchor resolved:** `src/mko_get_medioscope_data/app.py:2` → module docstring:
-`"""mko_get_medioscope_data — основной публичный интерфейс"""`.
+**Anchor resolved:** `src/mko_get_mediascope_data/app.py:2` → module docstring:
+`"""mko_get_mediascope_data — основной публичный интерфейс"""`.
 
 **Claim tested:** Entry-layer docstrings, Typer command docstrings, `help=` strings,
 and `console.print()` messages in `app.py` are in Russian. Error messages in
@@ -457,7 +457,7 @@ in Russian. This violates AGENTS.md rule 1 and
 
 **Evidence (AST scan for Cyrillic in app.py):**
 ```text
-Module docstring: 'mko_get_medioscope_data — основной публичный интерфейс'
+Module docstring: 'mko_get_mediascope_data — основной публичный интерфейс'
   init:            'Инициализировать пользовательские настройки'
   run:             'Запустить выгрузку отчёта'
   list_reports:    'Показать все доступные файлы заданий'
@@ -504,14 +504,14 @@ English" — target `app.py` exists. ✓
 defect." Line numbers belong only inside pasted tool output.
 
 **Observed:** The findings file's index table uses `path:line` format for all seven
-anchors (e.g., `src/mko_get_medioscope_data/app.py:17`). All line numbers resolve
+anchors (e.g., `src/mko_get_mediascope_data/app.py:17`). All line numbers resolve
 correctly to the cited content. No anchor points at a non-existent line.
 
 **Impact:** Format drift only — all anchors are mechanically verifiable. Does not
 affect finding accuracy or disposition.
 
 **Disposition:** confirmed. Recommendation: update anchors to `path::Symbol` format
-(e.g., `src/mko_get_medioscope_data/app.py::sys.stdout.reconfigure` at module scope)
+(e.g., `src/mko_get_mediascope_data/app.py::sys.stdout.reconfigure` at module scope)
 in the next raw-phase revision.
 
 ### VAL-002 — [LOW] ENT-003 secondary anchor line-number imprecision

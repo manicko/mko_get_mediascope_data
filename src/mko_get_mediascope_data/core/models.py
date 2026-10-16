@@ -74,6 +74,11 @@ class PeriodModel(BaseModel):
         if not self.date_filter and not self.last_time:
             raise ValueError("Specify either date_filter or last_time")
 
+        if self.date_filter and self.last_time:
+            raise ValueError(
+                "Specify either date_filter or last_time, not both"
+            )
+
         if self.date_filter and len(self.date_filter) != 2:
             raise ValueError("date_filter must contain 2 dates")
 
@@ -126,3 +131,14 @@ class Data(BaseModel):
     options: dict[str, Any] | list[Any] = Field(default_factory=list)
     statistics: dict[str, Any] | list[Any] = Field(default_factory=list)
     slices: dict[str, Any] | list[Any] = Field(default_factory=list)
+
+    @field_validator("options", "statistics", "slices", mode="before")
+    @classmethod
+    def coerce_none_to_empty(cls, v: Any) -> Any:
+        """Coerce None values to empty list for optional collection fields.
+
+        YAML ``Null`` values resolve to ``None`` when loaded, but the
+        downstream consumers expect a list. This prevents ``ValidationError``
+        when ``DATA_DEFAULTS`` contains ``Null`` entries.
+        """
+        return [] if v is None else v

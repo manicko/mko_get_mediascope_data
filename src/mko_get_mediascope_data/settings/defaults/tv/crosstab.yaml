@@ -104,7 +104,6 @@
     'options': {
       # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
       # Only one value can be specified
-      "issueType": "PROGRAM",   # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       "issueType": "AD",   #Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       "standRtg": {
         "useRealDuration": False,  # Calculated based on actual ad duration.

@@ -29,7 +29,7 @@ findings are re-graded accordingly. The originally recorded imprecision paragrap
 for each finding are superseded. CFG-007's mechanism and reachability are corrected.
 Original finding texts are preserved below as the `code_ref d093d9c` record.
 
-> **Re-validation revision (2026-10-15, HEAD `e8fd1867`; code identical to baseline
+> **Re-validation revision (2026-10-15, HEAD `335a11e`; code identical to baseline
 > `b04d177`).** `yaml_to_dict` (`core/utils.py:343-367`) now returns `dict[str, Any]`
 > and raises `FileNotFoundError`/`YAMLError` with logging instead of returning
 > `None`. Consequently CFG-005 is **rejected as falsified at HEAD**; CFG-006 (missing
@@ -72,9 +72,9 @@ report (cross-phase), findings template.
 ## Conformance
 
 **Validated against:** commit `d093d9c` (Phase 02 baseline)
-**HEAD at re-validation:** `8ed385f` (commit `e8fd1867` code-identical to `b04d177`)
+**HEAD at re-validation:** `335a11e` (commit `e8fd1867` code-identical to `b04d177`)
 **Survival at HEAD:** 8 confirmed (CFG-001/002/003/004/006/007/008/009; CFG-002 and CFG-006 re-graded), 2 rejected as falsified at HEAD (CFG-005, CFG-010), 0 unsettled
-**Correction type:** git-HEAD evidence update — line 634 in Evidence Index cited `git rev-parse --short HEAD → d093d9c`; updated to `8ed385f`.
+**Correction type:** git-HEAD evidence update — line 634 in Evidence Index cited `git rev-parse --short HEAD → d093d9c`; updated to `335a11e`.
 
 **Conformance review 2026-10-15** — reviewed against the code at HEAD and the
 owner decision register (D-05: the audit is a lead source, not a source of
@@ -144,7 +144,7 @@ add `media`/`relative_path`. Targets: all 15 template files. Stable. ✓
 
 ### CFG-002 — confirmed (re-graded) — [MEDIUM]
 
-**REJECTED — falsified at HEAD `e8fd1867`.** The anchor `settings/defaults/tv_reg/crosstab.yaml::1`
+**REJECTED — falsified at HEAD `335a11e`.** The anchor `settings/defaults/tv_reg/crosstab.yaml::1`
 no longer exists: the malformed YAML makes `yaml.safe_load` raise `ParserError` at line 162.
 
 **Anchor resolved:** `settings/defaults/tv_reg/crosstab.yaml::1` — file exists,
@@ -260,7 +260,7 @@ services.py:100. Stable. ✓
 
 ### CFG-005 — rejected (falsified at HEAD) — [MEDIUM at code_ref]
 
-**REJECTED — falsified at HEAD `e8fd1867`.** `yaml_to_dict` (`core/utils.py:343-367`)
+**REJECTED — falsified at HEAD `335a11e`.** `yaml_to_dict` (`core/utils.py:343-367`)
 returns `dict[str, Any]` (signature line 343; body `return yaml.safe_load(cfg) or {}`
 at line 361) and raises with `logger.error` logging on `yaml.YAMLError` (362-364)
 and `FileNotFoundError` (365-367) — it never returns `None`. The mypy union errors
@@ -309,7 +309,7 @@ broaden `except` to `OSError`. Targets: `yaml_to_dict` at utils.py:343. Stable. 
 
 ### CFG-006 — confirmed (re-graded) — [LOW]
 
-**Re-graded MEDIUM → LOW at HEAD `e8fd1867` (mechanism corrected).** The missing
+**Re-graded MEDIUM → LOW at HEAD `335a11e` (mechanism corrected).** The missing
 templates remain (verified at HEAD: `TV/simple`, `TV_REG/timeband`, `TV_REG/simple`
 absent). At HEAD a missing file makes `yaml_to_dict` raise a logged `FileNotFoundError`
 (`core/utils.py:365-367`) from `get_default_data_settings` (`core/services.py:93-101`)
@@ -468,7 +468,7 @@ remove the dependency. Targets: `pyproject.toml`, `core/network.py`. Stable. ✓
 
 ### CFG-010 — rejected (falsified at HEAD) — [LOW at code_ref] `print()` in core modules
 
-**REJECTED — falsified at HEAD `e8fd1867`.** No active `print()` calls remain in
+**REJECTED — falsified at HEAD `335a11e`.** No active `print()` calls remain in
 `src/`: the four call sites (`core/services.py:117/124/154`,
 `core/reports.py:265`) were replaced with `logger.info()` in commit `606c899`, and
 both modules now define a module-level logger. The five commented-out `print()`
@@ -648,4 +648,4 @@ in the `d093d9c` tree.
 | `connection_config` path vs template name | `mediascope.json` vs `mediascope_RENAME_.json` | CFG-003 |
 | `pyproject.toml` line 21 | `pydantic-settings>=2.12.0` | CFG-009 |
 | `__init__.py` size | 0 bytes | ENT-004 |
-| `git rev-parse --short HEAD` | `8ed385f` (HEAD at re-validation; `code_ref` was `d093d9c`) | drift noted |
+| `git rev-parse --short HEAD` | `335a11e` (HEAD at re-validation; `code_ref` was `d093d9c`) | drift noted |

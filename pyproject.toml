@@ -170,9 +170,31 @@ source = ["src/mko_get_mediascope_data"]
 [tool.coverage.report]
 show_missing = true
 
+[tool.basedpyright]
+include = ["src", "tests"]
+exclude = [".venv", "build", "dist", ".mypy_cache", ".pytest_cache", ".ruff_cache"]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+reportMissingTypeStubs = "none"
+reportUnusedImport = "error"
+reportUnusedVariable = "error"
+
+[tool.bandit]
+# Scan the application source; only exclude test trees and build artifacts.
+exclude_dirs = ["tests", ".venv", "build", "dist", ".mypy_cache", ".pytest_cache", ".ruff_cache"]
+# B101 (assert_used): `assert` is the pytest contract; the application is
+#   never run under `python -O`, so asserts are always live.
+# B105 (hardcoded_password_string): false-positive class; it fires on
+#   non-secret string literals (field names, sentinel values) with no
+#   credential content.
+skips = ["B101", "B105"]
+level = "low"
+
 
 [dependency-groups]
 dev = [
+    "basedpyright>=1.40.2",
+    "bandit>=1.7.0,<2.0",
     "black>=26.1.0",
     "isort>=7.0.0",
     "pytest>=9.0.2",

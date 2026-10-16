@@ -1,8 +1,10 @@
 import pytest
 import yaml
+from datetime import date
 from pydantic import ValidationError
 
 from mko_get_mediascope_data.core.models import (
+    Data,
     DataDefaults,
     LastTimeModel,
     MediaType,
@@ -110,4 +112,23 @@ def test_data_defaults_covers_all_subtypes():
             continue
         assert hasattr(defaults, subtype.value), (
             f"Missing defaults key for subtype: {subtype.value}"
+        )
+
+
+def test_data_coerces_none_to_empty():
+    """Data model coerces None values to empty lists for collection fields."""
+    data = Data(options=None, statistics=None, slices=None)  # type: ignore[arg-type]
+    assert data.options == []
+    assert data.statistics == []
+    assert data.slices == []
+
+
+def test_period_model_rejects_both_date_filter_and_last_time():
+    """PeriodModel must not allow both date_filter and last_time simultaneously."""
+    with pytest.raises(ValidationError, match="not both"):
+        PeriodModel(
+            date_filter=[date(2025, 1, 1), date(2025, 1, 7)],
+            last_time=LastTimeModel.model_validate(
+                {"unit_count": 1, "time_unit": "m"}
+            ),
         )

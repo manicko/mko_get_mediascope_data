@@ -43,8 +43,7 @@ def tv_yaml_content():
           "all 18+": "age >= 18"
         },
         "period": {
-          "date_filter": ["2025-01-01", "2025-01-07"],
-          "last_time": {"time_unit": "w", "unit_count": 1}
+          "date_filter": ["2025-01-01", "2025-01-07"]
         }
       }
     ]"""
