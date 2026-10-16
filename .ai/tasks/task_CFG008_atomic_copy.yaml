@@ -1,0 +1,77 @@
+---
+# Task: CFG-008 — Atomic Template Copy
+# Finding: _copy_templates (init_service.py:7-27) uses shutil.copy2 per file
+# with no temp-write + atomic-rename pattern. Interrupted init leaves partial
+# config tree. No rollback mechanism.
+#
+# Dependency: None (independent of all other blocks)
+
+id: task_CFG008_atomic_copy
+
+title: Make _copy_templates atomic with temp-write + os.replace
+
+priority: low
+
+depends_on: []
+
+source_reference: ".ai/plans/03-config-secrets-fixes.md"
+source_section: "Block 7 — CFG-008: Atomic Template Copy (LOW)"
+source_file: ".ai/audit/99-validation/02-config-secrets-validated-findings.md"
+
+description: >
+  _copy_templates (init_service.py:7-27) iterates source_dir.rglob('*') and
+  copies each file via shutil.copy2(item, target_path) at line 27. An
+  interrupted init (Ctrl+C or crash mid-copy) leaves a partial config tree
+  with no rollback. Replace with the standard temp-write + os.replace pattern.
+
+goals:
+  - Each file copy is atomic (temp file written in target's parent dir, then
+    os.replace'd)
+  - Same end-state as before (byte-identical file contents)
+  - Interrupted copy does not leave partial files at the target path
+  - Directory creation behavior unchanged
+
+files:
+  - path: src/mko_get_mediascope_data/core/init_service.py
+    targets:
+      - type: function
+        name: _copy_templates
+    changes:
+      - action: replace_body
+        description: >
+          Replace shutil.copy2(item, target_path) with an atomic write helper:
+          write to a temp file in target_path.parent using tempfile.mkstemp,
+          then os.replace(tmp_path, target_path). Add a private _copy_file_atomic
+          helper function.
+
+# ── Architectural constraints ──
+constraints:
+  - "Use tempfile.mkstemp(dir=str(target_path.parent)) to ensure same filesystem (os.replace requires same FS)"
+  - "os.replace is atomic on both POSIX and Windows"
+  - "On failure, clean up the temp file (try/except/finally or try/except + os.unlink)"
+  - "Directory creation logic (target_path.parent.mkdir(parents=True, exist_ok=True)) stays unchanged"
+  - "The existing-file skip logic (target_path.exists() and not force → continue) stays unchanged"
+  - "Do NOT change init_project() public API"
+
+# ── Required tests / acceptance criteria ──
+required_tests:
+  - name: test_cli_init
+    type: existing_test
+    description: >
+      The existing test_app.py::test_cli_init must still pass — it asserts
+      'Initialize' in --help output.
+
+verification_steps:
+  - command: "uv run pytest tests/test_app.py::test_cli_init -v"
+    expected: "1 passed"
+  - command: "uv run ruff check src/mko_get_mediascope_data/core/init_service.py"
+    expected: "All checks passed!"
+  - command: "python -c \"from mko_get_mediascope_data.core.init_service import _copy_templates; ... verify atomic write produces identical output\""
+    expected: "Files match original, no partial files on interruption"
+
+acceptance_criteria:
+  - _copy_templates uses tempfile + os.replace instead of shutil.copy2 for file copies
+  - Directory creation still uses mkdir(parents=True, exist_ok=True)
+  - Output file tree is byte-identical to before (same contents, same permissions via copy2 on temp)
+  - test_cli_init passes
+  - ruff check passes

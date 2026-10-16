@@ -5,7 +5,11 @@ id_prefix: "TST"
 mode: "problems-only"
 report_status: "draft"
 severity_taxonomy: ".kilo/commands/audit/phases/11-audit-test-coverage.md#severity-taxonomy"
-code_ref: "d093d9c"
+code_ref: "a54cac1"
+reaudit_ref: "a54cac1"
+test_count: 35
+coverage_pct: 70
+coverage_detail: "reports.py 74%, utils.py 43%, tasks.py 67%, network.py 77%, models.py 98%, services.py 88%"
 ---
 
 # Audit Findings — Test Coverage
@@ -574,3 +578,140 @@ output/finance/raw_data exists: True   children: []   # empty, created by test_s
 | TST-005 | MEDIUM | confirmed — mypy 1.19.1 red (61 in 7 src files, 0 tests); pytest-cov/basedpyright absent from dev deps |
 | TST-006 | LOW | confirmed — `mock_network_client`, `tmp_report_dir`, `slow` marker never invoked |
 | TST-007 | LOW | confirmed — duplicate `dummy_df` (conftest.py:17 + test_services.py:21); `id=="1"` couples to reports.py:189 `kitId` default |
+
+---
+
+## Re-audit — post-sibling remediation (current worktree)
+
+A subsequent remediation expanded the suite from 12 → 35 tests and resolved TST-001 (real `create_report` + CSV assertions), TST-002 (hermetic `local_app_service` fixture), TST-003 (real `NetworkClient` in lifecycle test + 4 new network tests), and TST-006 (`mock_network_client` now used; `slow` marker applied). The table below records the **current** verification status of each prior finding and adds **new** findings surfaced by a mutation probe against the 35-test suite. New IDs use `TST-008`–`TST-012` to avoid collision with the `TST-007` documented in `docs/00-overview/current-behavior.md:197` (see meta-finding below).
+
+### Prior-finding status (re-verified at current worktree)
+
+| ID | Prior severity | Current status | Evidence |
+|---|---|---|---|
+| TST-001 | CRITICAL | **RESOLVED** | `test_reports_lifecycle.py::test_create_report_writes_csv_and_marks_queue_done` runs the real pipeline, asserts on `*.csv.gz` output + `task_queue.qsize() == 0` (test_reports_lifecycle.py:76-143) |
+| TST-002 | HIGH | **RESOLVED** | `local_app_service` fixture injects `AppPaths(user_dir=tmp_path)` + `PathResolver(tmp_path)`; `test_services.py::test_run_report_with_real_models` now `@pytest.mark.slow` (test_services.py:130-142, 37-38) |
+| TST-003 | HIGH | **RESOLVED** | `test_reports_lifecycle.py` uses real `NetworkClient` (line 111) + real `create_report`; `test_network.py` adds 4 new tests (success/4xx/401/semaphore) |
+| TST-004 | HIGH | **PARTIALLY RESOLVED** | `.github/workflows/ci.yml` now exists (runs `ruff check src tests` + `uv run pytest`); `.pre-commit-config.yaml` added (ruff hooks only — no mypy/pytest) |
+| TST-005 | MEDIUM | **PARTIALLY RESOLVED** | `pytest-cov>=6.0.0` + `--cov` in addopts now present; coverage reported at ~70% but **no `--cov-fail-under` gate**; mypy still red (60 errors, 0 test files in scope); `basedpyright` still absent |
+| TST-006 | LOW | **RESOLVED** | `mock_network_client` used by `test_mock_network_client_retries_on_retryable_error`; `slow` marker applied to `test_run_report_with_real_models` |
+| TST-007 | LOW | **UNRESOLVED** | `id=="1"` literal in `dummy_df`/`tv_yaml_content` still couples to `kitId` default (reports.py:189); `data_lang="en"` path still untested (see TST-008) |
+
+### Mutation probe results (M10–M17, current 35-test suite)
+
+A mutation harness (`.ai/audit/11-test-coverage/_probe_mutations.py`) applies each mutation,
+runs the full suite with a 240s timeout cap, and restores the file to HEAD. The harness
+guards against the M11-class hang (removing `task_done()` caused an unbounded `queue.join()`
+wait with no timeout and no diagnostics — killed via `taskkill`).
+
+| Mutation | Target | Verdict | Why not caught |
+|---|---|---|---|
+| M10 | `reports.py:379` done-file skip (`continue` → `yield None`) | **NOT DETECTED** | Lifecycle test uses `check_done=False` (test_reports_lifecycle.py:131), so the skip branch is never entered |
+| M11 | `reports.py:153` `task_done()` removal | *(probe hung — see TST-012)* | See TST-012 |
+| M13 | `network.py:53` `max_attempts` default 10 → 1 | **NOT DETECTED** | All 6 network tests override `max_attempts` explicitly; none rely on the production default |
+| M16 | `models.py:73` `PeriodModel.validate_exclusive` neutralized | DETECTED | `test_period_model_validation` catches it |
+| M17 | `models.py:94` `multiple_files` default `True` → `False` | **NOT DETECTED** | `tv_yaml_content` hard-codes `multiple_files: true`; no test exercises the default → slicing behavior |
+
+### New findings
+
+#### TST-008 — [MEDIUM] Done-file skip branch is unreachable by tests (`check_done=False` is hardcoded in the only lifecycle test)
+
+**Anchor:** `src/mko_get_mediascope_data/core/reports.py:378` (`if task.name in report.done_files: ... continue`)
+**Checked:** ran (mutation M10 — NOT DETECTED; 35 passed)
+**Why this band:** "a decision the system acts on whose effect no assertion can observe" at medium scope — the skip branch is real production code that silently short-circuits a task (PIPE-011) but no test exercises it.
+**Problem:** `DefaultTVTaskStrategy.generate` (reports.py:378) and `TVRegTaskStrategy.generate` (reports.py:430) both skip tasks whose name appears in `report.done_files`. The only test exercising `create_report` — `test_create_report_writes_csv_and_marks_queue_done` — sets `check_done=False` (line 131), so `done_files` is `{}` and the skip branch is never entered. Mutation M10 (`continue` → `yield None`) passes the entire suite: a `yield None` would place a `None` into the worker loop (`worker` does `await self.send_task(item)` with `item=None`), causing an `AttributeError` in production that the suite cannot notice.
+**Impact:** A regression that sends `None` tasks into the worker (or corrupts skip logic) ships green. The `check_done=True` re-run path — where a seller's existing CSVs prevent re-fetch — is entirely untested.
+**Fix:** Add a lifecycle test variant with `check_done=True` and a pre-existing `.csv.gz` in the export dir, asserting the task is skipped (no second fetch, no error). Target: `tests/test_reports_lifecycle.py`.
+**Verify:** `TST-008` is the gap M10 proves; the new test must fail M10.
+**Related:** TST-007 (fixture data contract); PIPE-011 (skip semantics)
+**Evidence:**
+```text
+mutation M10 (continue -> yield None): 35 passed (NOT DETECTED)
+test_create_report_writes_csv_and_marks_queue_done: check_done=False (test_reports_lifecycle.py:131)
+```
+
+#### TST-009 — [MEDIUM] Retry contract's default is unasserted: production `max_attempts=10` is never observed
+
+**Anchor:** `src/mko_get_mediascope_data/core/network.py:53` (`max_attempts: int = 10`)
+**Checked:** ran (mutation M13 — NOT DETECTED; 35 passed)
+**Why this band:** "a measurement whose effective scope is not the scope it is read for."
+**Problem:** `NetworkClient.__init__` defaults `max_attempts=10`. Every test instantiates `NetworkClient` with an **explicit** `max_attempts` (test_network.py:16 `max_attempts=3`, test_reports_lifecycle.py:111 `max_attempts=1`, conftest `max_attempts=2`). No test reads or asserts the default, so mutation M13 (default 10 → 1) passes the entire suite. The consequence: a production change to the default retry count — e.g. reducing transient-error resilience from 10 attempts to 1 — is invisible to the suite. The 4 new `test_network.py` tests cover success/4xx/401/semaphore **with explicit** `max_attempts=3`, not the default.
+**Impact:** The default retry policy (the value a user without overrides gets) is untested. A future maintainer changing `max_attempts: int = 10` to `= 1` would ship a regression that cuts retry resilience to zero retries-on-transient and the suite would stay green.
+**Fix:** Add an assertion that `NetworkClient()._max_attempts == 10` (or derive the default from a shared constant and test the constant), and add a test that exercises the **default** against a transient error (not just explicit `max_attempts=3`). Target: `tests/test_network.py`.
+**Verify:** `TST-009` is the gap M13 proves; the new test must fail M13.
+**Related:** TST-003 (network boundary); PIPE-006 (retry semantics)
+**Evidence:**
+```text
+mutation M13 (max_attempts 10 -> 1): 35 passed (NOT DETECTED)
+grep "NetworkClient(" tests/ -> every call specifies max_attempts explicitly
+```
+
+#### TST-010 — [LOW] No coverage fail-under gate; "70% coverage" is reported but not enforced
+
+**Anchor:** `pyproject.toml:150-158` (`addopts` has `--cov` but no `--cov-fail-under`)
+**Checked:** ran (`uv run pytest` shows coverage 70%, exit 0)
+**Why this band:** "a gate declared and never loaded" at the coverage threshold level.
+**Problem:** `addopts` includes `--cov=src/mko_get_mediascope_data --cov-report=term-missing` (pyproject.toml:156-157) and `[tool.coverage]` is configured (pyproject.toml:167-170), but there is **no `--cov-fail-under`** directive. Coverage is printed (currently ~70%) but a test file that drops coverage to 0% would not fail the build. The prior finding TST-005 noted `pytest-cov` was absent — that is now fixed (it's in dev deps at pyproject.toml:180) — but the *threshold gate* was never added.
+**Impact:** Coverage is a vanity metric, not a gate. A PR that strips all assertions from a low-coverage module passes CI.
+**Fix:** Add `--cov-fail-under=XX` to `addopts` (start at current ~70, raise over time). Target: `pyproject.toml`.
+**Verify:** `TST-010` is the missing threshold; CI currently exits 0 regardless of coverage %.
+**Related:** TST-005 (coverage measurement scope)
+**Evidence:**
+```text
+pyproject.toml:156-157: --cov=src/mko_get_mediascope_data --cov-report=term-missing
+# no --cov-fail-under anywhere in pyproject.toml
+grep "cov-fail-under" pyproject.toml -> (no matches)
+```
+
+#### TST-011 — [LOW] `data_lang="en"` branch is untested (en→ru translation guard never exercised)
+
+**Anchor:** `src/mko_get_mediascope_data/core/services.py:107-108` (`if report_settings.data_lang == "ru": ... en_to_ru`)
+**Checked:** ran (grep over tests; `tv_yaml_content` hard-codes `data_lang: "ru"` at conftest.py:38)
+**Why this band:** "a decision the system acts on whose effect no assertion can observe" — low impact (i18n label mapping), unobserved.
+**Problem:** `merge_data_settings` (services.py:107-108) translates slice column names via `utils.en_to_ru` only when `data_lang == "ru"`. The `en` path (skip translation) is never exercised: `tv_yaml_content` hard-codes `"data_lang": "ru"` (conftest.py:38), and `ReportSettings.data_lang` defaults to `"ru"` (models.py:92). The prior finding TST-007 noted this; the sibling remediation did not add an `en` case. A regression in the `en` branch (e.g. accidentally translating in English mode, or breaking `en_to_ru`'s input contract) ships green.
+**Impact:** Low — wrong language labels for English-mode reports, but the bug is silent (no crash, just wrong column names in the CSV).
+**Fix:** Add a parametrized test with `data_lang="en"` asserting that slices are **not** passed through `en_to_ru` (or that output columns retain original names). Target: `tests/test_services.py` or `tests/test_models.py`.
+**Verify:** `TST-011` is the `en` gap; the new test uses `data_lang="en"`.
+**Related:** TST-007 (fixture data contract)
+**Evidence:**
+```text
+tv_yaml_content conftest.py:38: "data_lang": "ru"
+grep 'data_lang.*en' tests/ -> (no matches)
+merge_data_settings services.py:107-108: if data_lang == "ru": slices = en_to_ru(slices)
+```
+
+#### TST-012 — [HIGH] Worker loop has no timeout or exception isolation: a stuck task hangs the entire report indefinitely
+
+**Anchor:** `src/mko_get_mediascope_data/core/reports.py:134-153` (`worker` method)
+**Checked:** ran (mutation M11 — **hung the suite past 240s** with no timeout; killed via `taskkill`)
+**Why this band:** Matches the HIGH criterion — "a failure that prevents the system from reaching any observable end state" (the worker hangs and `queue.join()` never returns, so the entire report is stuck with no recovery, no error file, no timeout).
+**Problem:** `worker` (reports.py:134-153) is an infinite `while True` loop that calls `await self.task_queue.get()` then dispatches to `send_task`/`wait_task`/`extract_data`. If any step hangs (e.g. `wait_task` polling `get_status` forever at reports.py:277-293, or if `task_done` is removed so `queue.join()` never completes), the worker never exits. The only test covering `create_report` — `test_create_report_writes_csv_and_marks_queue_done` — succeeds because its doubles return immediately (`get_status` returns `DONE` at test_reports_lifecycle.py:106). Mutation M11 (removing `self.task_queue.task_done()` at line 153) caused the suite to **hang past 240 seconds** with no timeout, no diagnostics, and no `KeyboardInterrupt`-safe guard — the test had to be killed externally. A production `wait_task` that never sees a terminal status (PIPE-006) or any network step that blocks silently would hang the report indefinitely with no recovery path.
+**Impact:** A single stuck task — a transient API that stops responding, a status that never returns `DONE`/`FAILED`/`CANCELLED`, or an exception swallowed in the worker — makes the entire report hang forever. No timeout, no circuit-breaker, no error YAML emitted (PIPE-007). The suite cannot detect this because its doubles are too fast; only a mutation probe revealed it (M11 hung).
+**Fix:** (1) Add a `timeout` parameter to `worker` (e.g. `asyncio.wait_for` per task or overall) that logs + skips on breach; (2) wrap `send_task`/`wait_task`/`extract_data` in try/except to isolate per-task failures (PIPE-002); (3) add a test that makes `wait_task` never return a terminal status and asserts the worker eventually breaks/logs (not hangs). Target: `core/reports.py:worker` + `tests/test_reports_lifecycle.py`.
+**Verify:** `TST-012` is the gap M11 proves; the new test must fail M11 without hanging (use a bounded timeout in the test itself).
+**Related:** PIPE-002 (exception isolation), PIPE-006 (poll timeout), PIPE-007 (error YAML)
+**Evidence:**
+```text
+mutation M11 (task_done() removed): suite HUNG > 240s, killed via taskkill
+worker loop reports.py:134-153: while True: ... await self.task_queue.get()
+wait_task poll reports.py:277-293: while True: await asyncio.sleep(2); status = await call(get_status, ...)
+# no timeout anywhere in the worker pipeline
+```
+
+### Meta-finding — TST-ID namespace collision (TST-000)
+
+**Anchor:** `docs/00-overview/current-behavior.md:197` ↔ `.ai/audit/11-test-coverage/findings.md:51`
+**Why this band:** A finding about a finding — the audit's own ID discipline is broken.
+**Problem:** The phase file warns the `TST-` prefix is "already in use in shipped source and operations documentation from a prior cycle." The prior audit (§ID-Conflict Note, lines 387-397) reported that a "full-tree search for `TST-` returned no prior identifiers" and declared no collision. **This is incorrect.** `TST-007` appears in two different documents for two different findings:
+- `.ai/audit/11-test-coverage/findings.md:51` — "Duplicated and restated fixture values: two `dummy_df` defs …" (the fixture-data-contract finding, prior audit)
+- `docs/00-overview/current-behavior.md:197` — a **different** finding about a crosstab-template YAML fix, also labeled `TST-007`
+
+The prior audit's "no collision" scan (described at lines 392-397) did not search `docs/`. This double-binding means `TST-007` resolves ambiguously: a tool or human following `TST-007` from either document lands on a different defect. The current re-audit avoids this by minting new IDs `TST-008`…`TST-012` and leaving the prior block untouched; but the namespace remains poisoned — a future `TST-007` reference anywhere is ambiguous.
+**Fix:** (1) Audit `docs/00-overview/current-behavior.md:197` to confirm it is a genuine prior `TST-007` or re-number one of the two; (2) document a canonical cross-reference table mapping each `TST-` ID to exactly one finding across `docs/` and `.ai/audit/`; (3) the current block uses `TST-008`…`TST-012` to avoid adding to the collision. Target: `docs/00-overview/current-behavior.md` + `.ai/audit/11-test-coverage/findings.md`.
+**Verify:** `grep -r "TST-" docs/ .ai/audit/ src/ tests/` confirms two distinct `TST-007` bindings.
+**Evidence:**
+```text
+findings.md:51    | TST-007 | LOW | ... duplicate dummy_df ...
+current-behavior.md:197 | TST-007 | ... crosstab-template YAML fix ...
+# two different findings, same ID
+```

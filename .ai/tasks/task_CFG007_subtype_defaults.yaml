@@ -1,0 +1,142 @@
+---
+# Task: CFG-007 — Subtype Defaults Coverage + TV_REG Stale Keys
+# Finding: merge_data_settings (services.py:110-111) checks
+# hasattr(defaults, subtype.value). Three subtypes have no defaults block:
+# NAT_TV_CHANNELS_ATV, NAT_TV_CHANNELS_BA, NAT_TV_CHANNELS_SOC_DEM.
+# Additionally, tv_reg/crosstab.yaml uses stale key names DYNAMICS_BY_SPOTS_M/_D
+# that don't match the ReportSubtype enum values.
+#
+# Dependency: task_CFG001_repair_templates — templates must pass
+# ReportSettings validation before the data-settings merge chain can be
+# tested end-to-end.
+#
+# BLOCKED: Requires Researcher decision on Path A (data fix), B (guard Data),
+# C (guard en_to_ru), or D (hybrid) before Implementor can proceed.
+
+id: task_CFG007_subtype_defaults
+
+title: Add missing subtype defaults blocks + fix TV_REG stale key names
+
+priority: medium
+
+depends_on:
+  - task_CFG001_repair_templates
+
+source_reference: ".ai/plans/03-config-secrets-fixes.md"
+source_section: "Block 6 — CFG-007: Subtype Defaults Coverage + TV_REG Stale Keys (MEDIUM)"
+source_file: ".ai/audit/99-validation/02-config-secrets-validated-findings.md"
+
+description: >
+  merge_data_settings (services.py:110-111) checks
+  hasattr(defaults, subtype.value) and if True, overlays the subtype block.
+  Three subtypes (NAT_TV_CHANNELS_ATV, NAT_TV_CHANNELS_BA,
+  NAT_TV_CHANNELS_SOC_DEM) have no matching block in tv/crosstab.yaml →
+  slices/statistics/options stay None → Data(**data_settings) raises
+  ValidationError (for data_lang='en') or en_to_ru(None) raises TypeError
+  (for data_lang='ru', preempting Data construction).
+  Additionally, tv_reg/crosstab.yaml uses stale key names
+  DYNAMICS_BY_SPOTS_M/_D that do not match ReportSubtype enum values
+  (DYNAMICS_BY_SPOTS, DYNAMICS_BY_SPOTS_DICT).
+
+goals:
+  - All 7 ReportSubtype values have matching defaults keys (hasattr=True)
+  - TV_REG stale key names resolved to match enum values
+  - No None propagation into Data model for covered subtypes
+  - The two-path failure mechanism (TypeError for ru, ValidationError for en)
+    is eliminated
+
+files:
+  # ── Path A (root-cause data fix) ──
+  - path: src/mko_get_mediascope_data/settings/defaults/tv/crosstab.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: add_key
+        description: >
+          Add NAT_TV_CHANNELS_ATV, NAT_TV_CHANNELS_BA, NAT_TV_CHANNELS_SOC_DEM
+          subtype blocks with appropriate slices/statistics/options, based on
+          the per-subtype parameters in nat_tv_tvreport.yaml (which uses these
+          subtypes with specific slices and statistics).
+        condition: "Path A chosen by Researcher"
+
+  - path: src/mko_get_mediascope_data/settings/defaults/tv_reg/crosstab.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_key
+        description: "DYNAMICS_BY_SPOTS_M → DYNAMICS_BY_SPOTS (matches enum)"
+        condition: "Path A chosen by Researcher"
+      - action: rename_key
+        description: "DYNAMICS_BY_SPOTS_D → DYNAMICS_BY_SPOTS_DICT (merge content into existing DYNAMICS_BY_SPOTS_DICT block if duplicate)"
+        condition: "Path A chosen by Researcher"
+
+  # ── Path B (defensive code guard on Data model) ──
+  - path: src/mko_get_mediascope_data/core/models.py
+    targets:
+      - type: class
+        name: Data
+    changes:
+      - action: add_validator
+        description: >
+          Add a model_validator(mode='before') that coerces None to []
+          for options/statistics/slices keys before Pydantic validation.
+        condition: "Path B chosen by Researcher"
+
+  # ── Path C (defensive guard in merge_data_settings) ──
+  - path: src/mko_get_mediascope_data/core/services.py
+    targets:
+      - type: method
+        name: merge_data_settings
+    changes:
+      - action: add_guard
+        description: >
+          Guard slices before en_to_ru call: if data_settings['slices'] is None,
+          raise WrongDataSettings with context naming the missing subtype.
+        condition: "Path C chosen by Researcher"
+
+  # ── Path C also uses WrongDataSettings (ties to Block 9) ──
+  - path: src/mko_get_mediascope_data/core/errors.py
+    targets:
+      - type: class
+        name: WrongDataSettings
+    changes:
+      - action: add_import
+        description: >
+          Import and use WrongDataSettings in merge_data_settings for
+          context-rich error when subtype has no defaults block.
+        condition: "Path C chosen by Researcher"
+
+  # ── Test (all paths) ──
+  - path: tests/test_models.py
+    targets:
+      - type: test_function
+        name: test_data_defaults_covers_all_subtypes
+    changes:
+      - action: add_function
+        description: >
+          Iterate all 7 ReportSubtype values, check hasattr against loaded
+          defaults. For subtypes that should have defaults coverage, assert True.
+
+constraints:
+  - "BLOCKED until Researcher selects Path A (data fix), B (guard Data), C (guard en_to_ru), or D (hybrid)"
+  - "Path A: The _M and _D TV_REG blocks have distinct slices content (researchMonth vs researchDate). Renaming both to enum values may collide with existing blocks. Researcher must resolve this."
+  - "Path A: NAT_TV_CHANNELS_* subtype blocks need domain-specific values — use nat_tv_tvreport.yaml as a reference for the expected slices/statistics/options per subtype"
+  - "Path B: Coercing None→[] masks the root cause (missing template block). Not recommended as standalone."
+  - "Path C: WrongDataSettings from core/errors.py provides better error context than bare TypeError"
+  - "Template-first principle (settings-layers-architecture.md:157): Path A preferred over code guards"
+  - "If Path B/C chosen, WrongDataSettings may be imported (ties to Block 9)"
+
+verification_steps:
+  - command: "uv run pytest tests/test_models.py::test_data_defaults_covers_all_subtypes -v"
+    expected: "1 passed"
+  - command: "python -c \"from mko_get_mediascope_data.core.models import ReportSubtype; from mko_get_mediascope_data.core.services import AppService; ... assert all 7 subtypes have hasattr on loaded defaults\""
+    expected: "7/7 True (after Path A fix)" or "No TypeError/ValidationError for any subtype"
+  - command: "uv run ruff check src/ tests/"
+    expected: "All checks passed!"
+
+acceptance_criteria:
+  - All 7 ReportSubtype values have matching defaults keys (hasattr=True after loading)
+  - TV_REG stale key names (DYNAMICS_BY_SPOTS_M/_D) resolved to match enum
+  - No None propagation into Data model for subtypes with defaults coverage
+  - test_data_defaults_covers_all_subtypes passes
+  - en_to_ru(None) is no longer reached for subtypes with defaults blocks

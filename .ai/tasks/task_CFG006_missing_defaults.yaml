@@ -1,0 +1,110 @@
+---
+# Task: CFG-006 — Create 3 Missing Defaults Templates
+# Finding: get_default_data_settings (services.py:93-101) builds path
+# defaults/{media}/{report_type}.yaml. Missing: TV/simple, TV_REG/timeband,
+# TV_REG/simple. Missing files cause FileNotFoundError from yaml_to_dict.
+#
+# Dependency: None (CFG-002 YAML already fixed at HEAD — tv_reg/crosstab.yaml
+# parses OK since commit 664e8f3).
+#
+# Note: These new templates must be created so that the 6 (media, report_type)
+# combinations all have defaults files. Follow the structure of existing defaults
+# templates (DATA_DEFAULTS + optional subtype blocks).
+
+id: task_CFG006_missing_defaults
+
+title: Create 3 missing defaults templates (TV/simple, TV_REG/timeband, TV_REG/simple)
+
+priority: medium
+
+depends_on: []
+
+source_reference: ".ai/plans/03-config-secrets-fixes.md"
+source_section: "Block 5 — CFG-006: Create Missing Defaults Templates (LOW)"
+source_file: ".ai/audit/99-validation/02-config-secrets-validated-findings.md"
+
+description: >
+  AppService.get_default_data_settings (services.py:93-101) constructs the path
+  defaults/{media.value.lower()}/{report_type.value.lower()}.yaml. Currently:
+  3 of 6 combinations are missing — TV/simple, TV_REG/timeband, TV_REG/simple.
+  A missing file causes yaml_to_dict to raise FileNotFoundError, aborting the run.
+
+goals:
+  - All 6 (MediaType, ReportType) combinations have defaults templates
+  - New templates parse with yaml.safe_load (no ParserError)
+  - New templates load as DataDefaults(**yaml_to_dict(path)) without error
+  - Content follows the pattern of existing defaults templates
+
+files:
+  - path: src/mko_get_mediascope_data/settings/defaults/tv/simple.yaml
+    targets:
+      - type: file
+        name: new_defaults_template
+    changes:
+      - action: create
+        description: >
+          Create new YAML template following the pattern of
+          settings/defaults/tv/timeband.yaml (DATA_DEFAULTS with standard
+          API parameter keys). The 'simple' report type is a flat statistics
+          report without timeband or crosstab slicing. Use the tv/timeband.yaml
+          DATA_DEFAULTS structure as the base (12 keys: date_filter through
+          time_filter, weekday_filter, daytype_filter, company_filter,
+          location_filter, basedemo_filter, targetdemo_filter, slices,
+          statistics, sortings, options).
+
+  - path: src/mko_get_mediascope_data/settings/defaults/tv_reg/timeband.yaml
+    targets:
+      - type: file
+        name: new_defaults_template
+    changes:
+      - action: create
+        description: >
+          Create new YAML template following the pattern of
+          settings/defaults/tv_reg/crosstab.yaml DATA_DEFAULTS (15 keys:
+          includes program_filter, break_filter, add_city_to_basedemo_from_region,
+          add_city_to_targetdemo_from_region). Use kitId=3 for TV_REG.
+
+  - path: src/mko_get_mediascope_data/settings/defaults/tv_reg/simple.yaml
+    targets:
+      - type: file
+        name: new_defaults_template
+    changes:
+      - action: create
+        description: >
+          Create new YAML template following the pattern of
+          settings/defaults/tv_reg/crosstab.yaml DATA_DEFAULTS (TV_REG-specific
+          keys). Use kitId=3 for TV_REG.
+
+  - path: tests/test_services.py
+    targets:
+      - type: test_function
+        name: test_get_default_data_settings_all_combinations
+    changes:
+      - action: add_function
+        description: >
+          Iterate all 6 (MediaType, ReportType) combinations, call
+          get_default_data_settings, assert no FileNotFoundError and DataDefaults
+          loads successfully.
+
+constraints:
+  - "Follow the DATA_DEFAULTS structure of existing defaults templates (tv/crosstab.yaml, tv/timeband.yaml, tv_reg/crosstab.yaml)"
+  - "Use Null for optional API parameters not relevant to this report type (matching existing template convention)"
+  - "TV_REG templates use kitId=3; TV templates use kitId=1 (matching existing defaults)"
+  - "Do not add subtype blocks to the new templates — those are handled by CFG-007"
+  - "yaml.safe_load must succeed on all 3 new files"
+  - "DataDefaults(**yaml_to_dict(path)) must succeed (DATA_DEFAULTS key must be present)"
+
+verification_steps:
+  - command: "python -c \"import yaml; from pathlib import Path; base = Path('src/mko_get_mediascope_data/settings/defaults'); ... verify all 6 combos exist and yaml.safe_load succeeds\""
+    expected: "6/6 templates exist and parse OK"
+  - command: "uv run pytest tests/test_services.py -k 'default_data_settings' -v"
+    expected: "1 passed"
+  - command: "uv run ruff check src/"
+    expected: "All checks passed!"
+
+acceptance_criteria:
+  - 3 new template files created: tv/simple.yaml, tv_reg/timeband.yaml, tv_reg/simple.yaml
+  - All parse with yaml.safe_load (no ParserError)
+  - All load as DataDefaults(**yaml_to_dict(path)) without error
+  - get_default_data_settings resolves all 6 combinations without FileNotFoundError
+  - test_get_default_data_settings_all_combinations passes

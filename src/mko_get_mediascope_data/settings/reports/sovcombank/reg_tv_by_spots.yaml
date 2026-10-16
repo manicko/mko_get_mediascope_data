@@ -1,11 +1,11 @@
 [
   {
-    'report_type': 'REG_TV_CROSSTAB',
+    'media': 'TV_REG',
+    'report_type': 'crosstab',
     'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
-    'category_name': 'reg_tv',
     'compression': { 'method': 'gzip' },
     'data_lang': 'ru', # set data language
-    'folder': 'raw_data',
+    'relative_path': 'raw_data',
     'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': 'advertiserId IN (272345) AND adIssueStatusId = R', #Financial services
     #'regions': [ 6 ],
@@ -22,8 +22,8 @@
     'period': {
       'date_filter': Null, # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'w',
-        'period_num': '1',
+        'time_unit': 'w',
+        'unit_count': 1,
         'include_current': False
       }
     },

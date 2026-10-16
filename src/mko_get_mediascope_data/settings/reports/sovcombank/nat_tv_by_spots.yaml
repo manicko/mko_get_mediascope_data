@@ -1,11 +1,11 @@
 [
   {
-    'report_type': 'TV_CROSSTAB',
+    'media': 'TV',
+    'report_type': 'crosstab',
     'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
-    'category_name': 'sovcombank',
     'compression': { 'method': 'gzip' },
     'data_lang': 'ru', # set data language
-    'folder': 'raw_data',
+    'relative_path': 'raw_data',
     'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Financial services
     #    'ad_filter': 'articleLevel4Id IN (2317,2479,2483,4393,4394,4395,4397,4489,4490,4498,4499,4503,4504,4505,4509,4510,4512,4514,4515,4516,4517,4518,4519,4953,4954,4988,5016,5058,5059) and adIssueStatusId = R and adTypeId IN (1,5,15,23,24,25) and advertiserId NOT IN (79677)', #Financial services
@@ -22,8 +22,8 @@
     'period': {
       'date_filter': Null, # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'w',
-        'period_num': '4',
+        'time_unit': 'w',
+        'unit_count': 4,
         'include_current': False
       }
     },
@@ -35,12 +35,12 @@
 
   },
   {
-    'report_type': 'TV_CROSSTAB',
+    'media': 'TV',
+    'report_type': 'crosstab',
     'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
-    'category_name': 'sovcombank',
     'compression': { 'method': 'gzip' },
     'data_lang': 'ru', # set data language
-    'folder': 'raw_data',
+    'relative_path': 'raw_data',
     'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Financial services
     'target_audiences': {
@@ -49,8 +49,8 @@
     'period': {
       'date_filter': ['2024-01-01', '2024-05-31'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'm',
-        'period_num': '1',
+        'time_unit': 'm',
+        'unit_count': 1,
         'include_current': False
       }
     },
@@ -62,19 +62,19 @@
 
   },
   {
-    'report_type':'TV_DICT_CROSSTAB',
+    'media': 'TV',
+    'report_type':'crosstab',
     'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # report type
-    'category_name': 'sovcombank',
     'data_lang': 'ru', # set data language
-    'folder':'dict',
+    'relative_path':'dict',
     'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Financial services
-    'target_audiences': { Null: Null },
+    'target_audiences': { 'not_set': None },
     'period': {
       'date_filter': ['2024-01-01', '2024-05-31'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'm',
-        'period_num': '1',
+        'time_unit': 'm',
+        'unit_count': 1,
         'include_current': False
       }
     }

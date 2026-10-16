@@ -1,11 +1,11 @@
 [
   {
-    'report_type': 'REG_TV_CROSSTAB',
-    'report_subtype': 'DYNAMICS_BY_SPOTS_M', # report type
-    'category_name': 'gap_resurs_reg',
+    'media': 'TV_REG',
+    'report_type': 'crosstab',
+    'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
     'compression': { 'method': 'gzip' },
     'data_lang': 'ru', # set data language
-    'folder': 'raw_data_m',
+    'relative_path': 'raw_data_m',
     'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': 'articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R', #Meat
     #'regions': [ 6 ],
@@ -19,8 +19,8 @@
     'period': {
       'date_filter': ['2023-01-01', '2024-04-30'], #[ '2022-12-26', '2024-05-12' ], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'y',
-        'period_num': '1',
+        'time_unit': 'y',
+        'unit_count': 1,
         'include_current': False
       }
     },
@@ -42,12 +42,12 @@
 
   },
   {
-    'report_type': 'REG_TV_CROSSTAB',
-    'report_subtype': 'DYNAMICS_BY_SPOTS_D', # report type
-    'category_name': 'gap_resurs_reg',
+    'media': 'TV_REG',
+    'report_type': 'crosstab',
+    'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # report type
     'compression': { 'method': 'gzip' },
     'data_lang': 'ru', # set data language
-    'folder': 'raw_data_d',
+    'relative_path': 'raw_data_d',
     'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': 'articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R', #Meat
     #'regions': [ 6 ],
@@ -61,8 +61,8 @@
     'period': {
       'date_filter': [ '2023-01-01', '2024-04-30' ], #[ '2022-12-26', '2024-05-12' ], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'y',
-        'period_num': '1',
+        'time_unit': 'y',
+        'unit_count': 1,
         'include_current': False
       }
     },
@@ -84,19 +84,19 @@
 
   },
   {
-    'report_type': 'REG_TV_DICT_CROSSTAB',
+    'media': 'TV_REG',
+    'report_type': 'crosstab',
     'report_subtype': 'DYNAMICS_BY_SPOTS_DICT', # report type
-    'category_name': 'gap_resurs',
     'data_lang': 'ru', # set data language
-    'folder': 'dict',
+    'relative_path': 'dict',
     'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': 'articleLevel3Id IN (77,4972) OR articleList4Id IN (301,4984) AND adIssueStatusId = R', #Meat
-    'target_audiences': { Null: Null },
+    'target_audiences': { 'not_set': None },
     'period': {
       'date_filter':['2023-01-01', '2024-04-30'], # Set period explicitly ['2020-01-01', '2024-01-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'y',
-        'period_num': '1',
+        'time_unit': 'y',
+        'unit_count': 1,
         'include_current': True
       }
     },

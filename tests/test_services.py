@@ -5,8 +5,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pandas as pd
 import pytest
+import yaml
 
-from mko_get_mediascope_data.core.models import Data, ReportSettings
+from mko_get_mediascope_data.core.models import (
+    DataDefaults,
+    Data,
+    MediaType,
+    ReportSettings,
+    ReportType,
+)
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
 from mko_get_mediascope_data.core.services import AppService
 
@@ -186,3 +193,52 @@ def test_reload_config_invalidates_export_folder(
     reloaded = local_app_service.export_folder
     assert reloaded == original  # same resolved path
     assert reloaded is not None
+
+
+# ---------------------------------------------------------------------------
+# Credential existence guard (CFG-004): get_connection()
+# ---------------------------------------------------------------------------
+
+
+def test_get_connection_raises_on_missing_credential(
+    local_app_service: AppService,
+) -> None:
+    """get_connection raises FileNotFoundError when credentials are missing."""
+    # local_app_service fixture does NOT create a credentials/connections file
+    with pytest.raises(FileNotFoundError, match="init"):
+        local_app_service.get_connection(MediaType.TV)
+
+
+# ---------------------------------------------------------------------------
+# CFG-006: Missing defaults templates (TV/simple, TV_REG/timeband, TV_REG/simple)
+# ---------------------------------------------------------------------------
+
+
+def test_get_default_data_settings_missing_file() -> None:
+    """All 6 (media, report_type) combinations resolve without FileNotFoundError.
+
+    After creating the missing defaults templates, get_default_data_settings
+    must succeed for (TV, simple), (TV_REG, timeband), and (TV_REG, simple)
+    in addition to the pre-existing (TV, crosstab), (TV, timeband),
+    (TV_REG, crosstab).
+    """
+    combos = [
+        (MediaType.TV, ReportType.crosstab),
+        (MediaType.TV, ReportType.timeband),
+        (MediaType.TV, ReportType.simple),
+        (MediaType.TV_REG, ReportType.crosstab),
+        (MediaType.TV_REG, ReportType.timeband),
+        (MediaType.TV_REG, ReportType.simple),
+    ]
+    for media, report_type in combos:
+        defaults_path = (
+            APP_PATHS.app_settings_dir
+            / "defaults"
+            / media.value.lower()
+            / f"{report_type.value}.yaml"
+        )
+        assert defaults_path.exists(), f"Missing defaults template: {defaults_path}"
+        data = yaml.safe_load(defaults_path.read_text(encoding="utf-8"))
+        defaults = DataDefaults(**data)
+        assert defaults.DATA_DEFAULTS is not None
+

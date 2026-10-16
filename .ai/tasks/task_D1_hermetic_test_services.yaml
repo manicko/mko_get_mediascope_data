@@ -1,0 +1,155 @@
+---
+# Task D1: TST-002 — Hermetic test_run_report_with_real_models
+# Root finding: test_services.py::test_run_report_with_real_models calls the real
+# get_app_service() singleton (services.py:191), which resolves to the real
+# platformdirs user_config_dir, causing FS pollution (log.log append, output/
+# directory creation) and making the suite non-hermetic.
+# Also addresses TST-001 (create_report mocked → no CSV assertion) by un-mocking
+# create_report and asserting on real CSV output.
+
+id: task_D1_hermetic_test_services
+
+title: Hermetic test_run_report_with_real_models — use local_app_service, un-mock create_report
+
+priority: high
+
+depends_on:
+  - task_D0_tv_yaml_fixture
+
+source_reference: ".ai\plans\02-test-coverage-fixes.md"
+source_section: "Block D — D1 (TST-002): Hermetic test_run_report_with_real_models"
+
+description: >
+  Rewrite `tests/test_services.py::test_run_report_with_real_models` to be fully
+  hermetic. The existing test calls the real `get_app_service()` singleton
+  (services.py:191-199), which writes to the real `platformdirs.user_config_dir`
+  — appending to `log.log`, creating `settings/` tree, and creating an empty
+  `output/finance/raw_data/` directory. The rewritten test must use the
+  already-defined `local_app_service` fixture (test_services.py:89-99) which is
+  backed by `tmp_path`. Additionally, un-mock `TVMediaReport.create_report`
+  (removing the AsyncMock patch at test_services.py:48-51) so the real pipeline
+  runs end-to-end, and assert on actual CSV files produced — not just path strings.
+  The doubled `MediaVortexTask` must be configured with proper return values so
+  no exceptions occur in the worker pipeline (see RISK-04: worker has no try/finally).
+
+goals:
+  - No writes to the real user config dir — suite is hermetic
+  - `create_report` is NOT mocked — real pipeline executes
+  - `MediaVortexTask` doubled with proper return values (cats, build_task,
+    send_task, get_status, get_result, result2table)
+  - `asyncio.sleep` mocked to avoid 2s delay in `wait_task` (reports.py:278)
+  - CSV files asserted to exist in the export path
+  - Template defaults copied to tmp settings dir for `get_default_data_settings`
+
+# ── Exact scope (semantically anchored) ──
+files:
+  - path: tests/test_services.py
+    targets:
+      - type: test_function
+        name: test_run_report_with_real_models
+    semantic_anchors:
+      # The function currently uses get_app_service() at the call site
+      replace:
+        type: function_call
+        value: "get_app_service().run_report(test_yaml)"
+      # Remove the create_report mock patch
+      remove:
+        type: mocker_patch
+        target: "mko_get_mediascope_data.core.reports.TVMediaReport.create_report"
+    changes:
+      - action: replace_function
+        description: >
+          Rewrite the entire test to use `local_app_service` fixture, copy
+          template defaults to tmp settings dir, configure the doubled
+          MediaVortexTask with proper return values, mock asyncio.sleep,
+          assert on CSV file existence.
+  - path: tests/test_services.py
+    targets:
+      - type: fixture
+        name: local_app_service
+    changes:
+      - action: extend_fixture
+        description: >
+          Extend `local_app_service` to also copy the bundled template defaults
+          (`src/mko_get_mediascope_data/settings/defaults/`) into
+          `tmp_path / "settings" / "defaults"` so that
+          `AppService.get_default_data_settings` (services.py:93-101) can
+          resolve `defaults_dir / tv / crosstab.yaml` hermetically.
+
+# ── Architectural constraints ──
+constraints:
+  - "Production code is king: do NOT mock create_report, NetworkClient.call
+    internals, or worker logic — only double the MediaVortexTask (the
+    external API client boundary)"
+  - NetworkClient.call is mocked with a side_effect that dispatches based on
+    `func.__name__ == 'get_connection'` (returns the doubled MediaVortexTask)
+    and delegates all other calls to `func(*args, **kwargs)` (invoking the
+    doubled method's return_value)
+  - Template defaults must be copied from `APP_PATHS.app_settings_dir / 'defaults'`
+    (the package templates, read-only) to `tmp_path / 'settings' / 'defaults'`
+    using `shutil.copytree`
+  - asyncio.sleep must be patched globally for the test duration to avoid
+    `wait_task`'s 2s poll delay and `NetworkClient.call`'s jitter sleep
+  - The doubled MediaVortexTask must be configured so that:
+    - `cats.get_availability_period` returns a DataFrame with `id=="1"` (matches
+      `base_id` from `options.kitId` default of 1)
+    - `build_task` returns a dict (truthy, not False)
+    - `send_task` returns a non-empty string (truthy task key)
+    - `get_status` returns `{"taskStatus": "DONE"}`
+    - `get_result` returns a dict (truthy, not False)
+    - `result2table` returns a DataFrame with columns matching `output_columns`
+      (slices translated via en_to_ru + "targetAudience" prepended + statistics)
+
+# ── Required tests / acceptance criteria ──
+required_tests:
+  - name: test_run_report_with_real_models
+    type: existing_test_modified
+    description: >
+      The rewritten test exercises the full pipeline through
+      `local_app_service.run_report(test_yaml)`.
+
+verification_steps:
+  - command: "uv run ruff check tests/test_services.py"
+    expected: "All checks passed!"
+  - command: "uv run pytest tests/test_services.py::test_run_report_with_real_models -v"
+    expected: "1 passed"
+  - command: "Get-ChildItem $env:USERPROFILE/AppData/Local/mko_get_mediascope_data/ -Recurse -ErrorAction SilentlyContinue | Measure-Object"
+    expected: "No new files created in user config dir after test run (hermetic)"
+
+acceptance_criteria:
+  - Test uses `local_app_service` fixture (NOT `get_app_service()`)
+  - `create_report` is NOT mocked — `mocker.patch("...TVMediaReport.create_report")`
+    is removed
+  - Template defaults are copied to tmp settings dir
+  - `asyncio.sleep` is mocked (no real delays)
+  - `MediaVortexTask` is doubled with proper return values (not a bare MagicMock
+    with default return values that would cause `task.json is not False` → True
+    but task.key would be falsy)
+  - Test asserts at least one `.csv.gz` file exists in the export path:
+    `list(export_path.glob("*.csv.gz"))` is non-empty
+  - No files written to the real `platformdirs.user_config_dir`
+  - Test passes in ~1 second (mocked sleeps), not ~20 seconds
+
+# ── Implementation hints ──
+hints:
+  result2table_columns: >
+    The `result2table` mock must return a DataFrame whose columns are a
+    superset of what `DefaultDataStrategy.prepare` selects (reports.py:339-454).
+    The expected columns are computed from `data_settings.slices` (after
+    `en_to_ru` since `data_lang="ru"`) with `"targetAudience"` prepended (because
+    `target_audiences` is non-empty), plus `data_settings.statistics`.
+    For `DYNAMICS_BY_SPOTS`, these are ~25 slice columns + 5 statistics columns.
+    The test should compute these dynamically from the defaults file rather than
+    hardcoding column names.
+  side_effect_dispatch: >
+    The `NetworkClient.call` side_effect should check
+    `func.__name__ == "get_connection"` to return the doubled MediaVortexTask,
+    and for all other calls, invoke `func(*args, **kwargs)` to leverage the
+    doubled method's `.return_value` configuration. This ensures the real
+    retry/backoff/semaphore logic in NetworkClient.call is bypassed cleanly
+    while the pipeline methods execute with proper mock data.
+  task_name: >
+    With `last_time.time_unit="w"` and `date_filter=["2025-01-01","2025-01-07"]`,
+    `get_period` produces one interval: `("2025-01-01", "2025-01-07")`.
+    The generated task name is `"2025-01-01_2025-01-07_all_18_"` (after
+    `unidecode("all 18+")`).

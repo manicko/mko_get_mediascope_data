@@ -18,8 +18,8 @@
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'm',
-        'period_num': 1,
+        'time_unit': 'm',
+        'unit_count': 1,
         'include_current': False
       }
     },
@@ -45,8 +45,8 @@
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'm',
-        'period_num': 1,
+        'time_unit': 'm',
+        'unit_count': 1,
         'include_current': False
       }
     },
@@ -88,8 +88,8 @@
     'period': {
       'date_filter': Null, #[ '2023-01-01', '2023-12-31' ], #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'm',
-        'period_num': 1,
+        'time_unit': 'm',
+        'unit_count': 1,
         'include_current': False
       }
     },
@@ -135,8 +135,8 @@
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'w',
-        'period_num': 12,
+        'time_unit': 'w',
+        'unit_count': 12,
         'include_current': False
       }
     },
@@ -170,8 +170,8 @@
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'm',
-        'period_num': 1,
+        'time_unit': 'm',
+        'unit_count': 1,
         'include_current': False
       }
     },
@@ -200,8 +200,8 @@
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'm',
-        'period_num': 1,
+        'time_unit': 'm',
+        'unit_count': 1,
         'include_current': False
       }
     },
@@ -231,8 +231,8 @@
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'm',
-        'period_num': 1,
+        'time_unit': 'm',
+        'unit_count': 1,
         'include_current': False
       }
     },

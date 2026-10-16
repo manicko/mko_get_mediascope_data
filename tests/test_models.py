@@ -1,4 +1,5 @@
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from mko_get_mediascope_data.core.models import (
@@ -11,6 +12,7 @@ from mko_get_mediascope_data.core.models import (
     ReportType,
 )
 from mko_get_mediascope_data.core.services import AppService
+from mko_get_mediascope_data.core.paths import APP_PATHS
 
 
 def test_report_settings_valid():
@@ -58,3 +60,54 @@ def test_merge_data_settings_en_does_not_translate(mocker):
     mock_en_to_ru.assert_not_called()
     # slices remain unchanged (no translation applied)
     assert result["slices"] == ["EName_col"]
+
+
+def test_bundled_templates_validate():
+    """All 32 entries across 16 bundled YAML report templates must pass
+    ReportSettings validation.
+
+    Reads from the package's bundled templates via APP_PATHS.app_settings_dir
+    (read-only), not the user config directory.
+    """
+    reports_dir = APP_PATHS.app_settings_dir / "reports"
+    yaml_files = sorted(reports_dir.rglob("*.yaml"))
+    assert yaml_files, "No YAML files found in bundled reports directory"
+
+    total_entries = 0
+    failures: list[str] = []
+
+    for yaml_file in yaml_files:
+        data = yaml.safe_load(yaml_file.read_text())
+        entries = data if isinstance(data, list) else [data]
+        for idx, entry in enumerate(entries):
+            total_entries += 1
+            try:
+                ReportSettings.model_validate(entry)
+            except Exception as exc:
+                rel = yaml_file.relative_to(reports_dir)
+                failures.append(f"{rel} entry[{idx}]: {exc}")
+
+    if failures:
+        msg = f"{len(failures)} of {total_entries} entries failed:\n" + "\n".join(failures)
+        pytest.fail(msg)
+
+    assert total_entries == 32, f"Expected 32 entries, found {total_entries}"
+
+
+def test_data_defaults_covers_all_subtypes():
+    """All 7 ReportSubtype values must have matching defaults keys in tv/crosstab.yaml.
+
+    After Path A fixes, hasattr(defaults, subtype.value) must return True
+    for all non-default subtypes. This verifies that the two-path failure
+    mechanism (TypeError for ru, ValidationError for en) is eliminated.
+    """
+    defaults_path = APP_PATHS.app_settings_dir / "defaults" / "tv" / "crosstab.yaml"
+    data = yaml.safe_load(defaults_path.read_text())
+    defaults = DataDefaults(**data)
+
+    for subtype in ReportSubtype:
+        if subtype == ReportSubtype.default_value:
+            continue
+        assert hasattr(defaults, subtype.value), (
+            f"Missing defaults key for subtype: {subtype.value}"
+        )

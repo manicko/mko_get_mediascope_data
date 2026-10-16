@@ -36,21 +36,11 @@ class AppService:
 
     @cached_property
     def app_config(self) -> AppConfig:
-        logging_settings_dict = utils.yaml_to_dict(self.app_paths.log_config)
-        if logging_settings_dict is None:
-            raise FileNotFoundError(
-                f"Log config file '{self.app_paths.log_config}' is empty or "
-                f"contains only a null node."
-            )
-        logging_settings = LoggingSettings(**logging_settings_dict)
+        logging_settings = LoggingSettings(
+            **utils.yaml_to_dict(self.app_paths.log_config)
+        )
 
-        app_settings_dict = utils.yaml_to_dict(self.app_paths.app_config)
-        if app_settings_dict is None:
-            raise FileNotFoundError(
-                f"App config file '{self.app_paths.app_config}' is empty or "
-                f"contains only a null node."
-            )
-        app_settings = AppSettings(**app_settings_dict)
+        app_settings = AppSettings(**utils.yaml_to_dict(self.app_paths.app_config))
 
         return AppConfig(logging_settings=logging_settings, app_settings=app_settings)
 
@@ -129,8 +119,14 @@ class AppService:
             connection_service = _CONNECTION_MAP[media_type]
         except KeyError as err:
             raise ValueError(f"Unsupported media type: {media_type}") from err
+        cred_path = self.app_paths.connection_config
+        if not cred_path.exists():
+            raise FileNotFoundError(
+                f"Mediascope credentials not found at '{cred_path}'. "
+                f"Run 'mko-get-mediascope init' to create the settings directory."
+            )
         return connection_service(
-            settings_filename=self.app_paths.connection_config,
+            settings_filename=cred_path,
             check_version=False,
         )
 

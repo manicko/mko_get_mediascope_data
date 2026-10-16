@@ -1,0 +1,28 @@
+# Execution order for Block D tasks (TST-001, TST-002, TST-003)
+#
+# D0 must complete before D1 and D2 (both need the updated tv_yaml_content fixture).
+# D1 and D2 are independent of each other and can run in parallel after D0.
+# D3 is fully independent and can run at any time.
+
+tasks:
+  # ── D0: Shared fixture fix (no dependencies) ──
+  - id: task_D0_tv_yaml_fixture
+    depends_on: []
+
+  # ── D1: Hermetic test_run_report_with_real_models (TST-002 + TST-001) ──
+  # Requires the tv_yaml_content fixture to have last_time set (PIPE-003 avoidance)
+  - id: task_D1_hermetic_test_services
+    depends_on:
+      - task_D0_tv_yaml_fixture
+
+  # ── D2: Real pipeline lifecycle test (TST-001/003) ──
+  # Requires the tv_yaml_content fixture to have last_time set (PIPE-003 avoidance)
+  # Independent of D1 — tests create_report directly, not through AppService.run_report
+  - id: task_D2_reports_lifecycle
+    depends_on:
+      - task_D0_tv_yaml_fixture
+
+  # ── D3: Network client tests (TST-003) ──
+  # Fully independent — tests NetworkClient.call in isolation
+  - id: task_D3_network_client_tests
+    depends_on: []

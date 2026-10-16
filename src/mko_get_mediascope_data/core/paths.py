@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from platformdirs import user_config_dir
@@ -6,6 +7,8 @@ from pydantic import BaseModel
 APP_NAME: str = __package__.split(".")[0]
 APP_DIR: Path = Path(__file__).resolve().parent.parent
 USER_DIR: Path = Path(user_config_dir(APP_NAME))
+
+logger = logging.getLogger(__name__)
 
 
 class PathResolver:
@@ -56,7 +59,28 @@ class AppPaths(BaseModel):
 
     @property
     def connection_config(self) -> Path:
-        return Path(self.user_settings_dir, "connections/mediascope.json")
+        """Resolve the credential file path.
+
+        Prefers mediascope.json. Falls back to the legacy
+        mediascope_RENAME_.json with a deprecation warning, so users who
+        haven't re-run ``init`` after upgrading are not broken.
+        """
+        primary = Path(self.user_settings_dir, "connections", "mediascope.json")
+        if primary.exists():
+            return primary
+
+        legacy = Path(
+            self.user_settings_dir, "connections", "mediascope_RENAME_.json"
+        )
+        if legacy.exists():
+            logger.warning(
+                "Credential file '%s' uses the legacy 'mediascope_RENAME_' name. "
+                "Please run 'mko-get-mediascope init' to migrate to 'mediascope.json'.",
+                legacy,
+            )
+            return legacy
+
+        return primary
 
     @property
     def reports(self) -> Path:

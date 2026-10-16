@@ -29,60 +29,7 @@
     'add_city_to_targetdemo_from_region': True, # Required for region calculation
     'frequency_dist_conditions': Null, # Sets frequency distribution
   },
-  'DYNAMICS_BY_SPOTS_M': {
-    # Specify list of slices
-    'slices': [
-      'researchMonth', # day - can specify at most 1 time slice per task.
-      # 'researchMonth', # month - can specify at most 1 time slice per task.
-      # 'researchWeek', # week - can specify at most 1 time slice per task.
-      'articleList4EName',  # Product categories 4 list
-      'advertiserListEName',  # Advertisers list
-      # 'advertiserListId',  # Advertisers list id
-      'brandListEName',  # Brands list
-      # 'brandListId',  # Brands list id
-      'subbrandListEName',  # Sub-brands list
-      # 'subbrandListId',  # Sub-brands list id
-      'modelListEName',  # Products list
-      # 'modelListId',  # Products list id
-      'adEName',  # Ad
-      'articleList2EName',  # Product categories 2 list
-      'articleList3EName',  # Product categories 3 list
-      'articleList4EName',  # Product categories 4 list
-      'adStandardDuration',  # Ad expected duration
-      'adDistributionTypeEName',  # Ad distribution
-      'adTypeName',  # Ad type
-      'adPositionId',  # Ad position in block
-      'adPositionTypeEName',  # Ad positioning
-      'adPrimeTimeStatusId',  # Prime/Off-prime ad id '1 - Prime-time, 2 - Off-prime
-      'adPrimeTimeStatusEName',  # Prime/Off-prime ads (en.)
-      'adId',  # Ad ID
-      #      'adNotes',  # Ad description
-      'adFirstIssueDate', # Ad first air date
-      'tvCompanyEName',  # TV company
-      #      'programEName',  # Program
-      #      'programCategoryEName',  # Program category (en.)
-      #      'programCategoryShortEName',  # Program short category
-      #      'programTypeEName',  # Program genre
-      'regionName', #Region
-    ],
-    # Set calculation options
-    'options': {
-      # dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
-      # Only one value can be specified
-      'kitId': 3, #TV Index Russia all
-      'issueType': "AD",  # Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
-      "standRtg": {
-        "useRealDuration": True,  # Calculated based on actual ad duration.
-        "standardDuration": 20  # Standard duration of 20 seconds
-      }
-    },
-    'statistics': [
-      'RtgPerSum',  # Total reach of event group in %
-      'StandRtgPerSum',
-      'QuantitySum'  # Number of broadcast events
-    ]
-  },
-  'DYNAMICS_BY_SPOTS_D': {
+  'DYNAMICS_BY_SPOTS': {
     # Specify list of slices
     'slices': [
       'researchDate', # day - can specify at most 1 time slice per task.

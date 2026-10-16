@@ -1,0 +1,357 @@
+---
+# Task: CFG-001 — Repair All Report Templates
+# Finding: 30 of 32 bundled report entries fail ReportSettings(**rep).
+# Defects: stale report_type enum values (TV_CROSSTAB etc → crosstab),
+# stale field names (period_type → time_unit, period_num → unit_count),
+# missing media/relative_path, folder/category_name instead of relative_path.
+#
+# Reference template (PASSES): nat_tv_brands_tefal.yaml — its 2 entries are the
+# only bundled entries that pass ReportSettings validation.
+#
+# Dependency: Must complete before CFG-007 (T06) — templates must pass validation
+# before the data-settings merge chain can be exercised end-to-end.
+
+id: task_CFG001_repair_templates
+
+title: Repair 15 report template files to conform to ReportSettings schema
+
+priority: high
+
+depends_on: []
+
+# ── Plan/Audit report source ──
+source_reference: ".ai/plans/03-config-secrets-fixes.md"
+source_section: "Block 3 — CFG-001: Repair All Report Templates (HIGH)"
+source_file: ".ai/audit/99-validation/02-config-secrets-validated-findings.md"
+
+description: >
+  30 of 32 bundled report entries fail ReportSettings(**rep) validation.
+  The reference template nat_tv_brands_tefal.yaml (entries [0] and [1] both
+  PASS) defines the correct pattern. Apply the same field/enum corrections to
+  all 15 affected template files so all 32 entries validate. This is a
+  template-first repair: conform templates to the Pydantic models, never
+  change the code.
+
+goals:
+  - All 32 bundled report entries pass ReportSettings(**rep)
+  - All 15 template files repaired (nat_tv_brands_tefal.yaml untouched — already passes)
+  - All data values preserved (slices, statistics, options, company_filter, ad_filter, etc.)
+  - Follow settings-layers-architecture.md conformance rules (template-first)
+
+# ── Exact scope (semantically anchored) ──
+files:
+  - path: src/mko_get_mediascope_data/settings/reports/gap_resurs/nat_tv_brands.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab; TV_DICT_CROSSTAB → crosstab (report_type)"
+      - action: rename_key
+        description: "period_type → time_unit in last_time block"
+      - action: rename_key
+        description: "period_num → unit_count in last_time block"
+      - action: coerce_value
+        description: "period_num string '1' → int 1 (PositiveInt rejects strings)"
+      - action: rename_key
+        description: "folder → relative_path (preserve value)"
+      - action: remove_key
+        description: "category_name (absorbed by extra='allow', never consumed by core)"
+      - action: add_field
+        description: "media: TV (required by ReportSettings.media)"
+
+  - path: src/mko_get_mediascope_data/settings/reports/gap_resurs/reg_tv_by_spots.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "REG_TV_CROSSTAB → crosstab; REG_TV_DICT_CROSSTAB → crosstab (report_type)"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string → int"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV_REG (required; file is in REG_TV templates)"
+
+  - path: src/mko_get_mediascope_data/settings/reports/last_category/nat_tv_brands_last.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab; TV_DICT_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string '1' → int 1"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV"
+
+  - path: src/mko_get_mediascope_data/settings/reports/last_category/nat_tv_brands_snack.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab; TV_DICT_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string → int"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV"
+
+  - path: src/mko_get_mediascope_data/settings/reports/last_category/nat_tv_brands_weekly_reach.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string → int"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV"
+
+  - path: src/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string '1' → int 1"
+    notes: >
+      This file already has media='TV', report_type='crosstab', relative_path set.
+      Only period_type/period_num need fixing.
+
+  - path: src/mko_get_mediascope_data/settings/reports/nat_tv_tvreport.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string → int (and int 1 stays int)"
+    notes: >
+      All entries already have media='TV', report_type='crosstab'/'timeband',
+      and relative_path. Only period_type/period_num need fixing. This file uses
+      NAT_TV_CHANNELS_ATV/BA/SOC_DEM subtypes (CFG-007 linkage).
+
+  - path: src/mko_get_mediascope_data/settings/reports/sovcombank/nat_tv_brands_finance.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab; TV_DICT_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string → int"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV"
+
+  - path: src/mko_get_mediascope_data/settings/reports/sovcombank/nat_tv_brands_finance2.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string → int"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV"
+
+  - path: src/mko_get_mediascope_data/settings/reports/sovcombank/nat_tv_by_spots.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab; TV_DICT_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string → int"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV"
+
+  - path: src/mko_get_mediascope_data/settings/reports/sovcombank/nat_tv_finance_q.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string '3' → int 3"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV"
+
+  - path: src/mko_get_mediascope_data/settings/reports/sovcombank/reg_tv_by_spots.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "REG_TV_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string → int"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV_REG"
+
+  - path: src/mko_get_mediascope_data/settings/reports/sovcombank/tv_msk_new_creatives.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string → int"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV"
+
+  - path: src/mko_get_mediascope_data/settings/reports/sovcombank/tv_msk_new_creatives_short.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num string → int"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV"
+
+  - path: src/mko_get_mediascope_data/settings/reports/test.yaml
+    targets:
+      - type: yaml_file
+    changes:
+      - action: rename_enum
+        description: "TV_CROSSTAB → crosstab"
+      - action: rename_key
+        description: "period_type → time_unit"
+      - action: rename_key
+        description: "period_num → unit_count"
+      - action: coerce_value
+        description: "period_num int 24 → int 24 (no change needed)"
+      - action: rename_key
+        description: "folder → relative_path"
+      - action: remove_key
+        description: "category_name"
+      - action: add_field
+        description: "media: TV"
+
+# ── Transform rules (applied uniformly to all 15 files) ──
+constraints:
+  - "Apply to ALL entries in ALL 15 template files (not just the first entry)"
+  - "Transform 1: report_type TV_CROSSTAB/TV_DICT_CROSSTAB/REG_TV_CROSSTAB/REG_TV_DICT_CROSSTAB → crosstab"
+  - "Transform 2: last_time.period_type → last_time.time_unit"
+  - "Transform 3: last_time.period_num → last_time.unit_count (coerce string to int for PositiveInt)"
+  - "Transform 4: Add media field if missing (TV for TV files, TV_REG for REG_TV files)"
+  - "Transform 5: Rename folder → relative_path (preserve value)"
+  - "Transform 6: Remove category_name (absorbed by extra='allow', never consumed by core)"
+  - "Do NOT touch nat_tv_brands_tefal.yaml (already passes validation)"
+  - "Do NOT change any data values (slices, statistics, options, company_filter, etc.)"
+  - "Reference template: settings/reports/nat_tv_brands_tefal.yaml"
+  - "Template-first principle: repair templates, never change Pydantic models"
+
+# ── Required tests / acceptance criteria ──
+required_tests:
+  - name: test_bundled_templates_validate
+    type: new_test
+    description: >
+      Iterates all .yaml files in settings/reports/, loads each entry, and
+      validates with ReportSettings(**entry). Asserts all 32 entries pass.
+    expected: "32/32 PASS"
+
+verification_steps:
+  - command: "uv run pytest tests/test_models.py::test_bundled_templates_validate -v"
+    expected: "1 passed (32/32 entries validate)"
+  - command: "python -c \"import yaml, glob; from mko_get_mediascope_data.core.models import ReportSettings; ... validate all 32 entries\""
+    expected: "32/32 PASS, 0 ValidationError"
+  - command: "uv run ruff check src/  # no Python code changed, but verify no side-effects"
+    expected: "All checks passed!"
+
+acceptance_criteria:
+  - All 15 template files modified (nat_tv_brands_tefal.yaml untouched)
+  - All 32 entries pass ReportSettings(**rep) validation (was: 2 PASS, 30 FAIL)
+  - No data values changed (only field/enum names and types)
+  - media field present on all entries that lacked it
+  - relative_path field present on all entries that used folder
+  - period_num coerced from string to int where needed
+  - test_bundled_templates_validate passes

@@ -1,0 +1,89 @@
+---
+# Task D0: Shared prerequisite — fix tv_yaml_content fixture to avoid PIPE-003 crash
+# Required by both D1 (test_run_report_with_real_models rewrite) and
+# D2 (test_reports_lifecycle.py lifecycle test) which un-mock create_report
+# and exercise the real get_period → reports.py:241 path.
+
+id: task_D0_tv_yaml_fixture
+
+title: Update tv_yaml_content fixture to include last_time (PIPE-003 avoidance)
+
+priority: high
+
+depends_on: []
+
+source_reference: ".ai\plans\02-test-coverage-fixes.md"
+source_section: "Block D — Sub-tasks / D1 and D2 depend on last_time"
+
+description: >
+  The `tv_yaml_content` fixture in `tests/conftest.py` currently sets
+  `last_time: null` while `date_filter` is populated. The real pipeline's
+  `TVMediaReport.get_period` (reports.py:241) unconditionally accesses
+  `self.report_settings.period.last_time.time_unit`, which raises
+  `AttributeError` when `last_time` is None. This is a known production-code
+  bug (PIPE-003, owned by Phase 04) — the fix here is test-side: set
+  `last_time` to a valid `LastTimeModel` dict so the real `create_report`
+  pipeline can execute without hitting the production crash.
+
+goals:
+  - Eliminate the PIPE-003 AttributeError trigger in the test fixture
+  - Keep `date_filter` set so `get_period` takes the explicit-date branch
+  - Ensure `get_available_period` succeeds (dummy_df id=="1" matches kitId default)
+  - Keep the fixture backward-compatible for existing consumers
+
+# ── Exact scope (semantically anchored, no line numbers) ──
+files:
+  - path: tests/conftest.py
+    targets:
+      - type: fixture
+        name: tv_yaml_content
+    semantic_anchors:
+      match:
+        type: dict_key
+        value: "last_time"
+      within:
+        type: fixture
+        name: tv_yaml_content
+    changes:
+      - action: replace_value
+        description: >
+          Change `"last_time": null` to `"last_time": {"time_unit": "w", "unit_count": 1}`
+          so that `reports.py:241` (`frequency = self.report_settings.period.last_time.time_unit`)
+          does not raise AttributeError when the real `create_report` pipeline runs.
+          `PeriodModel.validate_exclusive` (models.py) permits both `date_filter` and `last_time`
+          simultaneously (requires at least one), so this combination is valid.
+
+# ── Architectural constraints ──
+constraints:
+  - The fixture is a YAML/JSON string literal — Python enum references cannot be embedded;
+    string values must remain as-is. Enum refactoring for this fixture is TST-007 (Block B),
+    not in scope for Block D.
+  - `data_lang` remains "ru" (the `en_to_ru` translation branch must still be exercised).
+  - `report_subtype` stays `DYNAMICS_BY_SPOTS` (matches the defaults file's kitId=1, which
+    aligns with `dummy_df.id == "1"` and `TVMediaReport.base_id = options.get("kitId", 1)`).
+  - `multiple_files: true` is preserved — forces `slice_period` call which exercises
+    `reports.py:246` and produces one interval slice from the 7-day date range.
+  - This change is backward-compatible: `PeriodModel` accepts both fields set; no consumer
+    downstream is broken.
+
+# ── Implementation sequence ──
+implementation_sequence:
+  - step: 1
+    action: Read `tests/conftest.py` `tv_yaml_content` fixture (conftest.py:31-52)
+  - step: 2
+    action: Replace `"last_time": null` with `"last_time": {"time_unit": "w", "unit_count": 1}`
+    note: "w" = weekly frequency; `slice_period` over 2025-01-01..2025-01-07 yields one slice
+  - step: 3
+    action: Run `uv run ruff check tests/conftest.py` to verify lint clean
+  - step: 4
+    action: Run `uv run pytest tests/test_services.py tests/test_models.py -v` to confirm
+    no regression from the fixture change
+
+# ── Required tests / acceptance criteria ──
+acceptance_criteria:
+  - conftest.py `tv_yaml_content` fixture contains `"last_time": {"time_unit": "w", "unit_count": 1}`
+  - `ReportSettings.model_validate(json.loads(tv_yaml_content)[0])` succeeds without error
+  - `PeriodModel` validation passes (both `date_filter` and `last_time` set is valid per models.py:72-80)
+  - `uv run ruff check tests/conftest.py` passes
+  - Existing tests that consume `tv_yaml_content` (test_services.py) still collect and pass
+  - New D1/D2 tasks can construct `ReportSettings` from the fixture without PIPE-003 crash at reports.py:241

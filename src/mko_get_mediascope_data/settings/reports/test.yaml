@@ -1,11 +1,11 @@
 [
   {
-    'report_type': 'TV_CROSSTAB',
+    'media': 'TV',
+    'report_type': 'crosstab',
     'report_subtype': 'TOP_NAT_TV_ADVERTISERS', # report type
     'data_lang': 'ru', # set data language
-    'folder': 'adv_total_m',
+    'relative_path': 'adv_total_m',
     'multiple_files': True, # If period exceeds 1 year, split exports by month/week
-    'category_name': 'tv_report',
     'ad_filter': Null,
     'target_audiences': {
       'all 20-45 BC': 'age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)',
@@ -18,8 +18,8 @@
     'period': {
       'date_filter': Null, #['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'm',
-        'period_num': 24,
+        'time_unit': 'm',
+        'unit_count': 24,
         'include_current': False
       }
     },

@@ -1,11 +1,11 @@
 [
   {
-    'report_type':'TV_CROSSTAB',
+    'media': 'TV',
+    'report_type':'crosstab',
     'report_subtype': 'DYNAMICS_BY_SPOTS', # report type
-    'category_name': 'sovcombank',
     'compression': {'method': 'gzip'},
     'data_lang': 'ru', # set data language
-    'folder':'msk_tv_new_creatives',
+    'relative_path':'msk_tv_new_creatives',
     'multiple_files': True, # If period exceeds 1 year, split exports by month/week
     'ad_filter': 'articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)', #Financial services
     'target_audiences': {
@@ -17,8 +17,8 @@
     'period': {
       'date_filter': Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
       'last_time': { #if you need the last few months #
-        'period_type': 'w',
-        'period_num': '1',
+        'time_unit': 'w',
+        'unit_count': 1,
         'include_current': True
       }
     },
