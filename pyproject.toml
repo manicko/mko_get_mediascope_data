@@ -154,7 +154,8 @@ addopts = [
     "--strict-markers",
     "--asyncio-mode=auto",
     "--cov=src/mko_get_mediascope_data",
-    "--cov-report=term-missing"
+    "--cov-report=term-missing",
+    "--cov-fail-under=70"
 ]
 console_output_style = "classic"
 testpaths = ["tests"]
