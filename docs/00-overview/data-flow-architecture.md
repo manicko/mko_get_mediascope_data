@@ -87,12 +87,12 @@ partial sub-keys are not merged.
 ```mermaid
 flowchart TD
     A["period config"] --> B{"date_filter set?"}
-    B -- no --> C["get_last_period(today = latest available API date,<br/>last_time)  utils.py:88-130"]
+    B -- no --> C["get_last_period(today = latest available API date,<br/>last_time, time_unit = period.time_unit)  utils.py:88-130"]
     B -- yes --> D["requested = date_filter"]
     C --> E["clip to API window<br/>max(window.start, requested.start), min(window.end, requested.end)<br/>reports.py:242-244"]
     D --> E
     E --> F{"multiple_files?"}
-    F -- true --> G["slice by last_time.time_unit<br/>utils.slice_period  utils.py:69-85"]
+    F -- true --> G["slice by period.time_unit<br/>utils.slice_period  utils.py:69-85"]
     F -- false --> H["single interval"]
     G --> I["interval list → tasks"]
     H --> I
@@ -113,12 +113,9 @@ Rules and their edge cases `[code]`:
   when available (D-20, DISC-11).
 - **Clipping can invert the period** (start > end) when the requested range does
   not overlap the window, silently (`reports.py:242-244`); executed in a probe: zero intervals for a non-overlapping request (lead: audit PIPE-005).
-- **The interval length always comes from `last_time.time_unit`**, even when
-  `date_filter` is used, and the code reads it unconditionally — a report with
-  `date_filter` and `last_time: null` crashes (`reports.py:241`); executed in a probe (lead: audit PIPE-003). The file names therefore do not necessarily match the folder names:
-  the on-disk exports show weekly files inside `…/channels_tva_m/`
-  (`[code — folder name from relative_path, interval from time_unit]`,
-  cross-checked against the machine's historical outputs).
+- The interval length comes from `period.time_unit` (default `w`), which is
+  always available on `PeriodModel` regardless of whether `date_filter` or
+  `last_time` is used (`models.py:68-84`, `reports.py:296`).
 
 ### Task fan-out
 
