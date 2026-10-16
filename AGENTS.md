@@ -27,7 +27,7 @@ On Windows, `Makefile.ps1` wraps the same toolchains:
 
 - **Stack:** Python 3.12+ (3.14 in classifiers) · `uv` · Typer CLI · Rich console · Pydantic v2 (models/validation/DTO) · pandas (data processing) · `mediascope-api-lib` (API client) · PyYAML (config) · asyncio (concurrent report tasks).
 - **No database, no Docker, no web framework.** This is a standalone async data-fetcher.
-- **Two entry points:** CLI (`app.py`) — Typer app with `init`, `run`, `list_reports` commands; Library — public functions `run_report`, `run_report_async`, `initialize_settings`.
+- **Two entry points:** CLI (`app.py`) — Typer app with `init`, `run`, `list-reports` commands; Library — public functions `run_report`, `run_report_async`, `initialize_settings`.
 - **Fixed values:** use `Enum` — the project uses `MediaType`, `ReportType`, `ReportSubtype` in `core/models.py`.
 - **Config:** user settings live in `~/.config/mko_get_mediascope_data/settings/` (copied from package templates via `init` command). Settings are Pydantic-validated.
 

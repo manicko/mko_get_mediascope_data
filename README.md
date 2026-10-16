@@ -9,11 +9,11 @@
 
 ## 🚀 Quick Start
 
-### Install from Test PyPI (recommended for users)
+### Install from GitHub
 
 ```bash
 # 1. Install the package
-uv pip install -i https://test.pypi.org/simple/ mko-get-mediascope-data
+pip install git+https://github.com/manicko/mko_get_mediascope_data.git
 
 # 2. Initialize user settings (creates everything in your home folder)
 uv run -m mko_get_mediascope_data init
@@ -25,7 +25,7 @@ uv run -m mko_get_mediascope_data run settings/reports/nat_tv_brands_last.yaml
 ### For developers (editable installation)
 
 ```bash
-git clone https://github.com/yourusername/mko_get_mediascope_data.git
+git clone https://github.com/manicko/mko_get_mediascope_data.git
 cd mko_get_mediascope_data
 
 uv pip install -e .
@@ -66,15 +66,12 @@ uv run -m mko_get_mediascope_data --help
 **Available commands:**
 - `init`          — Initialize user settings and templates
 - `run`           — Run one or more reports from YAML file(s)
-- `list_reports`  — List all available report files
+- `list-reports`  — List all available report files
 
 **Examples:**
 ```bash
 # Run single report
-uv run -m mko_get_mediascope_data run settings/reports/nat_tv_brands_last.yaml
-
-# Run with minimal output
-uv run -m mko_get_mediascope_data run my_report.yaml --no-verbose
+uv run -m mko_get_mediascope_data run settings/reports/nat_tv_tvreport.yaml
 ```
 
 ## 🔌 Public API (Jupyter, Airflow, scripts)
@@ -107,12 +104,11 @@ Project documentation (start here):
 | [Settings Layers](docs/00-overview/settings-layers-architecture.md) | the DEFAULT/CLIENT settings merge in depth |
 | [Async & Concurrency](docs/00-overview/async-concurrency-architecture.md) | the two-level concurrency model in depth |
 
-Note: the verified CLI command surface (`list-reports` with a hyphen; no
-`--no-verbose` flag) and the current validation status of the bundled report
-templates are documented in
-[Current Behavior](docs/00-overview/current-behavior.md). Where the examples in
-this README differ from the verified behavior, the Current Behavior document is
-authoritative.
+The CLI command surface (`init`, `run`, `list-reports`) is verified against
+the Typer app in [`src/mko_get_mediascope_data/app.py`](src/mko_get_mediascope_data/app.py).
+The validation status of bundled report templates and full behavior details
+are documented in
+[Current Behavior](docs/00-overview/current-behavior.md).
 
 External:
 - Official Mediascope API: [mediascope-api-lib](https://github.com/MEDIASCOPE-JSC/mediascope-api-lib)

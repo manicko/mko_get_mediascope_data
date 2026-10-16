@@ -280,16 +280,16 @@ answered on 2026-10-15; the register below reflects the answers.
 
 | ID | Discrepancy | Sources | Current handling in this documentation |
 |---|---|---|---|
-| DISC-01 | Command name `list_reports` vs actual `list-reports` | README/AGENTS.md vs CLI (verified exit code 2 for the underscore form) | Documented as a README defect; code treated as truth |
-| DISC-02 | README documents `run --no-verbose`, which does not exist (verified exit code 2) | README vs `app.py:42` | README defect; no code change made |
+| DISC-01 | Command name `list_reports` vs actual `list-reports` | README/AGENTS.md vs CLI (verified exit code 2 for the underscore form) | **Resolved** — README and AGENTS.md corrected to `list-reports` (2026-10-16) |
+| DISC-02 | README documents `run --no-verbose`, which does not exist (verified exit code 2) | README vs `app.py:42` | **Resolved** — invalid example removed from README (2026-10-16) |
 | DISC-03 | README's quick-start example (`nat_tv_brands_last.yaml`) fails validation | README vs `ReportSettings` (probe) | Covered by D-06 repair work |
 | DISC-04 | Shipped credential template `mediascope_RENAME_.json` vs expected `mediascope.json` | `settings/connections/` vs `paths.py:58` (verified; lead: audit CFG-003) | Q-07 / D-12 recommendation recorded |
-| DISC-05 | `multiple_files` comment says "if period exceeds 1 year, split exports by month/week"; the code always splits by `last_time.time_unit` | `models.py:94-96` vs `reports.py:245-247` | Documented current behavior (code); comment treated as stale |
+| DISC-05 | `multiple_files` comment says "if period exceeds 1 year, split exports by month/week"; the code splits by `period_model.time_unit` | `models.py:98-99` vs `reports.py:296` (verified) | Documented current behavior (code); comment treated as stale |
 | DISC-06 | The audit corpus is pinned to frozen baselines (`d093d9c`/`b04d177`), contains errors, and several entries no longer match HEAD | `.ai/audit/99-validation/*` vs HEAD | Per owner ruling D-05 the audit is a lead source only; these docs follow the code and re-verify each claim |
 | DISC-07 | `defaults/tv/crosstab.yaml` parses at commit `3408747` and fails from `b04d177` onward — the i18n translation commit introduced the YAML syntax error at line 138 | Git probe | Documented as the cause of the TV-defaults outage; covered by D-06 repair work |
 | DISC-08 | The owner's personal settings folder still uses the legacy dialect and older templates, and its exports predate the current column-selection code | Machine state vs HEAD | Used as evidence for Q-01/Q-02, not as a specification |
 | DISC-09 | The owner recalled that regions **99 and 100** are excluded; the code excludes **only 99** | Owner answer vs `reports.py:406-407` (verified) | Recorded for the region-option redesign (R-01): start from the code |
-| DISC-10 | README instructs installation from (Test) PyPI; the owner's stated path is `pip install <github_url>`, with no PyPI publication | README vs owner answer (D-19) | README to be corrected; not changed in this documentation task |
+| DISC-10 | README instructs installation from (Test) PyPI; the owner's stated path is `pip install <github_url>`, with no PyPI publication | README vs owner answer (D-19) | **Resolved** — README corrected to `pip install git+https://github.com/manicko/mko_get_mediascope_data.git` (2026-10-16) |
 | DISC-11 | The `kitId` legend and values in the bundled templates are stale per the owner | Templates vs owner answer | No `kitId` meaning is asserted anywhere in these docs |
 
 ### Gaps between owner intent and current implementation
