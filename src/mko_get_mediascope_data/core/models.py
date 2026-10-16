@@ -75,9 +75,7 @@ class PeriodModel(BaseModel):
             raise ValueError("Specify either date_filter or last_time")
 
         if self.date_filter and self.last_time:
-            raise ValueError(
-                "Specify either date_filter or last_time, not both"
-            )
+            raise ValueError("Specify either date_filter or last_time, not both")
 
         if self.date_filter and len(self.date_filter) != 2:
             raise ValueError("date_filter must contain 2 dates")
@@ -123,7 +121,7 @@ class AppConfig(BaseModel):
 
 class DataDefaults(BaseModel):
     model_config = ConfigDict(extra="allow")
-    DATA_DEFAULTS: dict
+    DATA_DEFAULTS: dict[str, Any]
 
 
 class Data(BaseModel):

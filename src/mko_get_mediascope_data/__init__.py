@@ -1,5 +1,6 @@
 """mko_get_mediascope_data — tools for loading data from the Mediascope API."""
 
+# pyright: reportUnsupportedDunderAll=false
 from typing import Any
 
 __all__ = [

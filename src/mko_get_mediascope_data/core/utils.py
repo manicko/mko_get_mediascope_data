@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from datetime import date, datetime
 from os import PathLike
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, overload
 
 import yaml
 from dateutil.relativedelta import relativedelta
@@ -15,19 +15,19 @@ from mko_get_mediascope_data.core.models import LastTimeModel
 logger = logging.getLogger(__name__)
 
 
-def str_to_date(date_string: str):
+def str_to_date(date_string: str) -> date:
     """
     converts string to date format
     :param date_string: str in format  %Y-%m-%d
     :return: date
     """
     try:
-        date_string = datetime.strptime(date_string, "%Y-%m-%d").date()
+        result: date = datetime.strptime(date_string, "%Y-%m-%d").date()
     except (ValueError, TypeError) as err:
         logger.error(f"wrong format of date_string {date_string}: {err}")
         raise err
     else:
-        return date_string
+        return result
 
 
 def iter_period_slices(
@@ -41,7 +41,7 @@ def iter_period_slices(
         return
 
     current = overall_start
-    delta = current
+    delta: relativedelta = relativedelta()
     match frequency:
         case "d":
             delta = relativedelta(days=1)
@@ -85,9 +85,28 @@ def slice_period(
     return slices
 
 
+@overload
 def get_last_period(
-    settings: LastTimeModel, today: datetime | None = None, as_strings: bool = False
-) -> tuple[str, ...] | tuple[date, date]:
+    settings: LastTimeModel,
+    today: date | None = None,
+    *,
+    as_strings: Literal[False] = False,
+) -> tuple[date, date]: ...
+
+@overload
+def get_last_period(
+    settings: LastTimeModel,
+    today: date | None = None,
+    *,
+    as_strings: Literal[True],
+) -> tuple[str, ...]: ...
+
+def get_last_period(
+    settings: LastTimeModel,
+    today: date | None = None,
+    *,
+    as_strings: bool = False,
+) -> tuple[date, date] | tuple[str, ...]:
     """
     Return the start and end of the period for the last N periods (days/weeks/months/years).
     """
@@ -130,7 +149,7 @@ def get_last_period(
     return result
 
 
-def get_files_suffix(compression: str | dict = None):
+def get_files_suffix(compression: str | dict[str, Any] | None = None) -> str:
     """Return the full file extension accounting for compression.
     Always normalize gzip → .gz (standard and reliable extension).
     """
@@ -166,7 +185,7 @@ def get_files_suffix(compression: str | dict = None):
 
 def csv_to_file(
     data_frame: DataFrame,
-    csv_path_out: PathLike,
+    csv_path_out: PathLike[str],
     file_prefix: str = "",
     compression: (
         Literal["infer", "gzip", "bz2", "zip", "xz", "zstd", "tar"]
@@ -174,9 +193,8 @@ def csv_to_file(
         | dict[str, Any]
     ) = "infer",
     add_time: bool = True,
-    *args,
-    **kwargs,
-):
+    **kwargs: Any,
+) -> None:
     time_str = ""
     if add_time:
         time_str = "_" + time.strftime("%Y%m%d_%H%M%S")
@@ -186,7 +204,6 @@ def csv_to_file(
     try:
         encoding = kwargs.pop("encoding", "utf-8-sig")
         data_frame.to_csv(
-            *args,
             path_or_buf=out_file,
             index=False,
             mode="x",
@@ -202,7 +219,7 @@ def csv_to_file(
 
 def en_to_ru(slices_en: list[Any]) -> list[Any]:
     try:
-        slices_ru = [[] for _ in range(len(slices_en))]
+        slices_ru: list[list[Any]] = [[] for _ in range(len(slices_en))]
         for i, param in enumerate(slices_en):
             slices_ru[i] = param.replace("EName", "Name")
         return slices_ru
@@ -276,7 +293,7 @@ def list_files_in_directory(
         files: list[Path] = []
         subfolder_pattern = "**/" if include_subfolders else ""
         for ext in extensions:
-            files.extend(Path(path).glob(f'{subfolder_pattern}*.{ext.strip(".")}'))
+            files.extend(Path(path).glob(f"{subfolder_pattern}*.{ext.strip('.')}"))
         return files
     except Exception as err:
         logger.exception(f"Error reading directory {path}: {err}")
@@ -340,7 +357,7 @@ def resolve_path(path: str | Path, base_dir: Path | None = None) -> Path:
     return resolved_path
 
 
-def yaml_to_dict(file: str | PathLike) -> dict[str, Any]:
+def yaml_to_dict(file: str | PathLike[str]) -> dict[str, Any] | list[Any]:
     """
     Loads configuration from a YAML file.
 

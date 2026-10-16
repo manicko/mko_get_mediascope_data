@@ -31,7 +31,7 @@ def test_csv_to_file(tmp_path):
 
 def test_get_files_suffix():
     assert get_files_suffix({"method": "gzip"}) == ".csv.gz"
-    assert get_files_suffix(None) == ".csv"  # type: ignore[arg-type]
+    assert get_files_suffix(None) == ".csv"
 
 
 def test_csv_to_file_writes_to_report_dir(tmp_report_dir):

@@ -3,6 +3,7 @@ mko_get_mediascope_data — main public interface
 """
 
 import asyncio
+import io
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -25,8 +26,11 @@ app = typer.Typer(
 @app.command()
 def init(
     force: bool = typer.Option(
-        False, "--force", "-f", help="Overwrite existing files",
-    )
+        False,
+        "--force",
+        "-f",
+        help="Overwrite existing files",
+    ),
 ):
     """Initialize user settings"""
     path = init_project(force=force)
@@ -37,12 +41,15 @@ def init(
 def run(
     report: Annotated[
         Path,
-        typer.Argument(exists=True, dir_okay=False, help="Path to the report YAML file"),
+        typer.Argument(
+            exists=True, dir_okay=False, help="Path to the report YAML file"
+        ),
     ],
     verbose: bool = typer.Option(True, "--verbose", "-v"),
 ):
     """Run report export"""
-    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
     if verbose:
         console.print(f"[blue]▶ Running report:[/blue] {report.name}")
 

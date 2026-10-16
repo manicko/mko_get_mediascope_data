@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from datetime import date
 from os import PathLike
-from typing import Any
+from typing import Any, cast
 
 from mediascope_api.mediavortex.tasks import MediaVortexTask
 from pandas import DataFrame
@@ -202,7 +202,7 @@ class MediaReport(Report):
         await self.processing_tasks(timeout=timeout)
 
     async def get_period(self) -> list[tuple[str, str]] | list[tuple[date, date]]:
-        pass
+        raise NotImplementedError
 
 
 class TVMediaReport(MediaReport):
@@ -249,10 +249,10 @@ class TVMediaReport(MediaReport):
             self.catalogs.get_availability_period
         )
 
-        available_period: list[list[str]] = df.loc[df["id"] == str(self.base_id)][
+        raw_periods: list[list[str]] = df.loc[df["id"] == str(self.base_id)][
             ["periodFrom", "periodTo"]
         ].values.tolist()
-        available_period = [utils.str_to_date(d) for d in available_period[0]]
+        available_period: list[date] = [utils.str_to_date(d) for d in raw_periods[0]]
         return available_period
 
     def set_output_columns(self) -> dict[str, list[str]]:
@@ -286,15 +286,16 @@ class TVMediaReport(MediaReport):
             if period_model.date_filter is None:
                 # if period is not set explicitly, build it from the last available date
                 assert last_time is not None
-                period = utils.get_last_period(
+                raw_period: tuple[date, date] | list[date] = utils.get_last_period(
                     today=available_period[1],
                     settings=last_time,
                 )
             else:
-                period = period_model.date_filter.copy()
+                raw_period = period_model.date_filter
             frequency = last_time.time_unit if last_time is not None else 'm'
-            period = max(available_period[0], period[0]), min(
-                available_period[1], period[1]
+            period: tuple[date, date] = (
+                max(available_period[0], raw_period[0]),
+                min(available_period[1], raw_period[1]),
             )
             if self.report_settings.multiple_files:
                 return utils.slice_period(period, frequency)
@@ -399,8 +400,10 @@ class TVMediaReport(MediaReport):
 
 class TaskGenerationStrategy(ABC):
     @abstractmethod
-    async def generate(self, report: TVMediaReport):
+    async def generate(self, report: TVMediaReport) -> AsyncGenerator[TVTask, None]:
         """Generate tasks. Must be an async generator."""
+        raise NotImplementedError
+        yield  # pragma: no cover
 
 
 class DataPreparationStrategy(ABC):
@@ -410,16 +413,18 @@ class DataPreparationStrategy(ABC):
 
 
 class DefaultTVTaskStrategy(TaskGenerationStrategy):
-    async def generate(self, report: TVMediaReport):
+    async def generate(self, report: TVMediaReport) -> AsyncGenerator[TVTask, None]:
         """
         Generator function returning task objects with
         report settings sliced by intervals and demographic profiles
         :return: generator
         """
-        settings: dict = report.data_settings.model_dump()
+        settings: dict[str, Any] = report.data_settings.model_dump()
+        if report.period is None or report.targets is None:
+            return
         for interval in report.period:
             settings["date_filter"] = [interval]
-            name: str = "_".join(interval)
+            name: str = "_".join(str(part) for part in interval)
             for t_name, t_filter in report.targets.items():
                 settings["basedemo_filter"] = t_filter
                 task = TVTask(
@@ -436,9 +441,11 @@ class DefaultTVTaskStrategy(TaskGenerationStrategy):
 
 
 class TVRegTaskStrategy(TaskGenerationStrategy):
-    async def generate(self, report: TVMediaReport):
-        settings = report.data_settings.model_dump()
-        available_regions = report.catalogs.get_tv_region()
+    async def generate(self, report: TVMediaReport) -> AsyncGenerator[TVTask, None]:
+        settings: dict[str, Any] = report.data_settings.model_dump()
+        available_regions = cast(DataFrame | None, report.catalogs.get_tv_region())
+        if available_regions is None:
+            return
         regions_list = (
             report.report_settings.model_dump().get("regions")
             or available_regions["id"].to_list()
@@ -456,6 +463,8 @@ class TVRegTaskStrategy(TaskGenerationStrategy):
             company_filter = settings["company_filter"] + " AND "
         company_filter += "regionId IN ({reg_id})"
 
+        if report.period is None or report.targets is None:
+            return
         for reg_id in regions_list:
             if int(reg_id) == 99:
                 continue
@@ -469,7 +478,7 @@ class TVRegTaskStrategy(TaskGenerationStrategy):
                             None,
                             map(
                                 unidecode,
-                                (*interval, t_name, regions_names[int(reg_id)]),
+                                (*map(str, interval), t_name, regions_names[int(reg_id)]),
                             ),
                         )
                     )
@@ -510,9 +519,11 @@ class DefaultDataStrategy(DataPreparationStrategy):
 
 class DictDataStrategy(DataPreparationStrategy):
     async def prepare(self, report: TVMediaReport, df: DataFrame) -> DataFrame | None:
-        output_columns = getattr(
-            report.data_settings, "slices", None
-        ) or report.data_settings.get("slices", None)
+        data_settings = report.data_settings
+        if isinstance(data_settings, dict):
+            output_columns = data_settings.get("slices")
+        else:
+            output_columns = getattr(data_settings, "slices", None)
         if not output_columns:
             return None
         missing = set(output_columns) - set(df.columns)

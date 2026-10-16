@@ -3,6 +3,7 @@ from collections.abc import Generator
 from datetime import datetime
 from functools import cached_property
 from pathlib import Path
+from typing import Any
 
 from mediascope_api.mediavortex.tasks import MediaVortexTask
 
@@ -36,11 +37,21 @@ class AppService:
 
     @cached_property
     def app_config(self) -> AppConfig:
-        logging_settings = LoggingSettings(
-            **utils.yaml_to_dict(self.app_paths.log_config)
-        )
+        log_config_dict = utils.yaml_to_dict(self.app_paths.log_config)
+        if not isinstance(log_config_dict, dict):
+            raise TypeError(
+                f"Expected dict in {self.app_paths.log_config}, "
+                f"got {type(log_config_dict).__name__}"
+            )
+        logging_settings = LoggingSettings(**log_config_dict)
 
-        app_settings = AppSettings(**utils.yaml_to_dict(self.app_paths.app_config))
+        app_config_dict = utils.yaml_to_dict(self.app_paths.app_config)
+        if not isinstance(app_config_dict, dict):
+            raise TypeError(
+                f"Expected dict in {self.app_paths.app_config}, "
+                f"got {type(app_config_dict).__name__}"
+            )
+        app_settings = AppSettings(**app_config_dict)
 
         return AppConfig(logging_settings=logging_settings, app_settings=app_settings)
 
@@ -74,8 +85,14 @@ class AppService:
     @staticmethod
     def get_report_settings(report_settings_path: Path) -> Generator[ReportSettings]:
         try:
-            for rep in utils.yaml_to_dict(report_settings_path):
-                yield ReportSettings(**rep)
+            report_configs = utils.yaml_to_dict(report_settings_path)
+            # yaml_to_dict returns dict[str, Any] | list[Any]; normalize to a list
+            # of report-config dicts so we never iterate dict keys (str) by mistake.
+            if isinstance(report_configs, dict):
+                report_configs = list(report_configs.values())
+            for rep in report_configs:
+                if isinstance(rep, dict):
+                    yield ReportSettings(**rep)
         except Exception as e:
             logging.exception(e)
             raise e
@@ -88,12 +105,18 @@ class AppService:
             report_settings.media.value.lower(),
             report_settings.report_type.value.lower(),
         ).with_suffix(".yaml")
-        return DataDefaults(**utils.yaml_to_dict(data_default_settings_path))
+        data_defaults_dict = utils.yaml_to_dict(data_default_settings_path)
+        if not isinstance(data_defaults_dict, dict):
+            raise TypeError(
+                f"Expected dict in {data_default_settings_path}, "
+                f"got {type(data_defaults_dict).__name__}"
+            )
+        return DataDefaults(**data_defaults_dict)
 
     @staticmethod
     def merge_data_settings(
         defaults: DataDefaults, report_settings: ReportSettings
-    ) -> dict:
+    ) -> dict[str, Any]:
         data_settings = defaults.DATA_DEFAULTS.copy()
 
         subtype = report_settings.report_subtype
@@ -111,7 +134,7 @@ class AppService:
 
     def get_data_settings(self, report_settings: ReportSettings) -> Data:
         defaults: DataDefaults = self.get_default_data_settings(report_settings)
-        data_settings: dict = self.merge_data_settings(defaults, report_settings)
+        data_settings: dict[str, Any] = self.merge_data_settings(defaults, report_settings)
         return Data(**data_settings)
 
     def get_connection(self, media_type: MediaType) -> MediaVortexTask:

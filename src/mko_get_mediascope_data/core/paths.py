@@ -4,7 +4,7 @@ from pathlib import Path
 from platformdirs import user_config_dir
 from pydantic import BaseModel
 
-APP_NAME: str = __package__.split(".")[0]
+APP_NAME: str = (__package__ or "").split(".")[0]
 APP_DIR: Path = Path(__file__).resolve().parent.parent
 USER_DIR: Path = Path(user_config_dir(APP_NAME))
 
@@ -69,9 +69,7 @@ class AppPaths(BaseModel):
         if primary.exists():
             return primary
 
-        legacy = Path(
-            self.user_settings_dir, "connections", "mediascope_RENAME_.json"
-        )
+        legacy = Path(self.user_settings_dir, "connections", "mediascope_RENAME_.json")
         if legacy.exists():
             logger.warning(
                 "Credential file '%s' uses the legacy 'mediascope_RENAME_' name. "

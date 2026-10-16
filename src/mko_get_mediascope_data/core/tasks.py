@@ -1,6 +1,8 @@
 import logging
+from datetime import date
 from os import PathLike
 from pathlib import Path
+from typing import Any
 
 from yaml import dump
 
@@ -13,20 +15,20 @@ class Task:
 
 class TVTask(Task):
     def __init__(
-        self, name: str, settings: dict, report_subtype: str, report_type: str
+        self, name: str, settings: dict[str, Any], report_subtype: str, report_type: str
     ):
         self.name = name
         self.settings = settings
-        self.key = None
+        self.key: dict[str, Any] | None = None
         self.status = True
         self.log_error = False
         self.error = ""
-        self.interval = None
-        self.target = None
+        self.interval: tuple[str, str] | tuple[date, date] | None = None
+        self.target: str | None = None
         self.report_type = report_type
         self.report_subtype = report_subtype
 
-    def to_yaml(self, folder: str | bytes | PathLike = None):
+    def to_yaml(self, folder: str | PathLike[str] | None = None):
         if folder is not None:
             folder = Path(folder)
             root_dir = Path().absolute()
