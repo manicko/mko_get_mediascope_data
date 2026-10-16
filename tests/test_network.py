@@ -124,3 +124,32 @@ async def test_call_respects_semaphore(mocker):
 
     assert counter["max"] <= 2
     assert all(r == "ok" for r in results)
+
+
+def test_default_max_attempts_is_10():
+    """Verify that NetworkClient defaults to max_attempts=10."""
+    client = NetworkClient()
+    assert client._max_attempts == 10
+
+
+@pytest.mark.asyncio
+async def test_call_retries_with_default_max_attempts(mocker):
+    """Verify that NetworkClient.call retries exactly 10 times by default.
+
+    A function that always raises ConnectTimeout (a retriable error) is
+    invoked via NetworkClient with default max_attempts (10).  Asserts that
+    RuntimeError is raised and the function was called exactly 10 times.
+    """
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(sleep_time=0)
+
+    call_count = [0]
+
+    def failing_func():
+        call_count[0] += 1
+        raise ConnectTimeout("timeout")
+
+    with pytest.raises(RuntimeError, match="Network retry limit exceeded"):
+        await client.call(failing_func)
+
+    assert call_count[0] == 10
