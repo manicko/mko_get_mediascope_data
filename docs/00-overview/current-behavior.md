@@ -194,12 +194,12 @@ full Mediascope parameter set) plus optional subtype blocks. Bundled coverage:
 
 | File | Status |
 |---|---|
-| `defaults/tv/crosstab.yaml` | **Fixed** — `yaml.safe_load` previously raised `ParserError` at line 138 (the `TOP_NAT_TV_PROGRAMS.slices` sequence was closed with `}` instead of `]`). Verified: the regression entered with commit `b04d177` (the i18n translation commit) and the template parses correctly at HEAD (TST-007) |
-| `defaults/tv_reg/crosstab.yaml` | **Fixed** — `yaml.safe_load` previously raised `ParserError` at line 162 (unbalanced flow-mapping braces: 13 open / 12 close). Verified: parses correctly at HEAD (TST-007; lead: audit TPL-004) |
+| `defaults/tv/crosstab.yaml` | **Fixed** — `yaml.safe_load` previously raised `ParserError` at line 138 (the `TOP_NAT_TV_PROGRAMS.slices` sequence was closed with `}` instead of `]`). Verified: the regression entered with commit `b04d177` (the i18n translation commit) and the template parses correctly at HEAD (TPL-007) |
+| `defaults/tv_reg/crosstab.yaml` | **Fixed** — `yaml.safe_load` previously raised `ParserError` at line 162 (unbalanced flow-mapping braces: 13 open / 12 close). Verified: parses correctly at HEAD (TPL-007; lead: audit TPL-004) |
 | `defaults/tv/timeband.yaml` | Parses; contains only `DATA_DEFAULTS`, no subtype blocks |
 | `tv/simple`, `tv_reg/timeband`, `tv_reg/simple` | **Not shipped** — a report with that `(media, report_type)` pair fails with `FileNotFoundError` from `get_default_data_settings` (verified: no such files; `services.py:96-101`; lead: audit TPL-005) |
 
-Consequence: with the crosstab template fixes (TST-007), the TV and TV_REG
+Consequence: with the crosstab template fixes (TPL-007), the TV and TV_REG
 crosstab DEFAULT templates now parse correctly. However, **no bundled report
 can complete a full run against the real API** — the only entries that pass
 `ReportSettings` validation are the crosstab entries of `nat_tv_brands_tefal.yaml`
@@ -293,7 +293,7 @@ background reading, not evidence.
 | Defect (code-verified) | Impact | Also recorded as |
 |---|---|---|
 | 30 of 32 bundled report entries fail `ReportSettings` validation (stale `period_type`/`period_num`, stale `report_type` values such as `TV_CROSSTAB`, missing `media`/`relative_path`) — verified by probe | A user following the README's example (`nat_tv_brands_last.yaml`) cannot run it; the owner requires all bundled templates to be runnable (D-06) | audit TPL-001 / CFG-001 leads; gap G-05 |
-| Both bundled crosstab DEFAULT templates were malformed YAML (`defaults/tv/crosstab.yaml` ParserError at line 138; `defaults/tv_reg/crosstab.yaml` at line 162) — verified by probe; the TV regression entered with commit `b04d177` (verified by parsing the file at `3408747` vs `b04d177`). **Fixed at HEAD** (TST-007): both templates now parse correctly | Fixed — templates now parse at HEAD | audit TPL-004 (+ DISC-07) |
+| Both bundled crosstab DEFAULT templates were malformed YAML (`defaults/tv/crosstab.yaml` ParserError at line 138; `defaults/tv_reg/crosstab.yaml` at line 162) — verified by probe; the TV regression entered with commit `b04d177` (verified by parsing the file at `3408747` vs `b04d177`). **Fixed at HEAD** (TPL-007): both templates now parse correctly | Fixed — templates now parse at HEAD | audit TPL-004 (+ DISC-07) |
 | CSV write collision is swallowed and the task reports "ready" — verified by probe | A re-run without `check_done` silently produces no file | audit PIPE-001 / OUT-003 |
 | Worker has no exception isolation; `queue.join()` hangs on any raise — verified by probe | A single transient failure can stall the whole run instead of failing it | audit PIPE-002 / ASY-001 |
 | Zero-task and out-of-window periods exit 0 with a success message — verified by probe | An analyst cannot distinguish "no data" from "done" | audit PIPE-004 / PIPE-005 |

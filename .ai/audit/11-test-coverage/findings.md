@@ -708,7 +708,22 @@ wait_task poll reports.py:277-293: while True: await asyncio.sleep(2); status = 
 
 The prior audit's "no collision" scan (described at lines 392-397) did not search `docs/`. This double-binding means `TST-007` resolves ambiguously: a tool or human following `TST-007` from either document lands on a different defect. The current re-audit avoids this by minting new IDs `TST-008`…`TST-012` and leaving the prior block untouched; but the namespace remains poisoned — a future `TST-007` reference anywhere is ambiguous.
 **Fix:** (1) Audit `docs/00-overview/current-behavior.md:197` to confirm it is a genuine prior `TST-007` or re-number one of the two; (2) document a canonical cross-reference table mapping each `TST-` ID to exactly one finding across `docs/` and `.ai/audit/`; (3) the current block uses `TST-008`…`TST-012` to avoid adding to the collision. Target: `docs/00-overview/current-behavior.md` + `.ai/audit/11-test-coverage/findings.md`.
-**Verify:** `grep -r "TST-" docs/ .ai/audit/ src/ tests/` confirms two distinct `TST-007` bindings.
+## Resolution
+
+**Status: RESOLVED.** The docs-side `TST-007` (crosstab-template YAML fix in
+`current-behavior.md`) has been renumbered to `TPL-007` to disambiguate it
+from the test-coverage finding `TST-007` (fixture data hygiene in `findings.md:51`).
+
+**Cross-reference table (canonical):**
+
+| ID | Domain | Finding | Location |
+|---|---|---|---|
+| TST-007 | Test coverage | Duplicated/restated fixture values (`dummy_df`, enum literals) | `findings.md:51` |
+| TPL-007 | Template audit | Crosstab DEFAULT template YAML parse errors | `current-behavior.md:197-198,202,296` |
+
+`grep -r "TST-007" docs/ .ai/audit/` now returns only the test-coverage finding
+(`findings.md:51`); the template fix is exclusively `TPL-007`.
+```
 **Evidence:**
 ```text
 findings.md:51    | TST-007 | LOW | ... duplicate dummy_df ...

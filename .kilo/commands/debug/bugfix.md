@@ -48,8 +48,7 @@ Use <task> tool to launch <implementor> agent to:
 
    **Python (`*.py`):**
    - Lint: `uv run ruff check <affected_files_or_dirs>`
-   - Type check: `uv run mypy <affected_files_or_dirs>`
-   - Type check: `uv run basedpyright <affected_files_or_dirs>`
+    - Type check: `uv run mypy <affected_files_or_dirs>`
    - Tests: `uv run python -m pytest pytest <relevant_path>`
 
    **TypeScript / React (`*.ts`, `*.tsx`):**

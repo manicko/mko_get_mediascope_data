@@ -75,7 +75,9 @@ Configuration is in `pyproject.toml`:
 - `addopts`: `--import-mode=importlib -ra -v --strict-markers --asyncio-mode=auto --cov=src/mko_get_mediascope_data --cov-report=term-missing`
 - `markers`: `slow` (use `-m slow` to run only slow tests; `-m "not slow"` to skip)
 
-Test fixtures live in `tests/conftest.py`: `mock_network_client`, `dummy_df`, `tv_yaml_content`, `tmp_report_dir`.
+Test fixtures live in `tests/conftest.py`: `mock_network_client`, `dummy_df`,
+`tv_yaml_content`, `tmp_report_dir`. `tests/test_services.py` defines the
+`local_app_service` fixture (hermetic `AppService` backed by `tmp_path`).
 
 ## Coding Standards
 

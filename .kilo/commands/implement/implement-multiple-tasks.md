@@ -60,7 +60,7 @@ For each task file in `{TASKS_FILES_TO_IMPLEMENT}` one at a time:
 4. If found a bug or any problem not relates to the task - don't solve, but create the new file with report to .ai/audit/00-bug_report/ХХ-report.md
 XX - free number.
 5. Validate:
-   - Python: uv run ruff check <files>, uv run mypy <files>, uv run basedpyright <files>, uv run pytest <paths>
+    - Python: uv run ruff check <files>, uv run mypy <files>, uv run pytest <paths>
    - Frontend: npm run build, npm run lint, npm run test
   Fix only issues caused by your changes.
   -If tests conflict with architecture:

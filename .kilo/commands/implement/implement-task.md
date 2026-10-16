@@ -103,7 +103,6 @@ Run checks depending on what was changed:
 **Python files** (`*.py`):
 - Lint: `uv run ruff check <affected_files_or_dirs>`
 - Type check: `uv run mypy <affected_files_or_dirs>`
-- Type check (basedpyright): `uv run basedpyright <affected_files_or_dirs>`
 
 **TypeScript / React files** (`*.ts`, `*.tsx`):
 - Type check: `npm run build` (runs `tsc -b`) — from `frontend/` directory
