@@ -172,11 +172,11 @@ merge):
 | `report_type` | yes | Enum: `crosstab`, `timeband`, `simple` (`models.py:44-47`). Selects the DEFAULT template file |
 | `media` | yes | Enum: `TV`, `TV_REG` (`models.py:39-41`). Selects the DEFAULT template file |
 | `relative_path` | yes | Sub-folder under the export root for this report's outputs (`models.py:93`) |
-| `period` | yes | Exactly one of `date_filter: [start, end]` or `last_time: {time_unit: d/w/m/y, unit_count: N, include_current: bool}` must be present; both may be present (`models.py:68-80`) |
+| `period` | yes | Exactly one of `date_filter: [start, end]` or `last_time: {unit_count: N, include_current: bool}` must be present (`models.py:68-84`); `time_unit: d/w/m/y` (default `w`) controls the splitting frequency and is required when `multiple_files: true` |
 | `report_subtype` | no (default `""`) | Selects a subtype block inside the DEFAULT template (`models.py:50-58`) |
 | `data_lang` | no (default `ru`) | `ru` substitutes Russian slice names; `en` keeps the API's English names (`models.py:92`, `services.py:117-118`) |
 | `compression` | no (default `{"method": "gzip"}`) | Output compression; drives the file extension (`models.py:89-91`, `utils.get_files_suffix`) |
-| `multiple_files` | no (default `true`) | Split the period into `last_time.time_unit` intervals (`models.py:94-96`) |
+| `multiple_files` | no (default `true`) | Split the period into `period.time_unit` intervals (`models.py:68-84`, `reports.py:296`) |
 | `target_audiences` | no (default `{"not_set": null}`) | Map of audience name → basedemo filter string; one task per audience (`models.py:98-100`, `reports.py:369`) |
 | `ad_filter` | no | Ad filter expression; overlaid onto the defaults (`models.py:97`, `services.py:113-115`) |
 | `check_done` | no (default `true`) | Skip tasks whose output file already exists (`models.py:85`, `reports.py:70-73`) |
