@@ -14,12 +14,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "aiofiles>=23.2.1",
+    "json5>=0.17.3",
     "mediascope-api-lib>=1.1.15",
     "pandas>=2.2.0",
     "platformdirs>=4.7.0",
     "pydantic>=2.12.5",
     "python-dateutil>=2.8.0",
-    "PyYAML>=6.0.1",
     "requests>=2.30.0",
     "rich>=14.3.3",
     "typer>=0.24.0",
@@ -205,7 +205,6 @@ dev = [
     "ruff>=0.15.1",
     "pandas-stubs==3.0.0.260204",
     "mypy>=1.10.0",
-    "types-PyYAML>=6.0.12",
     "types-python-dateutil>=2.9.0",
     "twine>=5.0.0",
     "types-requests>=2.33.0.20261006",

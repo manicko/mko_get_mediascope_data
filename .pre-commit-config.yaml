@@ -13,5 +13,5 @@ repos:
     rev: v1.13.33
     hooks:
       - id: mypy
-        additional_dependencies: [mediascope-api-lib, pandas, platformdirs, pydantic, PyYAML, python-dateutil, rich, typer, Unidecode, urllib3]
+        additional_dependencies: [mediascope-api-lib, pandas, platformdirs, pydantic, python-dateutil, rich, typer, Unidecode, urllib3, json5]
         args: [src, tests]
