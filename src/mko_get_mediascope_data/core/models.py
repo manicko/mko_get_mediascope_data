@@ -141,7 +141,7 @@ class Data(BaseModel):
     def coerce_none_to_empty(cls, v: Any) -> Any:
         """Coerce None values to empty list for optional collection fields.
 
-        YAML ``Null`` values resolve to ``None`` when loaded, but the
+        JSON5 ``null`` values resolve to ``None`` when loaded, but the
         downstream consumers expect a list. This prevents ``ValidationError``
         when ``DATA_DEFAULTS`` contains ``Null`` entries.
         """

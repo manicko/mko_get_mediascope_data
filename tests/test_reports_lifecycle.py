@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pandas as pd
 import pytest
-import yaml
+import json5
 from unidecode import unidecode
 
 from mko_get_mediascope_data.core.errors import NoReportFoundError
@@ -27,35 +27,41 @@ from mko_get_mediascope_data.core.reports import ReportFactory, TVMediaReport
 from mko_get_mediascope_data.core.services import AppService
 from mko_get_mediascope_data.core.tasks import TVTask
 
-_LOG_CONFIG_YAML = """
-version: 1
-disable_existing_loggers: false
-formatters:
-  basic:
-    class: logging.Formatter
-    format: "%(levelname)s %(message)s"
-handlers:
-  console:
-    class: logging.StreamHandler
-    formatter: basic
-    level: INFO
-    stream: ext://sys.stdout
-root:
-  level: INFO
-  handlers:
-    - console
-loggers: {}
+_LOG_CONFIG_JSON5 = """
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "basic": {
+      "class": "logging.Formatter",
+      "format": "%(levelname)s %(message)s",
+    },
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "formatter": "basic",
+      "level": "INFO",
+      "stream": "ext://sys.stdout",
+    },
+  },
+  "root": {
+    "level": "INFO",
+    "handlers": ["console"],
+  },
+  "loggers": {},
+}
 """
 
-_APP_CONFIG_YAML = "{ 'export_folder':'output', }"
+_APP_CONFIG_JSON5 = '{"export_folder": "output",}'
 
 
 def _build_hermetic_app_service(tmp_path: Path) -> AppService:
     """Create an ``AppService`` backed by isolated temp config files."""
     settings_dir = tmp_path / "settings"
     settings_dir.mkdir()
-    (settings_dir / "log_config.yaml").write_text(_LOG_CONFIG_YAML, encoding="utf-8")
-    (settings_dir / "app_config.yaml").write_text(_APP_CONFIG_YAML, encoding="utf-8")
+    (settings_dir / "log_config.json5").write_text(_LOG_CONFIG_JSON5, encoding="utf-8")
+    (settings_dir / "app_config.json5").write_text(_APP_CONFIG_JSON5, encoding="utf-8")
     shutil.copytree(APP_PATHS.app_settings_dir / "defaults", settings_dir / "defaults")
     app_paths = AppPaths(app_dir=tmp_path, app_name="test", user_dir=tmp_path)
     return AppService(app_paths=app_paths, resolver=PathResolver(tmp_path))
@@ -99,7 +105,7 @@ def _yielding_sleep(real_sleep):
 async def test_create_report_writes_csv_and_marks_queue_done(
     tmp_path: Path,
     mocker,
-    tv_yaml_content: str,
+    tv_json5_content: str,
     dummy_df: pd.DataFrame,
 ):
     """Real ``create_report`` pipeline produces CSV output.
@@ -109,9 +115,9 @@ async def test_create_report_writes_csv_and_marks_queue_done(
     ``task_done`` was called for every item placed on the queue).
     """
 
-    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
-    yaml_data = json.loads(tv_yaml_content)
-    report_settings = ReportSettings(**yaml_data[0])
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
     app_service = _build_hermetic_app_service(tmp_path)
@@ -170,7 +176,7 @@ async def test_create_report_writes_csv_and_marks_queue_done(
 async def test_create_report_skips_done_files(
     tmp_path: Path,
     mocker,
-    tv_yaml_content: str,
+    tv_json5_content: str,
     dummy_df: pd.DataFrame,
 ):
     """Real ``create_report`` pipeline skips tasks whose CSV already exists.
@@ -182,9 +188,9 @@ async def test_create_report_skips_done_files(
     ``get_result``) are invoked.
     """
 
-    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
-    yaml_data = json.loads(tv_yaml_content)
-    report_settings = ReportSettings(**yaml_data[0])
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
     app_service = _build_hermetic_app_service(tmp_path)
@@ -256,7 +262,7 @@ async def test_create_report_skips_done_files(
 async def test_create_report_timeout_does_not_hang(
     tmp_path: Path,
     mocker,
-    tv_yaml_content: str,
+    tv_json5_content: str,
     dummy_df: pd.DataFrame,
 ):
     """Worker must not hang when ``wait_task`` polls forever.
@@ -265,16 +271,16 @@ async def test_create_report_timeout_does_not_hang(
     (``"IN_PROGRESS"``) so ``TVMediaReport.wait_task``'s inner ``while True``
     poll loop would spin indefinitely.  A short ``timeout`` passed to
     ``create_report`` breaks the loop via ``asyncio.wait_for``, marks the
-    task failed, and writes an error YAML artifact.
+    task failed, and writes an error JSON5 artifact.
 
     **M11 guard** — the outer ``asyncio.wait_for(..., timeout=10)``
     ensures that if ``task_done`` is ever removed (mutation M11), the test
     fails within 10 s instead of hanging the suite past 240 s.
     """
 
-    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
-    yaml_data = json.loads(tv_yaml_content)
-    report_settings = ReportSettings(**yaml_data[0])
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
     app_service = _build_hermetic_app_service(tmp_path)
@@ -333,10 +339,10 @@ async def test_create_report_timeout_does_not_hang(
     # task_done() was always called — queue is fully drained (no join hang)
     assert report.task_queue.qsize() == 0
 
-    # Error YAML written for the timed-out task
-    error_files = list(export_path.glob("errors/*.yaml"))
+    # Error JSON5 written for the timed-out task
+    error_files = list(export_path.glob("errors/*.json5"))
     assert len(error_files) == 1, (
-        f"Expected 1 error YAML in {export_path / 'errors'}, "
+        f"Expected 1 error JSON5 in {export_path / 'errors'}, "
         f"found {len(error_files)}"
     )
 
@@ -345,7 +351,7 @@ async def test_create_report_timeout_does_not_hang(
 async def test_create_report_zero_tasks_raises_no_report_found(
     tmp_path: Path,
     mocker,
-    tv_yaml_content: str,
+    tv_json5_content: str,
     dummy_df: pd.DataFrame,
 ):
     """PIPE-004: empty ``target_audiences`` produces zero tasks.
@@ -357,9 +363,9 @@ async def test_create_report_zero_tasks_raises_no_report_found(
     """
 
     # ---- 1. Parse ReportSettings with empty target_audiences --------------
-    yaml_data = json.loads(tv_yaml_content)
-    yaml_data[0]["target_audiences"] = {}
-    report_settings = ReportSettings(**yaml_data[0])
+    json5_data = json.loads(tv_json5_content)
+    json5_data[0]["target_audiences"] = {}
+    report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings ---------------------------
     app_service = _build_hermetic_app_service(tmp_path)
@@ -411,7 +417,7 @@ async def test_create_report_zero_tasks_raises_no_report_found(
 async def test_create_report_out_of_range_date_filter_raises(
     tmp_path: Path,
     mocker,
-    tv_yaml_content: str,
+    tv_json5_content: str,
     dummy_df: pd.DataFrame,
 ):
     """PIPE-005: out-of-range ``date_filter`` produces an inverted period.
@@ -424,9 +430,9 @@ async def test_create_report_out_of_range_date_filter_raises(
     """
 
     # ---- 1. Parse ReportSettings with out-of-range date_filter ------------
-    yaml_data = json.loads(tv_yaml_content)
-    yaml_data[0]["period"]["date_filter"] = ["1900-01-01", "1900-02-01"]
-    report_settings = ReportSettings(**yaml_data[0])
+    json5_data = json.loads(tv_json5_content)
+    json5_data[0]["period"]["date_filter"] = ["1900-01-01", "1900-02-01"]
+    report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings ---------------------------
     app_service = _build_hermetic_app_service(tmp_path)
@@ -478,7 +484,7 @@ async def test_create_report_out_of_range_date_filter_raises(
 async def test_wait_task_max_polls_limit(
     tmp_path: Path,
     mocker,
-    tv_yaml_content: str,
+    tv_json5_content: str,
     dummy_df: pd.DataFrame,
 ):
     """PIPE-006: the inner ``max_polls`` guard breaks the ``wait_task`` loop.
@@ -498,9 +504,9 @@ async def test_wait_task_max_polls_limit(
     zero times, which would not exercise the poll path.)
     """
 
-    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
-    yaml_data = json.loads(tv_yaml_content)
-    report_settings = ReportSettings(**yaml_data[0])
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
     app_service = _build_hermetic_app_service(tmp_path)
@@ -563,24 +569,24 @@ async def test_wait_task_max_polls_limit(
 
 
 @pytest.mark.asyncio
-async def test_worker_handles_exception_and_writes_error_yaml(
+async def test_worker_handles_exception_and_writes_error_json5(
     tmp_path: Path,
     mocker,
-    tv_yaml_content: str,
+    tv_json5_content: str,
     dummy_df: pd.DataFrame,
 ):
-    """PIPE-007: worker's ``except Exception`` branch writes the error YAML.
+    """PIPE-007: worker's ``except Exception`` branch writes the error JSON5.
 
     ``send_task`` is doubled to raise ``RuntimeError`` — a non-timeout failure
     from the upstream API layer.  ``worker`` must catch it via
     ``except Exception`` (distinct from the ``except TimeoutError`` path
     covered by ``test_create_report_timeout_does_not_hang``), mark the task
-    failed, and write an error YAML before draining the queue.
+    failed, and write an error JSON5 before draining the queue.
     """
 
-    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
-    yaml_data = json.loads(tv_yaml_content)
-    report_settings = ReportSettings(**yaml_data[0])
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
     app_service = _build_hermetic_app_service(tmp_path)
@@ -640,17 +646,17 @@ async def test_worker_handles_exception_and_writes_error_yaml(
     # wait_task is ever reached.
     mock_report_service.get_status.assert_not_called()
 
-    # Error YAML written for the failed task (task name + .yaml).
-    error_files = list(export_path.glob("errors/*.yaml"))
+    # Error JSON5 written for the failed task (task name + .json5).
+    error_files = list(export_path.glob("errors/*.json5"))
     assert len(error_files) >= 1, (
-        f"Expected an error YAML in {export_path / 'errors'}, "
+        f"Expected an error JSON5 in {export_path / 'errors'}, "
         f"found {len(error_files)}"
     )
 
     # The recorded error is the API failure ("API connection refused"), NOT a
     # "Timeout after ..." message — proving the ``except Exception`` branch
     # (not ``except TimeoutError``) ran.
-    error_payload = yaml.safe_load(error_files[0].read_text(encoding="utf-8"))
+    error_payload = json5.loads(error_files[0].read_text(encoding="utf-8"))
     assert error_payload["error"] == "API connection refused"
     assert error_payload["log_error"] is True
 
@@ -666,27 +672,27 @@ _REPORTER_LOGGER = "mko_get_mediascope_data.core.reports"
 
 
 @pytest.mark.asyncio
-async def test_worker_log_error_true_writes_yaml(
+async def test_worker_log_error_true_writes_json5(
     tmp_path: Path,
     mocker,
-    tv_yaml_content: str,
+    tv_json5_content: str,
     dummy_df: pd.DataFrame,
 ):
-    """PIPE-009 (``log_error=True``): worker writes error YAML on API key failure.
+    """PIPE-009 (``log_error=True``): worker writes error JSON5 on API key failure.
 
     ``send_task`` on the doubled ``MediaVortexTask`` is configured to return
     an empty string (falsy).  ``TVMediaReport.send_task`` then sets
     ``task.key = ""``; the ``not task.key`` guard marks the task as
     ``status=False, log_error=True``.
 
-    The ``worker`` logs a "will be skipped" warning and calls ``to_yaml``,
+    The ``worker`` logs a "will be skipped" warning and calls ``to_file``,
     writing the error artifact to ``export_path/errors/`` with
     ``log_error=True``.
     """
 
-    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
-    yaml_data = json.loads(tv_yaml_content)
-    report_settings = ReportSettings(**yaml_data[0])
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
     app_service = _build_hermetic_app_service(tmp_path)
@@ -737,26 +743,26 @@ async def test_worker_log_error_true_writes_yaml(
     # task_done() always called — queue fully drained (no join hang).
     assert report.task_queue.qsize() == 0
 
-    # Error YAML written for the failed task.
-    error_files = list(export_path.glob("errors/*.yaml"))
+    # Error JSON5 written for the failed task.
+    error_files = list(export_path.glob("errors/*.json5"))
     assert len(error_files) == 1, (
-        f"Expected 1 error YAML in {export_path / 'errors'}, "
+        f"Expected 1 error JSON5 in {export_path / 'errors'}, "
         f"found {len(error_files)}"
     )
 
     # The recorded log_error field must be True.
-    error_payload = yaml.safe_load(error_files[0].read_text(encoding="utf-8"))
+    error_payload = json5.loads(error_files[0].read_text(encoding="utf-8"))
     assert error_payload["log_error"] is True
 
 
 @pytest.mark.asyncio
-async def test_worker_log_error_false_no_yaml(
+async def test_worker_log_error_false_no_json5(
     tmp_path: Path,
     mocker,
-    tv_yaml_content: str,
+    tv_json5_content: str,
     dummy_df: pd.DataFrame,
 ):
-    """PIPE-009 (``log_error=False``): worker logs "No data" and writes no YAML.
+    """PIPE-009 (``log_error=False``): worker logs "No data" and writes no JSON5.
 
     ``send_task`` returns a valid key, ``get_status`` returns DONE,
     ``get_result`` returns a non-False result, and ``result2table`` returns
@@ -764,12 +770,12 @@ async def test_worker_log_error_false_no_yaml(
     ``task.status=False, log_error=False`` (reports.py:433-436).
 
     The ``worker`` logs "No data for task … — skipping" and does **not**
-    call ``to_yaml``.
+    call ``to_file``.
     """
 
-    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
-    yaml_data = json.loads(tv_yaml_content)
-    report_settings = ReportSettings(**yaml_data[0])
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
     app_service = _build_hermetic_app_service(tmp_path)
@@ -827,10 +833,10 @@ async def test_worker_log_error_false_no_yaml(
     # task_done() always called — queue fully drained (no join hang).
     assert report.task_queue.qsize() == 0
 
-    # No error YAML — the "No data" branch must not call to_yaml.
-    error_files = list(export_path.glob("errors/*.yaml"))
+    # No error JSON5 — the "No data" branch must not call to_file.
+    error_files = list(export_path.glob("errors/*.json5"))
     assert len(error_files) == 0, (
-        f"Expected 0 error YAML files, found {len(error_files)} at "
+        f"Expected 0 error JSON5 files, found {len(error_files)} at "
         f"{export_path / 'errors'}"
     )
 

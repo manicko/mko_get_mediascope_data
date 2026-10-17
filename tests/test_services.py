@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pandas as pd
 import pytest
-import yaml
+import json5
 
 from mko_get_mediascope_data.core.models import (
     DataDefaults,
@@ -45,7 +45,7 @@ def _compute_result_df(
 async def test_run_report_with_real_models(
     tmp_path: Path,
     mocker,
-    tv_yaml_content: str,
+    tv_json5_content: str,
     dummy_df: pd.DataFrame,
     local_app_service: AppService,
 ):
@@ -55,13 +55,13 @@ async def test_run_report_with_real_models(
     for real and we assert on actual CSV output.
     """
 
-    # ==================== 1. Write real YAML file ====================
-    test_yaml = tmp_path / "nat_tv_brands_last.yaml"
-    test_yaml.write_text(tv_yaml_content, encoding="utf-8")
+    # ==================== 1. Write real JSON5 file ====================
+    test_json5 = tmp_path / "nat_tv_brands_last.json5"
+    test_json5.write_text(tv_json5_content, encoding="utf-8")
 
     # ==================== 2. Parse ReportSettings from fixture ======
-    yaml_data = json.loads(tv_yaml_content)
-    report_settings = ReportSettings(**yaml_data[0])
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
 
     # ==================== 3. Doubled MediaVortexTask ==============
     mock_report_service = MagicMock()
@@ -93,7 +93,7 @@ async def test_run_report_with_real_models(
     mocker.patch("asyncio.sleep", new_callable=AsyncMock)
 
     # ==================== 6. Run real pipeline ===================
-    export_paths = await local_app_service.run_report(test_yaml)
+    export_paths = await local_app_service.run_report(test_json5)
 
     # ==================== 7. Assertions ===========================
     assert len(export_paths) == 1
@@ -110,27 +110,33 @@ async def test_run_report_with_real_models(
 # Config cache invalidation (ENT-006): reload_config()
 # ---------------------------------------------------------------------------
 
-_LOG_CONFIG_YAML = """
-version: 1
-disable_existing_loggers: false
-formatters:
-  basic:
-    class: logging.Formatter
-    format: "%(levelname)s %(message)s"
-handlers:
-  console:
-    class: logging.StreamHandler
-    formatter: basic
-    level: INFO
-    stream: ext://sys.stdout
-root:
-  level: INFO
-  handlers:
-    - console
-loggers: {}
+_LOG_CONFIG_JSON5 = """
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "basic": {
+      "class": "logging.Formatter",
+      "format": "%(levelname)s %(message)s",
+    },
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "formatter": "basic",
+      "level": "INFO",
+      "stream": "ext://sys.stdout",
+    },
+  },
+  "root": {
+    "level": "INFO",
+    "handlers": ["console"],
+  },
+  "loggers": {},
+}
 """
 
-_APP_CONFIG_YAML = "{ 'export_folder':'output', }"
+_APP_CONFIG_JSON5 = '{"export_folder": "output",}'
 
 
 @pytest.fixture
@@ -138,8 +144,8 @@ def local_app_service(tmp_path: Path) -> AppService:
     """Build an AppService backed by isolated temp config files."""
     settings_dir = tmp_path / "settings"
     settings_dir.mkdir()
-    (settings_dir / "log_config.yaml").write_text(_LOG_CONFIG_YAML, encoding="utf-8")
-    (settings_dir / "app_config.yaml").write_text(_APP_CONFIG_YAML, encoding="utf-8")
+    (settings_dir / "log_config.json5").write_text(_LOG_CONFIG_JSON5, encoding="utf-8")
+    (settings_dir / "app_config.json5").write_text(_APP_CONFIG_JSON5, encoding="utf-8")
     # Copy template defaults so get_default_data_settings can resolve them
     src_defaults = APP_PATHS.app_settings_dir / "defaults"
     dst_defaults = settings_dir / "defaults"
@@ -235,10 +241,10 @@ def test_get_default_data_settings_missing_file() -> None:
             APP_PATHS.app_settings_dir
             / "defaults"
             / media.value.lower()
-            / f"{report_type.value}.yaml"
+            / f"{report_type.value}.json5"
         )
         assert defaults_path.exists(), f"Missing defaults template: {defaults_path}"
-        data = yaml.safe_load(defaults_path.read_text(encoding="utf-8"))
+        data = json5.loads(defaults_path.read_text(encoding="utf-8"))
         defaults = DataDefaults(**data)
         assert defaults.DATA_DEFAULTS is not None
 

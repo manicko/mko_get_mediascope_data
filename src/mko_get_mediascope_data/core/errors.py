@@ -22,6 +22,6 @@ class WrongDataSettings(Exception):
 
     Reserved for future use in ``merge_data_settings`` to provide context
     when a subtype's default values are missing or inconsistent.  Currently
-    unused — subtype defaults are covered by the bundled YAML templates
+    unused — subtype defaults are covered by the bundled JSON5 templates
     (see ``settings/defaults/``).
     """

@@ -33,7 +33,7 @@ def tmp_report_dir(tmp_path):
 
 
 @pytest.fixture
-def tv_yaml_content() -> str:
+def tv_json5_content() -> str:
     """Report definition built with enum ``.value`` references for type safety."""
     content = [
         {
