@@ -85,7 +85,7 @@ Mapping: <IDs> -> <D-*/G-*/W-*/R-*>.
 5. **ASY-004** → keep "not substantiated" and cite owner decision D-04
    (`max_tasks` and the HTTP semaphore are intentionally independent).
 
-### 04-data-pipeline-validated-findings.md
+### 04-data-pipeline-validated-findings_done.md
 6. **PIPE-005 → mechanism correction**: a non-overlapping requested period is
    clipped to an inverted period and `iter_period_slices` returns immediately
    (`if overall_start > overall_end: return`, `core/utils.py`) → `slice_period`

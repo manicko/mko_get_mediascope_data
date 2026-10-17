@@ -257,7 +257,7 @@ the table below is resolved — see G-01.
 | Task status `FAILED`/`CANCELLED` | Now sets `task.status = False`, `task.log_error = True`, and `task.error = f"Task {terminal}"` before breaking the poll loop — `extract_data` is NOT attempted for a failed task. **Updated 2026-10-16 (W-02).** | `reports.py:403-408` (lead: audit PIPE-006) |
 | Error YAML round-trip | Written with `yaml.safe_dump` (not `yaml.dump`), so tuples render as plain YAML sequences and `yaml.safe_load` round-trips correctly. **Updated 2026-10-16 (W-02).** | `tasks.py:7, 52-57`; probe (lead: audit OUT-001) |
 | `log_error` distinction | `log_error` is now **read** in the worker (`reports.py:165`): `True` → processing failure → error YAML written; `False` → "no data" → warning only, no error YAML (D-15). Written at 12 sites (`reports.py:177, 183, 356, 375, 381, 391, 402, 419, 427, 431, 436`; `tasks.py:20`), read at 1 site. **Updated 2026-10-16 (W-02: now consumed).** | `reports.py:164-169`; grep (lead: audit PIPE-009) |
-| Duplicate output files on re-run | Prevented before submission by the `check_done` pre-filter (name match against existing files); `TVRegTaskStrategy` skip is silent (`reports.py:563-567`) | `reports.py:75-76, 507-509, 563-567` (lead: audit PIPE-011) |
+| Duplicate output files on re-run | Prevented before submission by the `check_done` pre-filter (name match against existing files); `TVRegTaskStrategy` skip logs a warning (`reports.py:572-576`) | `reports.py:75-76, 507-509, 572-576` (lead: audit PIPE-011) |
 
 **Historical note (pre-W-02, preserved for context):** Before W-02
 (commit `3f3dd56`), the worker had **no `try/except`** — an exception raised in
@@ -418,7 +418,7 @@ predate the current column-selection code and were not used to justify it.
 - [Open Questions](open-questions.md)
 - [Settings Layers Architecture](settings-layers-architecture.md)
 - [Async Concurrency Architecture](async-concurrency-architecture.md)
-- [Audit: data pipeline](../../.ai/audit/99-validation/04-data-pipeline-validated-findings.md)
+- [Audit: data pipeline](../../.ai/audit/99-validation/04-data-pipeline-validated-findings_done.md)
 - [Audit: config templates](../../.ai/audit/99-validation/05-config-templates-validated-findings.md)
 - [Audit: config & secrets](../../.ai/audit/99-validation/02-config-secrets-validated-findings.md)
 - [Audit: production ops](../../.ai/audit/99-validation/12-production-ops-validated-findings.md)
