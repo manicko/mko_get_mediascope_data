@@ -18,6 +18,8 @@ from requests.exceptions import (
 )
 from urllib3.exceptions import NameResolutionError, ProtocolError
 
+from mko_get_mediascope_data.core.errors import MaxRetriesExceeded
+
 logger = logging.getLogger(__name__)
 
 # All errors considered transient and worthy of retries
@@ -123,4 +125,4 @@ class NetworkClient:
             jitter = uniform(0, 5)
             await asyncio.sleep(backoff + jitter)
 
-        raise RuntimeError("Network retry limit exceeded")
+        raise MaxRetriesExceeded("Network retry limit exceeded")

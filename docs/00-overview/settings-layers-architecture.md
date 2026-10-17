@@ -44,19 +44,22 @@ The settings system has two layers, each loaded by a distinct Pydantic model:
 | Aspect | DEFAULT layer | CLIENT layer |
 |---|---|---|
 | Path pattern | `settings/defaults/{media}/{report_type}.yaml` | `settings/reports/**/*.yaml` |
-| Pydantic model | `DataDefaults` (`core/models.py:119`) | `ReportSettings` (`core/models.py:83`) |
-| `model_config` | `ConfigDict(extra="allow")` (`core/models.py:120`) | `ConfigDict(extra="allow")` (`core/models.py:84`) |
-| Declared field(s) | `DATA_DEFAULTS: dict` (`core/models.py:121`) | 11 declared fields (`core/models.py:85-101`) |
+| Pydantic model | `DataDefaults` (`core/models.py:128`) | `ReportSettings` (`core/models.py:87`) |
+| `model_config` | `ConfigDict(extra="allow")` (`core/models.py:129`) | `ConfigDict(extra="allow")` (`core/models.py:93`) |
+| Declared field(s) | `DATA_DEFAULTS: dict` (`core/models.py:130`) | 11 declared fields (`core/models.py:94-110`) |
 | Absorbed as extras | Subtype blocks (`DYNAMICS_BY_SPOTS`, `TOP_NAT_TV_PROGRAMS`, …) | API-parameter keys from templates (`slices`, `statistics`, `options`, …) |
 | Role | Broad base: the full API-parameter set plus all per-subtype defaults | Delta: overrides or supplements keys for a specific report instance |
 
-**Bundled DEFAULT files:**
+**Bundled DEFAULT files (all 6 combinations ship at HEAD, verified by `test_models.py::test_bundled_templates_validate`):**
 
 | File | MediaType | ReportType | Key characteristics |
 |---|---|---|---|
-| `settings/defaults/tv/crosstab.yaml` | TV | crosstab | 15 keys in `DATA_DEFAULTS`; subtype blocks `DYNAMICS_BY_SPOTS` (kitId=1, L61), `DYNAMICS_BY_SPOTS_DICT` (kitId=1, L89), `TOP_NAT_TV_ADVERTISERS` (no kitId — duplicate `issueType` at L107-108), `TOP_NAT_TV_PROGRAMS` (kitId=7, L129) |
-| `settings/defaults/tv/timeband.yaml` | TV | timeband | 12 keys in `DATA_DEFAULTS` (includes `time_filter`, omits several filter keys); no subtype blocks |
+| `settings/defaults/tv/crosstab.yaml` | TV | crosstab | 15 keys in `DATA_DEFAULTS`; subtype blocks `DYNAMICS_BY_SPOTS` (kitId=1, L59), `DYNAMICS_BY_SPOTS_DICT` (kitId=1, L87), `TOP_NAT_TV_ADVERTISERS` (no kitId — duplicate `issueType` at L107), `TOP_NAT_TV_PROGRAMS` (kitId=7, L128), `NAT_TV_CHANNELS_ATV` (kitId=1, L150), `NAT_TV_CHANNELS_BA` (kitId=7, L166), `NAT_TV_CHANNELS_SOC_DEM` (kitId=1, L181) |
+| `settings/defaults/tv/timeband.yaml` | TV | timeband | `DATA_DEFAULTS` only (includes `time_filter`), no subtype blocks |
+| `settings/defaults/tv/simple.yaml` | TV | simple | Ships at HEAD (was missing, now added) |
 | `settings/defaults/tv_reg/crosstab.yaml` | TV_REG | crosstab | 15 keys in `DATA_DEFAULTS`; `options.kitId=3` in base; subtype blocks `DYNAMICS_BY_SPOTS_M`, `DYNAMICS_BY_SPOTS_D`, `DYNAMICS_BY_SPOTS_DICT` |
+| `settings/defaults/tv_reg/timeband.yaml` | TV_REG | timeband | Ships at HEAD (was missing, now added) |
+| `settings/defaults/tv_reg/simple.yaml` | TV_REG | simple | Ships at HEAD (was missing, now added) |
 
 **CLIENT templates** live under `settings/reports/`. The reference (fully
 validating) template is `settings/reports/nat_tv_brands_tefal.yaml` — its two
@@ -65,33 +68,33 @@ entries are the only ones among all 32 bundled report entries that pass
 
 The DEFAULT and CLIENT layers are loaded at different points in the pipeline:
 
-1. **CLIENT** — `AppService.get_report_settings` (`core/services.py:84-91`)
+1. **CLIENT** — `AppService.get_report_settings` (`core/services.py:85-98`)
    iterates entries in a report YAML file and constructs
-   `ReportSettings(**rep)` at `core/services.py:88`.
+   `ReportSettings(**rep)` at `core/services.py:95`.
 2. **DEFAULT** — `AppService.get_default_data_settings`
-   (`core/services.py:93-101`) builds the path
+   (`core/services.py:100-114`) builds the path
    `defaults/{media.value.lower()}/{report_type.value.lower()}.yaml` and
    constructs `DataDefaults(**utils.yaml_to_dict(path))` at
-   `core/services.py:101`.
+   `core/services.py:114`.
 
 ### Merge Semantics
 
-`AppService.merge_data_settings` (`core/services.py:104-121`) combines the two
+`AppService.merge_data_settings` (`core/services.py:116-133`) combines the two
 layers. It is a **shallow top-level overlay**, not a deep merge. The steps are:
 
 | Step | Code | What happens |
 |---|---|---|
-| 1 | `data_settings = defaults.DATA_DEFAULTS.copy()` (`services.py:107`) | Start with a shallow copy of the DEFAULT base dict (15 keys for crosstab). |
-| 2 | `if subtype.value and hasattr(defaults, subtype.value):` + `data_settings.update(...)` (`services.py:110-111`) | If the report's `report_subtype` matches a subtype block absorbed as an extra on `DataDefaults`, overlay that block's keys via `dict.update` (whole-value replacement per key). |
-| 3 | `for k, v in report_settings.model_dump().items(): if k in data_settings: data_settings[k] = v` (`services.py:113-115`) | Overlay top-level keys from the CLIENT layer, but **only** those that already exist in `data_settings`. Keys the client specifies replace the default value; keys the client does not specify keep their default. |
-| 4 | `if report_settings.data_lang == "ru": data_settings["slices"] = utils.en_to_ru(...)` (`services.py:117-118`) | For Russian-language reports, translate slice names from English to Russian using `utils.en_to_ru` (`core/utils.py:203-211`). |
+| 1 | `data_settings = defaults.DATA_DEFAULTS.copy()` (`services.py:120`) | Start with a shallow copy of the DEFAULT base dict (15 keys for crosstab). |
+| 2 | `if subtype.value and hasattr(defaults, subtype.value):` + `data_settings.update(...)` (`services.py:122-124`) | If the report's `report_subtype` matches a subtype block absorbed as an extra on `DataDefaults`, overlay that block's keys via `dict.update` (whole-value replacement per key). |
+| 3 | `for k, v in report_settings.model_dump().items(): if k in data_settings: data_settings[k] = v` (`services.py:126-128`) | Overlay top-level keys from the CLIENT layer, but **only** those that already exist in `data_settings`. Keys the client specifies replace the default value; keys the client does not specify keep their default. |
+| 4 | `if report_settings.data_lang == "ru": data_settings["slices"] = utils.en_to_ru(...)` (`services.py:130-131`) | For Russian-language reports, translate slice names from English to Russian using `utils.en_to_ru` (`core/utils.py:223-233`). |
 
 **Override rules (explicit):**
 
 - **Whole-value replacement per top-level key.** `dict.update` and `data_settings[k] = v`
   each replace the entire value for a key — there is no recursive key-by-key merge.
 - **A client key absent from the defaults is not added.** The `if k in data_settings`
-  guard (`services.py:114`) ensures that CLIENT fields not present in `DATA_DEFAULTS`
+  guard (`services.py:127`) ensures that CLIENT fields not present in `DATA_DEFAULTS`
   (e.g. `media`, `report_type`, `period`) never enter the merged data dict.
 - **An omitted key keeps its default.** If the CLIENT layer does not specify a key
   that exists in `DATA_DEFAULTS`, the default value remains.
@@ -103,45 +106,45 @@ the entire configuration.
 ### Pass-Through Consumption
 
 The merged dict is consumed as template-defined API parameters. `extra="allow"`
-on `Data`, `DataDefaults`, and `ReportSettings` (`core/models.py:125/120/84`) is
+on `Data`, `DataDefaults`, and `ReportSettings` (`core/models.py:134/129/93`) is
 the intended transport for these keys — they are absorbed as Pydantic extras and
 forwarded into the API JSON:
 
 ```
 merge_data_settings (dict)
-  → Data(**data_settings)              (services.py:125)
-  → report.data_settings.model_dump()   (reports.py:365 for DefaultTVTaskStrategy;
-                                        reports.py:386 for TVRegTaskStrategy)
-  → TVTask.settings                     (tasks.py:19)
+  → Data(**data_settings)              (services.py:138)
+  → report.data_settings.model_dump()   (reports.py:492 for DefaultTVTaskStrategy;
+                                        reports.py:515 for TVRegTaskStrategy)
+  → TVTask.settings                     (tasks.py:17)
   → send_task: build_task(report_type, **task.settings)
-                                       (reports.py:258-259, calls
-                                        MediaVortexTask.build_task)
+     (reports.py:350-352, calls
+     MediaVortexTask.build_task)
   → vendor API JSON
 ```
 
 Concretely:
 
-1. `AppService.get_data_settings` (`core/services.py:122-125`) calls
+1. `AppService.get_data_settings` (`core/services.py:135-138`) calls
    `merge_data_settings`, then wraps the result in `Data(**data_settings)`.
 2. `TVMediaReport.__init__` reads `self.data_settings.options.get("kitId", 1)`
-   (`core/reports.py:189`) — an example of consuming an extra key from the merged
+   (`core/reports.py:259-261`) — an example of consuming an extra key from the merged
    `Data` object before task generation.
-3. The task strategy (`DefaultTVTaskStrategy.generate`, `core/reports.py:365`, or
-   `TVRegTaskStrategy.generate`, `core/reports.py:386`) calls
+3. The task strategy (`DefaultTVTaskStrategy.generate`, `core/reports.py:492`, or
+    `TVRegTaskStrategy.generate`, `core/reports.py:515`) calls
    `report.data_settings.model_dump()` to dump all keys (the 3 declared
    `Data` fields: `options`, `statistics`, `slices` — plus 12 absorbed API-parameter
    keys).
-4. Each `TVTask` stores the dump as `self.settings` (`core/tasks.py:19`).
-5. `TVMediaReport.send_task` (`core/reports.py:252-260`) calls
-   `self.builder` (which is `self.report_service.build_task`, set at
-   `core/reports.py:110`) as
-   `self.network_client.call(self.builder, task.report_type, **task.settings)`
-   (`core/reports.py:258-259`).
+4. Each `TVTask` stores the dump as `self.settings` (`core/tasks.py:17`).
+5. `TVMediaReport.send_task` (`core/reports.py:344-361`) calls
+    `self.builder` (which is `self.report_service.build_task`, set at
+    `core/reports.py:111`) as
+    `self.network_client.call(self.builder, task.report_type, **task.settings)`
+    (`core/reports.py:350-352`).
 6. The vendor `MediaVortexTask.build_task`
    reads each named parameter into the API JSON request body.
 
 The `Data` model declares only 3 fields — `options`, `statistics`, `slices`
-(`core/models.py:126-128`) — so the remaining 12 API-parameter keys
+(`core/models.py:135-137`) — so the remaining 12 API-parameter keys
 (`ad_filter`, `basedemo_filter`, `break_filter`, `company_filter`, `date_filter`,
 `daytype_filter`, `frequency_dist_conditions`, `location_filter`, `program_filter`,
 `sortings`, `targetdemo_filter`, `weekday_filter`) flow through as `extra="allow"`
@@ -163,9 +166,9 @@ the Pydantic models, **repair the template, never the code**.
 ## Common Misreadings
 
 **(a) The shallow overlay is not a missing "deep merge" bug.** The shallow
-top-level replacement in `merge_data_settings` (`core/services.py:107-115`) is the
+top-level replacement in `merge_data_settings` (`core/services.py:120-128`) is the
 intended contract: client values win where specified, defaults remain where the
-client is silent. The `if k in data_settings` guard (`services.py:114`) means a
+client is silent. The `if k in data_settings` guard (`services.py:127`) means a
 client key absent from `DATA_DEFAULTS` is not added — this prevents CLIENT-only
 fields (`media`, `period`, …) from leaking into the API parameter dict.
 Implementing a deep merge would break the two-layer overlay by partially merging
@@ -173,7 +176,7 @@ a subtype block into the base, changing semantics the vendor expects.
 
 **(b) `extra="allow"` is not a silent absorber.** The keys absorbed as extras on
 `Data`, `DataDefaults`, and `ReportSettings` are all forwarded into the API JSON
-via `build_task(report_type, **task.settings)` (`core/reports.py:258-259`). A
+via `build_task(report_type, **task.settings)` (`core/reports.py:350-352`). A
 typo'd key (e.g. `ad_filterr`) is silently dropped by the vendor's `build_task`
 signature — this is a genuine residual risk (TPL-002 LOW), but it is mitigated by
 template conformance: parameter names in templates must exactly match the names

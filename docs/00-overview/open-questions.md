@@ -69,13 +69,15 @@ answered on 2026-10-15; the register below reflects the answers.
   `REG_TV_CROSSTAB` that are not in the enum, and omit the required `media` and
   `relative_path` fields. The only conforming example is
   [`settings/reports/nat_tv_brands_tefal.yaml`](../../src/mko_get_mediascope_data/settings/reports/nat_tv_brands_tefal.yaml).
-  Verified by probe at HEAD (lead: audit TPL-001).
+  Verified by probe (lead: audit TPL-001).
 - *Owner's answer (2026-10-15):* option (a) — **migrate all bundled templates to
   the current schema and keep them runnable.** Templates and reports are
   incomplete by design and will be extended as the product is used; nothing is
   to be deleted (D-06, D-11).
 - *Recorded as gap:* G-05 — templates are not runnable today; repairing them is
-  accepted work (D-06), not a dispute about intent.
+  accepted work (D-06), not a dispute about intent. **Resolved by W-01
+  (2026-10-16)** — all 32 bundled entries now pass `ReportSettings` validation;
+  all 6 DEFAULT templates ship; both crosstab defaults parse correctly.
 
 ---
 
@@ -84,8 +86,8 @@ answered on 2026-10-15; the register below reflects the answers.
 - *Repository state:* the current code writes the configured slices plus
   statistics (plus `targetAudience` when several audiences are requested, plus
   pivoted frequency columns when frequency distribution is configured) —
-  `core/reports.py:207-221`, `:435-454`. Historical export files on the
-  development machine (e.g. `output/tv_report/top_adv/*.csv.gz`, dated before
+   `core/reports.py:437-449`, `:571-596` (column select/rename + pivot).
+   Historical export files on the development machine (e.g. `output/tv_report/top_adv/*.csv.gz`, dated before
   the 2026-02/2026-03 code changes) contain the two slice columns duplicated
   and **no** statistics columns.
 - *Owner's answer (2026-10-15):* **slices + statistics (the current code) is
@@ -100,35 +102,36 @@ answered on 2026-10-15; the register below reflects the answers.
 
 **Q-03 · answered (D-08) · HIGH impact — behavior when the requested period is outside the available data**
 
-- *Repository state:* the requested period is clipped to the window the API
-  reports (`reports.py:242-244`); a non-overlapping request yields an inverted
-  period, `iter_period_slices` returns nothing, the run produces zero tasks and
-  exits 0 with a success message — no warning (probe-verified).
+- *Repository state:* the requested period is clipped to the window the API reports (`reports.py:322-325`); an entirely non-overlapping request raises `NoReportFoundError` and exits 1; a partially overlapping request logs `logger.warning()` about the uncovered remainder and exports the overlapping part — both since W-02 (G-01), resolving the original silent-exit behavior.
 - *Owner's answer (2026-10-15):* **never interrupt processing** — one report
   failing must not break another. Emit a warning and continue. If the requested
   period partially overlaps the data, export the overlapping part and warn that
   the rest has no data. If there is no overlap at all, warn only and export
   nothing (D-08).
-- *Recorded implementation gap:* G-01 (the code is silent today).
+- *Recorded implementation gap:* G-01 (the code was silent before W-02). **Resolved by W-02** — see the [gaps table](#gaps-between-owner-intent-and-current-implementation). `get_period` now intersects the requested range with the API window explicitly: entirely out-of-range raises `NoReportFoundError`; partial overlap logs `logger.warning()` about the uncovered remainder and exports the overlapping part; a zero-interval run emits a warning naming the requested range instead of a silent exit-0 success.
 
 ---
 
 **Q-04 · answered (D-09) · HIGH impact — failure policy for individual tasks**
 
 - *Repository state:* logical failures (no task key, empty result, missing
-  columns) mark the task failed, write an error YAML next to the output folder,
-  and the run continues (`reports.py:148-150`). Exceptions raised by the network
-  layer behave differently: the worker has no exception isolation, so
-  `queue.join()` never returns (probe-verified).
+  columns) mark `task.status = False`, write an error YAML next to the output
+   folder, and the run continues (`reports.py:344-361`, `:412-449`). Raised
+  exceptions inside the worker are caught by `try/except/finally` since W-02:
+  `task_done()` is always called in `finally` (`reports.py:149-188`), so
+  `queue.join()` returns normally.
 - *Owner's answer (2026-10-15):* **never stop the export because one task
   failed — this is critical.** A user can re-run; the current mechanism checks
   already-exported periods and starts only the unfinished tasks. The mechanism
   that saves a separate description of a failed task is critical and must be
   described: if a problem persists across re-runs, the user studies it from
   that description (D-09).
-- *Recorded implementation gap:* G-02 — the error-description file exists for
-  logical failures but is bypassed by raised exceptions (worker hang), and its
-  `yaml.dump` output cannot be re-loaded with `safe_load`.
+- *Recorded implementation gap:* G-02 — the error-description file existed for
+  logical failures but was bypassed by raised exceptions (worker hang), and its
+  `yaml.dump` output could not be re-loaded with `safe_load`. **Resolved by W-02** —
+  see the [gaps table](#gaps-between-owner-intent-and-current-implementation).
+  The worker now catches raised exceptions, writes a re-loadable error YAML
+  (`yaml.safe_dump`), and always calls `task_done()` in `finally`.
 
 ---
 
@@ -136,7 +139,7 @@ answered on 2026-10-15; the register below reflects the answers.
 
 - *Repository state:* `TVRegTaskStrategy` iterates over an explicit `regions`
   list (report extra) or **all** catalog regions from `cats.get_tv_region()`,
-  and always skips region id 99 (`reports.py:406-407`). Region names come from
+  and always skips region id 99 (  `reports.py:539-540`). Region names come from
   the vendor catalog. No bundled template defines `regions`.
 - *Owner's answer (2026-10-15):* default = all regions when the user specifies
   no list. The hard-coded exclusion is wrong and must be removed; the user
@@ -154,14 +157,13 @@ answered on 2026-10-15; the register below reflects the answers.
 
 **Q-06 · answered (D-11) · MEDIUM impact — DEFAULT template coverage**
 
-- *Repository state:* shipped defaults exist only for `tv/crosstab`,
-  `tv/timeband`, `tv_reg/crosstab` (the first and third malformed); `tv/simple`,
-  `tv_reg/timeband`, `tv_reg/simple` do not exist, so any report using those
-  combinations fails (verified: files absent). The `ReportType` enum includes
-  `simple`, which no template or report uses.
+- *Repository state:* all 6 `(media, report_type)` DEFAULT templates ship and parse at HEAD (resolved by W-01); previously only `tv/crosstab`, `tv/timeband`, `tv_reg/crosstab` existed (the first and third were malformed YAML). The `ReportType` enum includes `simple`, which no client report template uses but for which DEFAULT templates now ship.
 - *Owner's answer (2026-10-15):* reports and templates are not finished yet and
   will be implemented as the product is used; nothing is to be deleted
   (D-11). Missing combinations are pending work, not rejected features.
+- *Recorded as gap:* G-05 — previously 3 of 6 DEFAULT templates were missing and
+  both crosstab defaults were malformed; **RESOLVED by W-01 (2026-10-16)** — all
+  6 now ship, all 32 bundled report entries pass validation.
 
 ---
 
@@ -169,7 +171,8 @@ answered on 2026-10-15; the register below reflects the answers.
 
 - *Repository state:* `init` copies
   `settings/connections/mediascope_RENAME_.json`, while the code reads
-  `settings/connections/mediascope.json` (`paths.py:58`). On the development
+  `settings/connections/mediascope.json` (`paths.py:60`, `init_service.py:60-90`
+  migrates the legacy name). On the development
   machine the user performed the rename manually (verified: only the renamed
   file exists locally).
 - *Owner's answer (2026-10-15):* "Recommend the best modern practice for this
@@ -186,7 +189,7 @@ answered on 2026-10-15; the register below reflects the answers.
 
 - *Repository state:* outputs are `;`-separated, comma-decimal, UTF-8-with-BOM,
   optionally gzipped; line endings follow the operating system
-  (`utils.py:186-198`). The repository does not say what reads them.
+  (`utils.py:211-220`). The repository does not say what reads them.
 - *Owner's answer (2026-10-15):* the current conventions are correct and
   intentionally hard-coded for now. Future intent: defaults in
   `settings/app_config.yaml` (e.g. separators), with the ability to override
@@ -200,7 +203,7 @@ answered on 2026-10-15; the register below reflects the answers.
 
 - *Repository state:* subtypes whose name contains `DICT` produce a melted
   table with the fixed columns `action, search_column_idx, value, term, cat,
-  adv, bra, sbr, mdl, cln_0 … cln_5` (`reports.py:457-509`). The bundled
+  adv, bra, sbr, mdl, cln_0 … cln_5` (`reports.py:599-652`). The bundled
   example is [`nat_tv_brands_tefal.yaml` entry 2](../../src/mko_get_mediascope_data/settings/reports/nat_tv_brands_tefal.yaml).
 - *Owner's answer (2026-10-15):* confirmed the hard-coded columns are bad.
   Future intent: a user settings file defining which columns the dictionary
@@ -239,7 +242,7 @@ answered on 2026-10-15; the register below reflects the answers.
 **Q-11 · answered (D-18) · LOW impact — traceability of successful tasks**
 
 - *Repository state:* the full request settings are persisted only for
-  **failed** tasks (`core/tasks.py:36-43`).
+   **failed** tasks (`core/tasks.py:27-57`).
 - *Owner's answer (2026-10-15):* correct as-is — only failed tasks are logged;
   successful runs would produce gigabytes of useless reports given millions of
   requests (D-18).
@@ -267,7 +270,7 @@ answered on 2026-10-15; the register below reflects the answers.
 - *Repository state:* templates set `options.kitId` (values 1, 3, 7 observed)
   with an in-file legend that only explains 1–6; `TOP_NAT_TV_PROGRAMS` uses
   kitId 7 with the comment "TV Index Russia all". The value filters the
-  availability window (`reports.py:189`, `:201`).
+  availability window (`reports.py:259-261`, `:265-277`).
 - *Owner's answer (2026-10-15):* the entry is **outdated and should be
   removed**; the API has changed and the owner has no current information on
   what each `kitId` means; the owner will fill in the data when it becomes
@@ -283,29 +286,32 @@ answered on 2026-10-15; the register below reflects the answers.
 | DISC-01 | Command name `list_reports` vs actual `list-reports` | README/AGENTS.md vs CLI (verified exit code 2 for the underscore form) | **Resolved** — README and AGENTS.md corrected to `list-reports` (2026-10-16) |
 | DISC-02 | README documents `run --no-verbose`, which does not exist (verified exit code 2) | README vs `app.py:42` | **Resolved** — invalid example removed from README (2026-10-16) |
 | DISC-03 | README's quick-start example (`nat_tv_brands_last.yaml`) fails validation | README vs `ReportSettings` (probe) | Covered by D-06 repair work |
-| DISC-04 | Shipped credential template `mediascope_RENAME_.json` vs expected `mediascope.json` | `settings/connections/` vs `paths.py:58` (verified; lead: audit CFG-003) | Q-07 / D-12 recommendation recorded |
-| DISC-05 | `multiple_files` comment says "if period exceeds 1 year, split exports by month/week"; the code splits by `period_model.time_unit` | `models.py:98-99` vs `reports.py:296` (verified) | Documented current behavior (code); comment treated as stale |
+| DISC-04 | Shipped credential template `mediascope_RENAME_.json` vs expected `mediascope.json` | `settings/connections/` vs `paths.py:60` (verified; lead: audit CFG-003) | Q-07 / D-12 recommendation recorded |
+| DISC-05 | `multiple_files` comment says "if period exceeds 1 year, split exports by month/week"; the code splits by `period_model.time_unit` | `models.py:103-105` vs `reports.py:317` (verified) | Documented current behavior (code); comment treated as stale |
 | DISC-06 | The audit corpus is pinned to frozen baselines (`d093d9c`/`b04d177`), contains errors, and several entries no longer match HEAD | `.ai/audit/99-validation/*` vs HEAD | Per owner ruling D-05 the audit is a lead source only; these docs follow the code and re-verify each claim |
 | DISC-07 | `defaults/tv/crosstab.yaml` parses at commit `3408747` and fails from `b04d177` onward — the i18n translation commit introduced the YAML syntax error at line 138 | Git probe | Documented as the cause of the TV-defaults outage; covered by D-06 repair work |
 | DISC-08 | The owner's personal settings folder still uses the legacy dialect and older templates, and its exports predate the current column-selection code | Machine state vs HEAD | Used as evidence for Q-01/Q-02, not as a specification |
-| DISC-09 | The owner recalled that regions **99 and 100** are excluded; the code excludes **only 99** | Owner answer vs `reports.py:406-407` (verified) | Recorded for the region-option redesign (R-01): start from the code |
+| DISC-09 | The owner recalled that regions **99 and 100** are excluded; the code excludes **only 99** | Owner answer vs `reports.py:539-540` (verified) | Recorded for the region-option redesign (R-01): start from the code |
 | DISC-10 | README instructs installation from (Test) PyPI; the owner's stated path is `pip install <github_url>`, with no PyPI publication | README vs owner answer (D-19) | **Resolved** — README corrected to `pip install git+https://github.com/manicko/mko_get_mediascope_data.git` (2026-10-16) |
 | DISC-11 | The `kitId` legend and values in the bundled templates are stale per the owner | Templates vs owner answer | No `kitId` meaning is asserted anywhere in these docs |
 
 ### Gaps between owner intent and current implementation
 
-Recorded per the owner's answers. These are **not fixed by this documentation
-task**; they are pending work items. The implementation sequence and agent
-assignments for all of them are tracked in
+Recorded per the owner's answers. G-01 and G-02 have been **resolved by W-02**
+(error semantics overhaul — see
+[delivery plan](../../.ai/problems/01-delivery-plan.md#sprint-2--w-02-error-semantics)).
+G-05 has been **resolved by W-01** (all 6 DEFAULT templates ship, all 32
+entries validate). G-03–G-04 remain open pending their respective work items.
+The implementation sequence and agent assignments for all items are tracked in
 [`.ai/problems/01-delivery-plan.md`](../../.ai/problems/01-delivery-plan.md).
 
-| ID | Intent (owner decision) | Current code | Impact |
-|---|---|---|---|
-| G-01 | Warn on missing/partial period data; never interrupt (D-08) | Zero-task and out-of-window runs are silent exits with no warning (`reports.py:242-247`) | An analyst cannot tell "no data" from "done"; the multi-report safety intent is unimplemented |
-| G-02 | A failed task always leaves a persistable description (D-09); network failures must not stop the run | Raised exceptions bypass the error file and hang `queue.join()` (probe-verified); the error YAML is written with `yaml.dump` and cannot be re-loaded with `safe_load` (probe-verified) | The documented recovery path is unavailable exactly for the failure class the owner cares about. See the precision note below on which failures hang and the owner's observation that no hang was seen in practice |
-| G-03 | Region selection belongs in the user template, not hard-coded (D-10) | Region id 99 is hard-coded as excluded (`reports.py:406`); no `regions`/exclusion support in any template | Users cannot include 99 or express `NOT IN (…)` |
-| G-04 | Per-report overrides of output conventions (D-13, D-14) | Separators/decimal/BOM/compression and the DICT column layout are hard-coded (`utils.py:186-198`, `reports.py:457-509`) | Users cannot adapt output to their downstream consumers |
-| G-05 | Bundled templates stay runnable (D-06) | 30/32 entries fail validation; both crosstab defaults malformed (probe-verified) | No bundled report runs end-to-end |
+| Status | ID | Intent (owner decision) | Current code | Impact |
+|---|---|---|---|---|
+| **RESOLVED** — W-02 slice 3 (entirely out-of-range → `NoReportFoundError`, PIPE-005; partial overlap → `logger.warning()` + export overlap, PIPE-003/PIPE-004; zero-interval → warning, not silent exit) | G-01 | Warn on missing/partial period data; never interrupt (D-08) | `get_period` now intersects the requested range with the API window explicitly: entirely out-of-range raises `NoReportFoundError` (PIPE-005); partial overlap logs `logger.warning()` about the uncovered remainder and exports the overlapping part (PIPE-003, PIPE-004); a zero-interval run emits a warning naming the requested range instead of a silent exit-0 success | **RESOLVED** — analysts can now distinguish "no data" (warning) from "done"; the multi-report safety intent of D-08 is implemented |
+| **RESOLVED** — W-02 slices 1-2 (worker `try/except/finally` converts exceptions to a failed-task error artifact, PIPE-002/PIPE-007; `log_error` branching distinguishes "no data" warnings from "processing failure" error files, PIPE-009; `yaml.safe_dump` makes error YAML re-loadable, D-09) | G-02 | A failed task always leaves a persistable description (D-09); network failures must not stop the run | Worker now wraps its body in `try/except Exception` that sets `task.status = False`, reaches `TVTask.to_yaml`, and calls `task_done()` in `finally` (PIPE-002, PIPE-007); `log_error` is consumed by branching logic: "no data" → `logger.warning()` with no error file (D-15); "processing failure" → error YAML written with `yaml.safe_dump` so it is re-loadable with `safe_load` (PIPE-009, D-09) | **RESOLVED** — the recovery path works for all failure classes; raised exceptions in workers no longer hang `queue.join()` |
+| OPEN — pending W-03 (R-01 region-selection design) | G-03 | Region selection belongs in the user template, not hard-coded (D-10) | Region id 99 is hard-coded as excluded (`reports.py:539`); no `regions`/exclusion support in any template | Users cannot include 99 or express an exclusion list; the owner requires template-driven region selection (D-10) |
+| OPEN — pending W-04 (R-02 output-conventions design) | G-04 | Per-report overrides of output conventions (D-13, D-14) | Separators/decimal/BOM/compression and the DICT column layout are hard-coded (`utils.py:211-220`, `reports.py:599-652`) | Users cannot adapt output to their downstream consumers |
+| **RESOLVED** — W-01 (2026-10-16) | G-05 | Bundled templates stay runnable (D-06) | All 6 DEFAULT templates ship and parse (formerly 3 were missing and both crosstab defaults were malformed); all 32 bundled report entries pass `ReportSettings` validation | No bundled report runs end-to-end → all templates parse and validate; `nat_tv_brands_tefal.yaml` is the reference runner |
 
 ### Assumptions awaiting validation
 
@@ -329,14 +335,22 @@ decision first.
 
 ### Precision note on G-02: which failures hang, and the owner's observation
 
+> **Resolved by W-02.** The failure-class diagram below is preserved as the
+> pre-implementation record. After W-02 (commit `3f3dd56`), the worker wraps its
+> body in `try/except Exception` → `finally: task_done()`, so the third class (raised
+> exception inside a worker) no longer hangs `queue.join()`; it is converted to a
+> failed task with an error artifact written via `yaml.safe_dump` (PIPE-002,
+> PIPE-007). The owner's observation about not noticing the hang in practice
+> remains valid as historical context.
+
 The failure classes in the current code are distinct, and only one of them
 hangs (all verified by probe against the real worker):
 
 | Failure | Where it happens | Current outcome |
 |---|---|---|
-| Validation error, missing/malformed template, connection/auth setup failure | **Before** the worker pool (`create_report` → `get_period` → `get_available_period`) | Clean abort: error printed by the CLI, exit code 1 — visible |
-| Logical failure: no task key, empty result, missing columns | **Inside** a worker, but signalled as `status=False`, not an exception | Error YAML written, warning logged, run continues — the recovery path the owner knows |
-| Raised exception inside a worker: `BadRequestError`, `AuthorizationError`, `RuntimeError("Network retry limit exceeded")`, unexpected `AttributeError` | **Inside** a worker (`send_task` / `wait_task` / `extract_data`) | `task_done()` is skipped (`reports.py:153`), `queue.join()` never returns (`reports.py:161`), and **no traceback is printed** — the worker task's exception is never retrieved. Symptom: the console stops producing lines and the process never exits |
+| Validation error, missing/malformed template, connection/auth setup failure | **Before** the worker pool (`create_report` → `get_period` → `get_available_period`) | Clean abort: error printed by the CLI, exit code 1 — visible (`reports.py:220-223`) |
+| Logical failure: no task key, empty result, missing columns | **Inside** a worker, but signalled as `status=False`, not an exception | Error YAML written via `yaml.safe_dump`, warning logged, run continues — the recovery path the owner knows (`reports.py:149-188`) |
+| Raised exception inside a worker: `BadRequestError`, `AuthorizationError`, `RuntimeError("Network retry limit exceeded")`, unexpected `AttributeError` | **Inside** a worker (`send_task` / `wait_task` / `extract_data`) | **Resolved by W-02.** The worker's `try/except/finally` catches the exception, marks the task failed, writes an error YAML via `yaml.safe_dump`, and calls `task_done()` in `finally` — so `queue.join()` returns and the run continues. The pre-W-02 behavior (hang, no traceback) was probe-verified but is no longer current (`reports.py:149-188`). |
 
 *Owner's observation (2026-10-15):* errors were encountered in practice, but a
 worker hang was never noticed. This does not contradict the mechanism (the
@@ -351,25 +365,39 @@ confirmation — the mechanism stands, its observed frequency is unknown.
 
 ### Known limitations (documented, not fixed)
 
-This task was investigation-only; none of the items below were changed. Each
-item was re-verified against the code (probes and readings are listed in
-[Current Behavior](current-behavior.md#verification)); per owner ruling D-05 the
-audit IDs are lead pointers, not evidence:
+This task was investigation-only; items below marked **[fixed by W-02]** were
+subsequently resolved by the W-02 error-semantics implementation. The remaining
+items are still open. Each item was re-verified against the code (probes and
+readings are listed in [Current Behavior](current-behavior.md#verification));
+per owner ruling D-05 the audit IDs are lead pointers, not evidence:
 
-- Bundled report templates fail validation (30 of 32 entries) and both crosstab
-  DEFAULT templates are malformed YAML — no bundled report can run end-to-end.
-- `get_period` crashes when `date_filter` is combined with `last_time: null`.
-- Out-of-window periods and empty audience sets produce zero tasks with a
-  success exit (silent empty runs) — see G-01.
-- A worker exception leaves `task_done()` uncalled and `queue.join()` never
-  returns — the run hangs instead of failing (see G-02).
-- Duplicate CSV writes are swallowed; the task is still reported as ready.
-- The poll loop has no deadline; `FAILED`/`CANCELLED` statuses still attempt
-  extraction; `log_error` is write-only.
-- Error YAML is written with `yaml.dump` (`!!python/tuple`) and raised
-  exceptions never reach the error path.
+- [Fixed by W-02, G-01] `get_period` crashed when `date_filter` was combined
+  with `last_time: null` (PIPE-003); now handled correctly.
+- [Fixed by W-02, G-01] Out-of-window periods produced zero tasks with a
+  success exit — now `get_period` raises `NoReportFoundError` for entirely
+  out-of-range requests and `logger.warning()` for partial overlap (PIPE-004,
+  PIPE-005).
+- [Fixed by W-02, G-02] A worker exception left `task_done()` uncalled and
+  `queue.join()` never returned — the run hung instead of failing (PIPE-002);
+  now the worker has `try/except/finally` so a failure writes an error artifact
+  and the run continues.
+- [Fixed by W-02, G-02] Error YAML was written with `yaml.dump`
+  (`!!python/tuple`) and raised exceptions never reached the error path;
+  now `yaml.safe_dump` is used and all failure classes produce a re-loadable
+  error file (PIPE-007, PIPE-009).
+- [Fixed by W-01 (2026-10-16)] Bundled report templates failed validation
+  (30 of 32 entries used the stale `period_type`/`period_num` schema and
+  missing `media`/`relative_path` fields; both crosstab DEFAULT templates were
+  malformed YAML). Now all 32 entries pass validation and all 6 DEFAULT templates
+  ship (see G-05, test_models.py::test_bundled_templates_validate).
+- [Fixed by W-02 (2026-10-16)] Duplicate CSV writes were swallowed; the task was
+  still reported as ready (PIPE-001). Now `csv_to_file` uses `mode="w"` and the
+  `FileExistsError`-swallow path is removed.
+- [Fixed by W-02 (2026-10-16)] The poll loop had no deadline; `FAILED`/`CANCELLED`
+  statuses still attempted extraction (PIPE-006). Now `wait_task` has
+  `max_polls=60` and `poll_deadline=3600.0` guards, and `FAILED`/`CANCELLED` marks
+  the task failed without attempting extraction.
 - `list-reports` reads the user settings folder while `run` accepts any path.
-- Type safety is unenforced (mypy red, no CI).
 - Region id 99 is hard-coded as excluded (see G-03).
 
 ## Related Docs

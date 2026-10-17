@@ -6,7 +6,7 @@ tags:
   - governance
   - rules
 related:
-  - technical-specification
+  - current-behavior
   - async-concurrency-architecture
   - settings-layers-architecture
 ---
@@ -25,10 +25,10 @@ Mandatory reference for agents and guidance for humans when creating, updating, 
 ## Update Triggers
 
 Update docs for:
-- New features (new endpoints, components, modules)
+- New features (new CLI commands, modules, enums)
 - API changes (request/response format, status codes)
-- Schema changes (new tables, columns, enums)
-- Security changes (auth flow, access control, rate limits)
+- Schema changes (new Pydantic model fields, enum values)
+- Security changes (auth flow, credential handling, error exposure)
 
 Do NOT update for:
 - Minor refactoring
@@ -47,7 +47,7 @@ Do NOT update for:
 
 - Use `kebab-case` for all filenames.
 - Lowercase only; numbers for ordering.
-- Specific names at deeper levels (e.g., `schema-core.md`).
+- Specific names at deeper levels (e.g., `settings-layers-architecture.md`).
 - Avoid generic names like `misc.md` or `notes.md`.
 
 ## Frontmatter Requirements
@@ -132,13 +132,13 @@ Agents must:
 - [ ] Updated cross-linked docs
 - [ ] Verified all examples compile/run
 
-### Schema Change
+### Schema Change (Pydantic model / Enum)
 
-- [ ] Updated table/column definitions
-- [ ] Updated enum values
-- [ ] Updated relationships and constraints
-- [ ] Updated `schema-core.md` if core change
-- [ ] Added migration notes if required
+- [ ] Updated Pydantic model field definitions and descriptions in `core/models.py`
+- [ ] Updated Enum member values in `core/models.py` (documented in architecture docs)
+- [ ] Updated validation rules and error messages if constraints changed
+- [ ] Verified examples still parse with updated schema
+- [ ] Added migration notes for settings/config schema changes (W-01 template schema)
 
 ### Doc Splitting
 
@@ -148,20 +148,21 @@ Agents must:
 - [ ] Updated cross-links in both files
 - [ ] Updated `related` arrays in frontmatter
 
-### Code Quality Refactor (StrEnum extraction, shared-utility extraction, module split)
+### Code Quality Refactor (Enum extraction, shared-utility extraction, module split)
 
-Used when a refactoring extracts a constant into a StrEnum, merges a duplicated
+Used when a refactoring extracts a constant into an `Enum`, merges a duplicated
 logic block into a shared utility, or splits an oversized module into a package:
 
-- [ ] Added a `##` section (or updated an existing one) in the relevant agent/spec doc
-      (e.g. `docs/99-agent/architecture.md`) describing the new seam, utility, or split
-- [ ] If a new StrEnum was introduced, added it to [`db-enums`](../02-database/db-enums.md)
-      with a value-meaning table and cross-references
+- [ ] Added a `##` section (or updated an existing one) in the relevant architecture doc
+      (e.g. `settings-layers-architecture.md` or `data-flow-architecture.md`) describing
+      the new seam, utility, or split
+- [ ] If a new `Enum` was introduced, documented the value-meaning table inline with
+      cross-references (enums live in `core/models.py`)
 - [ ] If a shared utility replaced duplicated logic, documented the old vs. new call paths
-      and any intentionally-out-of-scope sites (e.g. management commands with different
-      exception semantics)
+      and any intentionally-out-of-scope sites (e.g. direct vendor calls that bypass
+      `NetworkClient`)
 - [ ] If a module was split into a package, documented the sub-module layout, the shared
-      object (router/StatesGroup), and the re-export strategy in `__init__.py`
+      object, and the re-export strategy in `__init__.py`
 - [ ] Updated test import paths / patch targets in any test files that referenced the
       old location (verify with `grep`)
 - [ ] Verified frontmatter is valid on all modified docs

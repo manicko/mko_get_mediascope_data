@@ -47,8 +47,7 @@ src/mko_get_mediascope_data/
 │   ├── tasks.py             # TVTask — async task representation
 │   ├── network.py           # NetworkClient — async retry with backoff + semaphore
 │   ├── utils.py             # Helpers: date/period logic, YAML/CSV I/O
-│   ├── errors.py            # NoReportFoundError, WrongDataSettings
-│   └── logger.py            # (placeholder)
+│   └── errors.py            # NoReportFoundError, WrongDataSettings
 └── settings/                # Bundled default templates (app_config.yaml, log_config.yaml, reports/, etc.)
 ```
 

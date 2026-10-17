@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from datetime import date
 from os import PathLike
-from typing import Any, cast
+from typing import Any
 
 from mediascope_api.mediavortex.tasks import MediaVortexTask
 from pandas import DataFrame
@@ -155,6 +155,7 @@ class MediaReport(Report):
         """
         while True:
             item = await self.task_queue.get()
+            logger.debug(f"Queue depth after get: {self.task_queue.qsize()}")
             try:
                 coro = self._process_item(item)
                 if timeout is not None:
@@ -197,10 +198,12 @@ class MediaReport(Report):
         enqueued = 0
         async for task in self.generate_tasks():
             await self.task_queue.put(task)
+            logger.debug(f"Queue depth after put: {self.task_queue.qsize()}")
             enqueued += 1
         if enqueued == 0:
             for t in task_group:
                 t.cancel()
+            await asyncio.gather(*task_group, return_exceptions=True)
             if self.check_done and self.done_files:
                 logger.warning(
                     "All tasks were skipped because their output files "
@@ -216,6 +219,7 @@ class MediaReport(Report):
         await self.task_queue.join()
         for t in task_group:
             t.cancel()
+        await asyncio.gather(*task_group, return_exceptions=True)
 
     async def create_report(self, timeout: float | None = None) -> None:
         """sync function to run async part"""
@@ -509,7 +513,7 @@ class DefaultTVTaskStrategy(TaskGenerationStrategy):
 class TVRegTaskStrategy(TaskGenerationStrategy):
     async def generate(self, report: TVMediaReport) -> AsyncGenerator[TVTask, None]:
         settings: dict[str, Any] = report.data_settings.model_dump()
-        available_regions = cast(DataFrame | None, report.catalogs.get_tv_region())
+        available_regions = await report.network_client.call(report.catalogs.get_tv_region)
         if available_regions is None:
             return
         regions_list = (

@@ -9,6 +9,14 @@ class NoReportFoundError(Exception):
     """
 
 
+class MaxRetriesExceeded(RuntimeError):
+    """Raised when ``NetworkClient.call`` exhausts all retry attempts.
+
+    Subclasses ``RuntimeError`` so existing ``pytest.raises(RuntimeError)``
+    assertions continue to pass (backward compatible).
+    """
+
+
 class WrongDataSettings(Exception):
     """Raised when report data settings cannot be resolved.
 
