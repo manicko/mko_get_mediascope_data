@@ -1,0 +1,183 @@
+{
+  // Set default parameters for data export from the media scope
+  "DATA_DEFAULTS": {
+    "date_filter": null,  // Filter is specified as a list ('Start', 'End'). Multiple periods can be specified
+    "weekday_filter": null,  // Set weekdays
+    "daytype_filter": null,  // Set day type
+    "company_filter": null,  // Set channels
+    "location_filter": null,  // Set viewing location
+    "basedemo_filter": null,  // Set target audience
+    "targetdemo_filter": null, // Additional target audience filter, only needed when calculating the ratio between audiences, e.g. when calculating Affinity Index
+    "program_filter": null,  // Program filter
+    "break_filter": null,  // Break filter
+    "ad_filter": null,  // Ad filter:
+    "slices": null,  // Specify list of slices
+    "statistics": null,  // Specify list of statistics for calculation
+    "sortings": null,  // Set sorting conditions:
+    "options": null,  // Set calculation options
+    "frequency_dist_conditions": null, // Sets frequency distribution
+  },
+  "DYNAMICS_BY_SPOTS": {
+    "company_filter": "tvNetId IN (1,2,4,10,11,12,13,16,40,60, 83,84,86,204,205,206,255,257,258,259,260,286,326,329,340,348,356,376,393,502,545,563)",
+    // Specify list of slices
+    "slices": [
+      "researchDate", // day - can specify at most 1 time slice per task.
+      // 'researchMonth', # month - can specify at most 1 time slice per task.
+      // 'researchWeek', # week - can specify at most 1 time slice per task.
+      "articleList4EName",  // Product categories 4 list
+      "advertiserListEName",  // Advertisers list
+      // 'advertiserListId',  # Advertisers list id
+      "brandListEName",  // Brands list
+      // 'brandListId',  # Brands list id
+      "subbrandListEName",  // Sub-brands list
+      // 'subbrandListId',  # Sub-brands list id
+      "modelListEName",  // Products list
+      // 'modelListId',  # Products list id
+      "adEName",  // Ad
+      "articleList2EName",  // Product categories 2 list
+      "articleList3EName",  // Product categories 3 list
+      "articleList4EName",  // Product categories 4 list
+      "adStandardDuration",  // Ad expected duration
+      "adDistributionTypeEName",  // Ad distribution
+      "adTypeEName",  // Ad type
+      "adPositionId",  // Ad position in block
+      "adPositionTypeEName",  // Ad positioning
+      "adPrimeTimeStatusId",  // Prime/Off-prime ad id '1 - Prime-time, 2 - Off-prime
+      "adPrimeTimeStatusEName",  // Prime/Off-prime ads (en.)
+      "adId",  // Ad ID
+      "adNotes",  // Ad description
+      "adFirstIssueDate", // Ad first air date
+      "tvCompanyEName",  // TV company
+      "programEName",  // Program
+      "programCategoryEName",  // Program category (en.)
+      "programCategoryShortEName",  // Program short category
+      "programTypeEName"  // Program genre
+    ],
+    // Set calculation options
+    "options": {
+      // dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      // Only one value can be specified
+      "kitId": 1, //TV Index Russia all
+      "issueType": "AD",  // Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
+      "standRtg": {
+        "useRealDuration": false,  // Calculated based on actual ad duration.
+        "standardDuration": 20  // Standard duration of 20 seconds
+      }
+    },
+    "statistics": [
+      "RtgPerSum",  // Total reach of event group in %
+      "StandRtgPerSum",
+      "SalesRtgPerSum", // Total reach of event group in %, calculated using channel audience
+      "StandSalesRtgPerSum",
+      "QuantitySum"  // Number of broadcast events
+    ]
+  },
+  "DYNAMICS_BY_SPOTS_DICT": {
+    // Specify list of slices
+    "slices": [
+      "articleLevel4EName",  // Product categories 4 list
+      "advertiserEName",  // Advertisers list
+      "brandEName",  // Brands list
+      "subbrandEName",  // Sub-brands list
+      "modelEName"  // Products list
+    ],
+    // Set calculation options
+    "options": {
+      // dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      // Only one value can be specified
+      "kitId": 1, //TV Index Russia all
+      "issueType": "AD",  // Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
+      "standRtg": {
+        "useRealDuration": false,  // Calculated based on actual ad duration.
+        "standardDuration": 20  // Standard duration of 20 seconds
+      }
+    },
+    "statistics": [
+      "QuantitySum"  // Number of broadcast events
+    ]
+  },
+  "TOP_NAT_TV_ADVERTISERS": {
+    "company_filter": "tvNetId IN (1,2,4,10,11,12,13,16,40,60, 83,84,86,204,205,206,255,257,258,259,260,286,326,329,340,356,376,393,502,545,348)",
+    "ad_filter": "adIssueStatusId = R and adTypeId IN (1, 23, 25)",
+    "options": {
+      // dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      // Only one value can be specified
+      "issueType": "AD",   //Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
+      "standRtg": {
+        "useRealDuration": false,  // Calculated based on actual ad duration.
+        "standardDuration": 20  // Standard duration of 20 seconds
+      }
+    },
+    "slices": [
+      "researchMonth",  // month - can specify at most 1 time slice per task.
+      "advertiserEName"  // Advertisers list
+    ],
+    "statistics": [
+      "RtgPerSum",  // Total reach of event group in %
+      "StandRtgPerSum"
+    ],
+  },
+  "TOP_NAT_TV_PROGRAMS": {
+    "statistics": [
+      "RtgPerAvg",
+      "ShareAvg"
+    ],
+    "options": {
+      "kitId": 7, //TV Index Russia all
+      "issueType": "PROGRAM",   // Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
+    },
+    "slices": [
+      "researchMonth",  // month - can specify at most 1 time slice per task.
+      "researchMonth",  // month - can specify at most 1 time slice per task.
+      "programEName", // Program name
+      "tvCompanyEName", // TV company
+      "programTypeEName", // Program genre
+    ],
+  },
+  "NAT_TV_CHANNELS_ATV": {
+    "company_filter": "tvNetId IN (1,2,4,10,11,12,60,83,204,206,255,257,258,259,260,326,329,348,348,348)",
+    "slices": [
+      "researchMonth",  // month - can specify at most 1 time slice per task.
+      "tvCompanyEName",  // TV company
+    ],
+    "statistics": [
+      "ATVAvg", // Average daily viewing time in minutes among the population
+      "RtgPerAvg"
+    ],
+    "options": {
+      "kitId": 1, //TV Index Russia all
+      "totalType": "TotalTVSet", //Share calculation base: Total Channels. Available options: TotalTVSet, TotalChannelsThem
+      "issueType": "BREAKS"   //Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
+    }
+  },
+  "NAT_TV_CHANNELS_BA": {
+    "company_filter": "tvNetId IN (1,2,4,10,11,12,60,83,204,206,255,257,258,259,260,326,329,348,348,348)",
+    "break_filter": "breaksContentType = C AND breaksDistributionType = N", //'breaksContentType IN (C,S)' #Block content: commercial, sponsored
+    "slices": [
+      "researchMonth",  // month - can specify at most 1 time slice per task.
+      "tvCompanyEName",  // TV company
+    ],
+    "statistics": [
+      "SalesRtgPerAvg"
+    ],
+    "options": {
+      "kitId": 7, //TV Index Russia all
+      "issueType": "BREAKS"   //Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
+    }
+  },
+  "NAT_TV_CHANNELS_SOC_DEM": {
+    "company_filter": "tvNetId IN (1,2,4,10,11,12,60,83,204,206,255,257,258,259,260,326,329,348,348,348)",
+    "slices": [
+      "researchMonth",  // month - can specify at most 1 time slice per task.
+      "tvCompanyEName",  // TV company
+    ],
+    "statistics": [
+      "WAgeAverage",
+      "Share"
+    ],
+    "options": {
+      "kitId": 1, //TV Index Russia all
+      "totalType": "TotalTVSet" //Share calculation base: Total Channels. Available options: TotalTVSet, TotalChannelsThem
+    }
+  },
+}

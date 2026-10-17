@@ -1,0 +1,82 @@
+[
+  {
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS",
+    "compression": {
+      "method": "gzip",
+    },
+    "data_lang": "ru",
+    "relative_path": "raw_data",
+    "multiple_files": true,
+    "ad_filter": "articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)",
+    "target_audiences": {
+      "all 4+": "age >= 4",
+      "all 18+": "age >= 18",
+      "all 30+": "age >= 30",
+      "all 30-60 BC": "age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)",
+      "all 30-50 AB": "age >= 30 AND age <= 50 AND incomeGroupRussia IN (1,2)",
+      "all 45-60 BC": "age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)",
+      "all 55+ AB": "age >= 55 AND incomeGroupRussia IN (1,2)",
+      "all 30-60 C": "age >= 30 AND age <= 60 AND incomeGroupRussia IN (3)",
+    },
+    "period": {
+      "date_filter": null,
+      "last_time": {
+        "unit_count": 4,
+        "include_current": false,
+      },
+      "time_unit": "w",
+    },
+    "statistics": [
+      "RtgPerSum",
+      "StandRtgPerSum",
+      "QuantitySum",
+    ],
+  },
+  {
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS",
+    "compression": {
+      "method": "gzip",
+    },
+    "data_lang": "ru",
+    "relative_path": "raw_data",
+    "multiple_files": true,
+    "ad_filter": "articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)",
+    "target_audiences": {
+      "BA": null,
+    },
+    "period": {
+      "date_filter": [
+        "2024-01-01",
+        "2024-05-31",
+      ],
+      "time_unit": "m",
+    },
+    "statistics": [
+      "SalesRtgPerSum",
+      "SalesRtg000Sum",
+    ],
+  },
+  {
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS_DICT",
+    "data_lang": "ru",
+    "relative_path": "dict",
+    "multiple_files": true,
+    "ad_filter": "articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)",
+    "target_audiences": {
+      "not_set": null,
+    },
+    "period": {
+      "date_filter": [
+        "2024-01-01",
+        "2024-05-31",
+      ],
+      "time_unit": "m",
+    },
+  },
+]

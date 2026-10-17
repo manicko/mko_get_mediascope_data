@@ -1,0 +1,45 @@
+[
+  {
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS",
+    "compression": {
+      "method": "gzip",
+    },
+    "data_lang": "ru",
+    "relative_path": "raw_data",
+    "multiple_files": true,
+    "ad_filter": "articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R",
+    "target_audiences": {
+      "all 18+": "age >= 18",
+      "all 25-45": "age >= 25 AND age <= 45",
+      "w 25-45": "sex = 2 AND age >= 25 AND age <= 45",
+    },
+    "period": {
+      "date_filter": [
+        "2023-01-01",
+        "2024-05-31",
+      ],
+      "time_unit": "m",
+    },
+  },
+  {
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS_DICT",
+    "data_lang": "ru",
+    "relative_path": "dict",
+    "multiple_files": true,
+    "ad_filter": "articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R",
+    "target_audiences": {
+      "not_set": null,
+    },
+    "period": {
+      "date_filter": [
+        "2023-01-01",
+        "2024-05-31",
+      ],
+      "time_unit": "m",
+    },
+  },
+]

@@ -1,0 +1,17 @@
+{
+  // Set default parameters for data export from the media scope
+  "DATA_DEFAULTS": {
+    "date_filter": null,  // Filter is specified as a list ('Start', 'End'). Multiple periods can be specified
+    "weekday_filter": null,  // Set weekdays
+    "daytype_filter": null,  // Set day type
+    "company_filter": null,  // Set channels
+    "time_filter": null, // Set time interval
+    "location_filter": null,  // Set viewing location
+    "basedemo_filter": null,  // Set target audience
+    "targetdemo_filter": null, // Additional target audience filter, only needed when calculating the ratio between audiences, e.g. when calculating Affinity Index
+    "slices": null,  // Specify list of slices
+    "statistics": null,  // Specify list of statistics for calculation
+    "sortings": null,  // Set sorting conditions:
+    "options": null  // Set calculation options
+  }
+}

@@ -1,0 +1,33 @@
+[
+  {
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS",
+    "compression": {
+      "method": "gzip",
+    },
+    "data_lang": "ru",
+    "relative_path": "msk_tv_new_creatives",
+    "multiple_files": true,
+    "ad_filter": "articleLevel4Id IN (2317, 4519, 5016) and adIssueStatusId = R and advertiserId NOT IN (79677)",
+    "target_audiences": {
+      "all 30+": "age >= 30",
+    },
+    "period": {
+      "date_filter": null,
+      "last_time": {
+        "unit_count": 1,
+        "include_current": true,
+      },
+      "time_unit": "w",
+    },
+    "options": {
+      "kitId": 6,
+      "issueType": "AD",
+      "standRtg": {
+        "useRealDuration": true,
+        "standardDuration": 20,
+      },
+    },
+  },
+]

@@ -1,0 +1,74 @@
+[
+  {
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS",
+    "compression": {
+      "method": "gzip",
+    },
+    "data_lang": "ru",
+    "relative_path": "raw_data",
+    "multiple_files": true,
+    "ad_filter": "adId IN (4645269, 4707759, 4642934) AND adIssueStatusId = R",
+    "target_audiences": {
+      "all 45-60 BC": "age >= 45 AND age <= 60 AND incomeGroupRussia IN (2,3)",
+    },
+    "period": {
+      "date_filter": [
+        "2024-01-01",
+        "2026-12-31",
+      ],
+      "time_unit": "m",
+    },
+    "slices": [
+      "researchWeek",
+    ],
+    "options": {
+      "kitId": 7,
+      "issueType": "AD",
+      "baseDate": null,
+      "baseDateCalcType": "BY_RESEARCH_PERIOD",
+      "oneBaseDatePerEachDateRange": false,
+      "useNbd": true,
+      "standRtg": {
+        "useRealDuration": false,
+        "standardDuration": 20,
+      },
+    },
+    "statistics": [
+      "CumReach000",
+      "RtgPerSum",
+      "StandRtgPerSum",
+      "Rtg000Sum",
+      "FrequencyDistPer",
+    ],
+    "frequency_dist_conditions": {
+      "intervals": [
+        {
+          "from": 1,
+        },
+        {
+          "from": 2,
+        },
+        {
+          "from": 3,
+        },
+        {
+          "from": 5,
+        },
+        {
+          "from": 7,
+        },
+        {
+          "from": 10,
+        },
+        {
+          "from": 15,
+        },
+        {
+          "from": 20,
+        },
+      ],
+    },
+  },
+]

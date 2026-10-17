@@ -1,0 +1,105 @@
+[
+  {
+    "media": "TV_REG",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS",
+    "compression": {
+      "method": "gzip",
+    },
+    "data_lang": "ru",
+    "relative_path": "raw_data_m",
+    "multiple_files": true,
+    "ad_filter": "articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R",
+    "target_audiences": {
+      "all 18+": "age >= 18",
+      "all 25-45": "age >= 25 AND age <= 45",
+      "w 25-45": "sex = 2 AND age >= 25 AND age <= 45",
+    },
+    "period": {
+      "date_filter": [
+        "2023-01-01",
+        "2024-04-30",
+      ],
+      "time_unit": "m",
+    },
+    "options": {
+      "kitId": 3,
+      "issueType": "AD",
+      "standRtg": {
+        "useRealDuration": true,
+        "standardDuration": 20,
+      },
+    },
+    "statistics": [
+      "RtgPerSum",
+      "StandRtgPerSum",
+      "QuantitySum",
+    ],
+  },
+  {
+    "media": "TV_REG",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS_DICT",
+    "compression": {
+      "method": "gzip",
+    },
+    "data_lang": "ru",
+    "relative_path": "raw_data_d",
+    "multiple_files": true,
+    "ad_filter": "articleLevel3Id IN (77,4972) OR articleLevel4Id IN (301,4984) AND adIssueStatusId = R",
+    "target_audiences": {
+      "all 18+": "age >= 18",
+      "all 25-45": "age >= 25 AND age <= 45",
+      "all 25-45 BC": "age >= 25 AND age <= 45 AND incomeGroup IN (2,3)",
+      "w 25-45": "sex = 2 AND age >= 25 AND age <= 45",
+      "w 25-45 BC": "sex = 2 AND age >= 25 AND age <= 45 AND incomeGroup IN (2,3)",
+    },
+    "period": {
+      "date_filter": [
+        "2023-01-01",
+        "2024-04-30",
+      ],
+      "time_unit": "m",
+    },
+    "options": {
+      "kitId": 3,
+      "issueType": "AD",
+      "standRtg": {
+        "useRealDuration": true,
+        "standardDuration": 20,
+      },
+    },
+    "statistics": [
+      "RtgPerSum",
+      "StandRtgPerSum",
+      "QuantitySum",
+    ],
+  },
+  {
+    "media": "TV_REG",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS_DICT",
+    "data_lang": "ru",
+    "relative_path": "dict",
+    "multiple_files": true,
+    "ad_filter": "articleLevel3Id IN (77,4972) OR articleList4Id IN (301,4984) AND adIssueStatusId = R",
+    "target_audiences": {
+      "not_set": null,
+    },
+    "period": {
+      "date_filter": [
+        "2023-01-01",
+        "2024-04-30",
+      ],
+      "time_unit": "m",
+    },
+    "options": {
+      "kitId": 3,
+      "issueType": "AD",
+      "standRtg": {
+        "useRealDuration": true,
+        "standardDuration": 20,
+      },
+    },
+  },
+]
