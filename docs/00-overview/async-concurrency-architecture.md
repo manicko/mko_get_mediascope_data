@@ -119,7 +119,7 @@ worker loop (reports.py:149)
 | `get_result` | reports.py:418 | default (2) | uniform 1–4 s |
 | `result2table` | reports.py:426 | default (2) | uniform 1–4 s |
 | `get_availability_period` | reports.py:269 | default (2) | uniform 1–4 s |
-| `get_tv_region` | reports.py:516 | N/A | bypasses `NetworkClient` entirely |
+| `get_tv_region` | reports.py:516 | default (2) | uniform 1–4 s |
 
 ### Retry and backoff
 
@@ -134,8 +134,9 @@ await asyncio.sleep(backoff + jitter)         # network.py:126
 ```
 
 Client errors (`BadRequestError`, `AuthorizationError`, `FileNotFoundError`, HTTP 4xx)
-raise immediately. After all attempts are exhausted, `RuntimeError("Network retry limit
-exceeded")` is raised (network.py:126).
+raise immediately. After all attempts are exhausted, `MaxRetriesExceeded("Network retry limit
+exceeded")` is raised (network.py:128). Since `MaxRetriesExceeded` subclasses
+`RuntimeError`, existing `pytest.raises(RuntimeError)` assertions remain valid.
 
 ### Change guidance
 
