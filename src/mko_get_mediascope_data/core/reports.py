@@ -13,6 +13,7 @@ from pandas import DataFrame
 from unidecode import unidecode
 
 import mko_get_mediascope_data.core.utils as utils
+from mko_get_mediascope_data.core.errors import NoReportFoundError
 from mko_get_mediascope_data.core.models import (
     Data,
     MediaType,
@@ -20,7 +21,6 @@ from mko_get_mediascope_data.core.models import (
     ReportSubtype,
     ReportType,
 )
-from mko_get_mediascope_data.core.errors import NoReportFoundError
 from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.tasks import TVTask
 
@@ -231,7 +231,6 @@ class MediaReport(Report):
 
 
 class TVMediaReport(MediaReport):
-
     def __init__(
         self,
         report_settings: ReportSettings,
@@ -360,7 +359,9 @@ class TVMediaReport(MediaReport):
             task.log_error = True
             task.error = "Task.key is not received from API."
 
-    async def wait_task(self, task, *, max_polls: int = 60, poll_deadline: float = 3600.0):
+    async def wait_task(
+        self, task, *, max_polls: int = 60, poll_deadline: float = 3600.0
+    ):
         """
         Requesting status of the task using Mediascope API
         :param task: Task object keeping params for the request
@@ -505,7 +506,9 @@ class DefaultTVTaskStrategy(TaskGenerationStrategy):
                 task.interval = interval
                 task.target = t_name
                 if task.name in report.done_files:
-                    logger.warning(f"File '{task.name}' already exists in folder, skipping.")
+                    logger.warning(
+                        f"File '{task.name}' already exists in folder, skipping."
+                    )
                     continue
                 yield task
 
@@ -513,7 +516,9 @@ class DefaultTVTaskStrategy(TaskGenerationStrategy):
 class TVRegTaskStrategy(TaskGenerationStrategy):
     async def generate(self, report: TVMediaReport) -> AsyncGenerator[TVTask, None]:
         settings: dict[str, Any] = report.data_settings.model_dump()
-        available_regions = await report.network_client.call(report.catalogs.get_tv_region)
+        available_regions = await report.network_client.call(
+            report.catalogs.get_tv_region
+        )
         if available_regions is None:
             return
         regions_list = (
@@ -548,7 +553,11 @@ class TVRegTaskStrategy(TaskGenerationStrategy):
                             None,
                             map(
                                 unidecode,
-                                (*map(str, interval), t_name, regions_names[int(reg_id)]),
+                                (
+                                    *map(str, interval),
+                                    t_name,
+                                    regions_names[int(reg_id)],
+                                ),
                             ),
                         )
                     )
@@ -589,10 +598,7 @@ class DefaultDataStrategy(DataPreparationStrategy):
                 df = utils.pivot_df_frequency(df, report.output_columns["slices"])
             return df
         except KeyError as err:
-            logger.error(
-                f"Error '{err}' while processing data "
-                f"for task '{task_name}'."
-            )
+            logger.error(f"Error '{err}' while processing data for task '{task_name}'.")
             return None
 
 
@@ -614,43 +620,47 @@ class DictDataStrategy(DataPreparationStrategy):
 
         df = df[output_columns]
         df_long = (
-            df.melt(var_name="column", value_name="value")
+            df
+            .melt(var_name="column", value_name="value")
             .dropna(subset=["value"])
             .drop_duplicates()
         )
 
-        shift = 2
-        action = "upd"
+        shift = 3
+        action = "r"
+        match = "p"
         d_col_names = [
             "action",
+            "match",
             "search_column_idx",
             "value",
             "term",
-            "cat",
-            "adv",
-            "bra",
-            "sbr",
-            "mdl",
-            "cln_0",
-            "cln_1",
-            "cln_2",
-            "cln_3",
-            "cln_4",
-            "cln_5",
+            *output_columns,
         ]
 
         col_position_map = {
             col: idx for idx, col in enumerate(output_columns, start=shift)
         }
         df_long["search_column_idx"] = df_long["column"].map(col_position_map)
-        df_long["term"] = '"' + df_long["value"].astype(str) + '"'
-        df_long["action"] = action
+        df_long["term"] = (
+            df_long["value"]
+            .astype(str)
+            .str.replace(r"\s+\(.*\)", "", regex=True)
+            .str.strip()
+        )
 
+        df_long["action"] = action
+        df_long["match"] = match
         start = d_col_names.index("cat")
         end = d_col_names.index("mdl") + 1
         for i, col_name in enumerate(d_col_names[start:end]):
             df_long[col_name] = None
             mask = df_long["search_column_idx"] == shift + i
-            df_long.loc[mask, col_name] = df_long["value"]
+            df_long.loc[mask, col_name] = (
+                df_long["value"]
+                .astype(str)
+                .str.replace(r"\s+\(.*\)", "", regex=True)
+                .str.strip()
+            )
 
         return df_long.reindex(columns=d_col_names)
