@@ -134,8 +134,9 @@ dict-style `.get()`.
 `getattr(report.data_settings, "slices", None)` — mirroring the `getattr` already used on the
 left side of `or`.
 **Verify:** tests/test_reports.py::test_dict_data_strategy mocks `data_settings` as a plain dict
-(`{"slices": ["col1"]}`), so it never exercises `.get()` on a real `Data` instance. New test
-needed: `test_dict_data_strategy_handles_empty_slices`
+(`{"slices": ["channel", "program", "category"]}`) with a realistic DataFrame
+matching the column layout of a DYNAMICS_BY_SPOTS_DICT report. New test needed:
+`test_dict_data_strategy_handles_empty_slices`
 **Related:** QLT-005
 
 **Evidence — runtime probe:**

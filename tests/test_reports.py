@@ -40,13 +40,119 @@ async def test_default_task_strategy(mock_report):
 
 @pytest.mark.asyncio
 async def test_dict_data_strategy():
+    """DictDataStrategy melts a wide DICT-report DataFrame into a long-format
+    "search dictionary" table.
+
+    Verifies, end-to-end with a 30-row payload that includes duplicates,
+    ``None``, empty strings, parenthetical suffixes, and repeated values
+    across different columns:
+
+    1. Selects only the columns listed in ``data_settings["slices"]``.
+    2. Melts them into ``(column, value)`` rows, dropping NaN and duplicates.
+    3. Assigns ``search_column_idx`` starting at a fixed shift (3) and sets
+       ``action="r"`` / ``match="p"``.
+    4. Strips parenthetical suffixes and whitespace into ``term``.
+    5. Creates one ``{col}_clean`` column per slice, populated only on rows
+       whose ``search_column_idx`` matches that slice's position.
+    """
     strategy = DictDataStrategy()
-    df = pd.DataFrame({"col1": [1], "col2": [2]})
+
+    df = pd.DataFrame([
+        ["Первый канал (HD)", "Новости (вечерние)", "Информация"],
+        ["Россия 1", "Вести", "Информация"],
+        ["НТВ", "Сегодня", "Новости"],
+        ["ТНТ", "Комеди Клаб", "Развлечения"],
+        ["СТС", "Кухня (сериал)", "Сериалы"],
+        ["Первый канал (SD)", "Новости (утренние)", "Информация"],
+        ["Россия 1", "Вести", "Информация"],
+        ["НТВ", "Сегодня", "Новости"],
+        ["ТНТ", "Однажды в России", "Развлечения"],
+        ["СТС", "Воронины", "Сериалы"],
+        ["РЕН ТВ", "Новости 24", "Информация"],
+        ["Пятый канал", "След (сериал)", "Сериалы"],
+        ["Матч ТВ", "Футбол (прямой эфир)", "Спорт"],
+        ["Матч ТВ", "Хоккей (повтор)", "Спорт"],
+        ["Россия 24", "Вести", "Новости"],
+        ["Первый канал (HD)", "Новости (вечерние)", "Информация"],
+        ["ТНТ", "Комеди Клаб", "Развлечения"],
+        ["СТС", None, "Сериалы"],
+        [None, "Вести", "Информация"],
+        ["", "Новости", ""],
+        ["  НТВ  ", "  Сегодня  ", "Новости"],
+        ["Россия 1 (HD)", "Вести (20:00)", "Информация"],
+        ["Россия 1 (SD)", "Вести (утро)", "Информация"],
+        ["Первый канал", "Поле чудес", "Развлечения"],
+        ["ТНТ", "Новости", "Развлечения"],
+        ["Культура", "Большая опера", "Культура"],
+        ["Карусель", "Смешарики", "Детские"],
+        ["Домашний", "Тест на отцовство", "Развлечения"],
+        ["ТВ Центр", "События", "Новости"],
+        ["Звезда", "Военная тайна (архив)", "Документальные"],
+    ], columns=["channel", "program", "category"])
+
     report_mock = MagicMock()
-    report_mock.data_settings = {"slices": ["col1"]}
+    report_mock.data_settings = {"slices": ["channel", "program", "category"]}
+
     result = await strategy.prepare(report_mock, df)
+
     assert result is not None
-    assert "search_column_idx" in result.columns
+
+    # Column order: metadata + one _clean column per slice (in slice order)
+    assert list(result.columns) == [
+        "action", "match", "search_column_idx", "value", "term",
+        "channel_clean", "program_clean", "category_clean",
+    ]
+
+    # 30 rows × 3 slices = 90 melt rows; 2 None values dropped → 88;
+    # duplicates removed (3 pair-dupes each for channel/program/category) → 51
+    assert len(result) == 51
+    assert not result.duplicated().any()
+
+    # Row counts per slice match the user-specified output
+    assert (result["search_column_idx"] == 3).sum() == 20  # channel
+    assert (result["search_column_idx"] == 4).sum() == 22  # program
+    assert (result["search_column_idx"] == 5).sum() == 9   # category
+
+    # action and match are constants
+    assert set(result["action"]) == {"r"}
+    assert set(result["match"]) == {"p"}
+
+    # Each _clean column is populated only on rows of its own slice type
+    channel_rows = result[result["search_column_idx"] == 3]
+    assert channel_rows["channel_clean"].notna().all()
+    assert channel_rows["program_clean"].isna().all()
+    assert channel_rows["category_clean"].isna().all()
+
+    program_rows = result[result["search_column_idx"] == 4]
+    assert program_rows["program_clean"].notna().all()
+    assert program_rows["channel_clean"].isna().all()
+    assert program_rows["category_clean"].isna().all()
+
+    category_rows = result[result["search_column_idx"] == 5]
+    assert category_rows["category_clean"].notna().all()
+    assert category_rows["channel_clean"].isna().all()
+    assert category_rows["program_clean"].isna().all()
+
+    # Empty-string values survive dropna() but produce empty term / _clean
+    empty_rows = result[result["value"] == ""]
+    assert len(empty_rows) == 2  # one empty channel, one empty category
+    assert (empty_rows["term"] == "").all()
+
+    # Parenthetical suffixes are stripped in term and _clean columns
+    paren_mask = result["value"].str.contains(r"\s+\(", na=False)
+    paren_rows = result[paren_mask]
+    assert not paren_rows["term"].str.contains(r"\(", regex=True).any()
+    assert not paren_rows["term"].str.contains(r"\)", regex=True).any()
+    # "Первый канал (HD)" and "Первый канал (SD)" collapse to the same term
+    assert {
+        row.term
+        for row in paren_rows[
+            paren_rows["value"].str.startswith("Первый канал")
+        ].itertuples()
+    } == {"Первый канал"}
+    # Whitespace around values is trimmed in term / _clean
+    ntvs = result[result["value"].str.strip() == "НТВ"]
+    assert set(ntvs["term"]) == {"НТВ"}
 
 
 # ---------------------------------------------------------------------------
