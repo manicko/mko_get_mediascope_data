@@ -49,7 +49,7 @@ core/reports.py, TVMediaReport.send_task / wait_task / extract_data
 (reports.py:344-361, :363-411, :412-449)].`
 
 `mko_get_mediascope_data` automates that cycle. A seller or analyst describes
-once, in a YAML file, which data slice they need (channels, product category,
+once, in a JSON5 file, which data slice they need (channels, product category,
 period, audiences, statistics); the tool submits the work to Mediascope,
 tracks it, and writes one CSV file per period interval per audience.
 
@@ -57,7 +57,7 @@ tracks it, and writes one CSV file per period interval per audience.
 
 | User | What they do | Evidence |
 |---|---|---|
-| Media analyst / seller | Authors report YAML files (one per client or topic) and runs them — on demand from Jupyter, or on a schedule via Airflow — to obtain raw data for further analysis | `settings/reports/` template folders are named after clients or analytical topics: `gap_resurs`, `last_category`, `sovcombank`, `tefal`, `theiss`, `tv_report` `[code]`; the two usage modes are owner-confirmed (D-19) |
+| Media analyst / seller | Authors report JSON5 files (one per client or topic) and runs them — on demand from Jupyter, or on a schedule via Airflow — to obtain raw data for further analysis | `settings/reports/` template folders are named after clients or analytical topics: `gap_resurs`, `last_category`, `sovcombank`, `tefal`, `theiss`, `tv_report` `[code]`; the two usage modes are owner-confirmed (D-19) |
 | Developer / data engineer | Imports `run_report()` from Python instead of using the CLI | `app.run_report` / `run_report_async` public API; README "Public API (Jupyter, Airflow, scripts)" section `[code, owner-doc]` |
 
 The two entry styles are the same engine: CLI (`app.py` Typer commands) and
@@ -67,12 +67,12 @@ app.py:40-62, app.py:80-87, services.py:156]`.
 
 ### What the product does today (summary)
 
-Given a report YAML file, the tool `[code]`:
+Given a report JSON5 file, the tool `[code]`:
 
 1. Validates each report entry against the Pydantic schema `ReportSettings`
    (`core/models.py:87-115`).
 2. Merges the entry over the matching DEFAULT template
-   (`settings/defaults/<media>/<report_type>.yaml`) into one set of API
+   (`settings/defaults/<media>/<report_type>.json5`) into one set of API
    parameters (`core/services.py:100-114`).
 3. Resolves the reporting period from the entry (explicit dates or "last N
    weeks/months/…") and clips it to the period the Mediascope database
@@ -87,7 +87,7 @@ Given a report YAML file, the tool `[code]`:
    `<export folder>/<relative_path>/` (`core/utils.py:192-220`).
 7. Skips tasks whose output file already exists, so an interrupted run can be
    resumed (`core/reports.py:78-83, :503-505`).
-8. Writes an error YAML file for tasks that failed logically
+8. Writes an error JSON5 file for tasks that failed logically
    (`core/tasks.py:27-57`).
 
 ### Key user scenarios
@@ -102,7 +102,7 @@ does not mention `[code — core/paths.py:60, init_service.py:60-90 (legacy
 rename), settings/connections/; lead: audit CFG-003]` — see [Open Questions](open-questions.md) Q-07.
 
 **Scenario B — recurring client export.** The analyst points `run` at a report
-YAML; every interval × audience file for the requested period appears under the
+JSON5; every interval × audience file for the requested period appears under the
 export folder; files already present from a previous run are skipped.
 Historical evidence of this usage exists on the development machine: export
 folders such as `output/tefal/raw_data/`, `output/tv_report/top_adv/`,
@@ -167,7 +167,7 @@ and is **not** fixed by this documentation.
    in the code is not acceptable. The design is to be researched (R-01).
 8. **Output conventions become configurable later (D-13, D-14).** The current
    `;`/`,`/UTF-8 BOM/gzip conventions are accepted for now and intentionally
-   hard-coded; the target is defaults in `settings/app_config.yaml` with
+   hard-coded; the target is defaults in `settings/app_config.json5` with
    per-report overrides, and a user settings file for the DICT columns.
 9. **Installation is from GitHub, not PyPI (D-19).** The product will not be
    published to PyPI; the intended path is `pip install <github_url>`. (The
@@ -239,7 +239,7 @@ The current code meets these criteria at HEAD: W-02 resolved the
 zero-task/hang gaps (G-01, G-02) — `NoReportFoundError` is now raised for
 unrunnable periods (`reports.py:327-330`) and the worker's
 `try/except/finally` isolates exceptions so the run continues with an error
-file written via `yaml.safe_dump` (`reports.py:149-188`, `:164-169`). A minor
+file written via `json5.dump` (`reports.py:149-188`, `:164-169`). A minor
 gap remains: no console summary of exported vs. skipped intervals is printed
 (criterion 5, see G-03). The remaining gap is registered in
 [Open Questions](open-questions.md#gaps-between-owner-intent-and-current-implementation)

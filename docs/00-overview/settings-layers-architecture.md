@@ -6,7 +6,7 @@ tags:
   - configuration
   - settings
   - pydantic
-  - yaml
+  - json5
 related:
   - doc-maintenance-rules
   - async-concurrency-architecture
@@ -20,7 +20,7 @@ related:
 ## Purpose
 
 Single source of truth for how report settings layers combine in
-`mko_get_mediascope_data`. Seller report definitions are authored as YAML; the
+`mko_get_mediascope_data`. Seller report definitions are authored as JSON5; the
 tool loads them through a two-layer merge — a **DEFAULT** layer that carries the
 full Mediascope API-parameter set plus per-subtype override blocks, and a
 **CLIENT** layer that carries per-report deltas — then forwards the merged
@@ -32,7 +32,7 @@ of audit finding
 (shallow top-level overlay is intended, not a defect) and the re-grading of
 [TPL-002](../../.ai/audit/99-validation/05-config-templates-validated-findings.md)
 (pass-through consumption verified). Read this before modifying any
-`settings/defaults/` or `settings/reports/` YAML or the merge logic in
+`settings/defaults/` or `settings/reports/` JSON5 or the merge logic in
 `core/services.py`.
 
 ## Main Concepts
@@ -43,7 +43,7 @@ The settings system has two layers, each loaded by a distinct Pydantic model:
 
 | Aspect | DEFAULT layer | CLIENT layer |
 |---|---|---|
-| Path pattern | `settings/defaults/{media}/{report_type}.yaml` | `settings/reports/**/*.yaml` |
+| Path pattern | `settings/defaults/{media}/{report_type}.json5` | `settings/reports/**/*.json5` |
 | Pydantic model | `DataDefaults` (`core/models.py:128`) | `ReportSettings` (`core/models.py:87`) |
 | `model_config` | `ConfigDict(extra="allow")` (`core/models.py:129`) | `ConfigDict(extra="allow")` (`core/models.py:93`) |
 | Declared field(s) | `DATA_DEFAULTS: dict` (`core/models.py:130`) | 11 declared fields (`core/models.py:94-110`) |
@@ -54,27 +54,27 @@ The settings system has two layers, each loaded by a distinct Pydantic model:
 
 | File | MediaType | ReportType | Key characteristics |
 |---|---|---|---|
-| `settings/defaults/tv/crosstab.yaml` | TV | crosstab | 15 keys in `DATA_DEFAULTS`; subtype blocks `DYNAMICS_BY_SPOTS` (kitId=1, L59), `DYNAMICS_BY_SPOTS_DICT` (kitId=1, L87), `TOP_NAT_TV_ADVERTISERS` (no kitId — duplicate `issueType` at L107), `TOP_NAT_TV_PROGRAMS` (kitId=7, L128), `NAT_TV_CHANNELS_ATV` (kitId=1, L150), `NAT_TV_CHANNELS_BA` (kitId=7, L166), `NAT_TV_CHANNELS_SOC_DEM` (kitId=1, L181) |
-| `settings/defaults/tv/timeband.yaml` | TV | timeband | `DATA_DEFAULTS` only (includes `time_filter`), no subtype blocks |
-| `settings/defaults/tv/simple.yaml` | TV | simple | Ships at HEAD (was missing, now added) |
-| `settings/defaults/tv_reg/crosstab.yaml` | TV_REG | crosstab | 15 keys in `DATA_DEFAULTS`; `options.kitId=3` in base; subtype blocks `DYNAMICS_BY_SPOTS_M`, `DYNAMICS_BY_SPOTS_D`, `DYNAMICS_BY_SPOTS_DICT` |
-| `settings/defaults/tv_reg/timeband.yaml` | TV_REG | timeband | Ships at HEAD (was missing, now added) |
-| `settings/defaults/tv_reg/simple.yaml` | TV_REG | simple | Ships at HEAD (was missing, now added) |
+| `settings/defaults/tv/crosstab.json5` | TV | crosstab | 15 keys in `DATA_DEFAULTS`; subtype blocks `DYNAMICS_BY_SPOTS` (kitId=1, L59), `DYNAMICS_BY_SPOTS_DICT` (kitId=1, L87), `TOP_NAT_TV_ADVERTISERS` (no kitId — duplicate `issueType` at L107), `TOP_NAT_TV_PROGRAMS` (kitId=7, L128), `NAT_TV_CHANNELS_ATV` (kitId=1, L150), `NAT_TV_CHANNELS_BA` (kitId=7, L166), `NAT_TV_CHANNELS_SOC_DEM` (kitId=1, L181) |
+| `settings/defaults/tv/timeband.json5` | TV | timeband | `DATA_DEFAULTS` only (includes `time_filter`), no subtype blocks |
+| `settings/defaults/tv/simple.json5` | TV | simple | Ships at HEAD (was missing, now added) |
+| `settings/defaults/tv_reg/crosstab.json5` | TV_REG | crosstab | 15 keys in `DATA_DEFAULTS`; `options.kitId=3` in base; subtype blocks `DYNAMICS_BY_SPOTS`, `DYNAMICS_BY_SPOTS_DICT` |
+| `settings/defaults/tv_reg/timeband.json5` | TV_REG | timeband | Ships at HEAD (was missing, now added) |
+| `settings/defaults/tv_reg/simple.json5` | TV_REG | simple | Ships at HEAD (was missing, now added) |
 
 **CLIENT templates** live under `settings/reports/`. The reference (fully
-validating) template is `settings/reports/nat_tv_brands_tefal.yaml` — its two
+validating) template is `settings/reports/nat_tv_brands_tefal.json5` — its two
 entries are the only ones among all 32 bundled report entries that pass
 `ReportSettings(**rep)` validation.
 
 The DEFAULT and CLIENT layers are loaded at different points in the pipeline:
 
 1. **CLIENT** — `AppService.get_report_settings` (`core/services.py:85-98`)
-   iterates entries in a report YAML file and constructs
+   iterates entries in a report JSON5 file and constructs
    `ReportSettings(**rep)` at `core/services.py:95`.
 2. **DEFAULT** — `AppService.get_default_data_settings`
    (`core/services.py:100-114`) builds the path
-   `defaults/{media.value.lower()}/{report_type.value.lower()}.yaml` and
-   constructs `DataDefaults(**utils.yaml_to_dict(path))` at
+    `defaults/{media.value.lower()}/{report_type.value.lower()}.json5` and
+    constructs `DataDefaults(**utils.json5_to_dict(path))` at
    `core/services.py:114`.
 
 ### Merge Semantics
@@ -161,7 +161,7 @@ the Pydantic models, **repair the template, never the code**.
 | CLIENT carries deltas plus complete blocks | A client template provides only the deltas it intends to override; for any key it overrides, it must supply a complete block. |
 | `options` blocks must be complete | Every `options` block declared in a template must carry `kitId` + `issueType` + `standRtg` where the default block carries them — no partial inheritance. |
 | Parameter names match API names | Parameter names in templates must exactly match the names consumed by `build_task` (`statistics`, `ad_filter`, `slices`, `options`, `sortings`, `frequency_dist_conditions`, `*_filter`, …). |
-| Reference template | `settings/reports/nat_tv_brands_tefal.yaml` is the reference for a conformant CLIENT template — its two entries are the only bundled entries that pass `ReportSettings(**rep)` validation. |
+| Reference template | `settings/reports/nat_tv_brands_tefal.json5` is the reference for a conformant CLIENT template — its two entries are the only bundled entries that pass `ReportSettings(**rep)` validation. |
 
 ## Common Misreadings
 

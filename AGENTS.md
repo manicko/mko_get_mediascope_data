@@ -6,7 +6,7 @@ alwaysApply: true
 
 # Agent Guidelines
 
-**`mko_get_mediascope_data`** — a CLI tool and Python library for loading data from the Mediascope API (TV / TV_REG). Sellers configure report definitions in YAML; the tool fetches data asynchronously, processes it with pandas, and exports CSV files. Usable as a CLI (`mko-get-mediascope`) or imported as a library in Jupyter / Airflow.
+**`mko_get_mediascope_data`** — a CLI tool and Python library for loading data from the Mediascope API (TV / TV_REG). Sellers configure report definitions in JSON5; the tool fetches data asynchronously, processes it with pandas, and exports CSV files. Usable as a CLI (`mko-get-mediascope`) or imported as a library in Jupyter / Airflow.
 
 ## Quick Reference
 
@@ -25,7 +25,7 @@ On Windows, `Makefile.ps1` wraps the same toolchains:
 
 ## Core Context
 
-- **Stack:** Python 3.12+ (3.14 in classifiers) · `uv` · Typer CLI · Rich console · Pydantic v2 (models/validation/DTO) · pandas (data processing) · `mediascope-api-lib` (API client) · PyYAML (config) · asyncio (concurrent report tasks).
+- **Stack:** Python 3.12+ (3.14 in classifiers) · `uv` · Typer CLI · Rich console · Pydantic v2 (models/validation/DTO) · pandas (data processing) · `mediascope-api-lib` (API client) · json5 (config) · asyncio (concurrent report tasks).
 - **No database, no Docker, no web framework.** This is a standalone async data-fetcher.
 - **Two entry points:** CLI (`app.py`) — Typer app with `init`, `run`, `list-reports` commands; Library — public functions `run_report`, `run_report_async`, `initialize_settings`.
 - **Fixed values:** use `Enum` — the project uses `MediaType`, `ReportType`, `ReportSubtype` in `core/models.py`.
@@ -46,16 +46,16 @@ src/mko_get_mediascope_data/
 │   ├── reports.py           # Report classes + Strategy pattern (task/data strategies)
 │   ├── tasks.py             # TVTask — async task representation
 │   ├── network.py           # NetworkClient — async retry with backoff + semaphore
-│   ├── utils.py             # Helpers: date/period logic, YAML/CSV I/O
+│   ├── utils.py             # Helpers: date/period logic, JSON5/CSV I/O
 │   └── errors.py            # NoReportFoundError, WrongDataSettings
-└── settings/                # Bundled default templates (app_config.yaml, log_config.yaml, reports/, etc.)
+└── settings/                # Bundled default templates (app_config.json5, log_config.json5, reports/, etc.)
 ```
 
 ### Key patterns
 
 - **Strategy pattern** (`core/reports.py`): `ReportFactory` selects a `TaskGenerationStrategy` and `DataPreparationStrategy` based on `MediaType`/`ReportSubtype`. New report types add a strategy subclass.
 - **Async pipeline** (`core/network.py`): `NetworkClient.call` wraps every API call with retries, exponential backoff + jitter, and concurrency limiting via `asyncio.Semaphore`. Transient errors (timeouts, connection errors) are retried; client errors (4xx) raise immediately.
-- **Orchestration** (`core/services.py`): `AppService.run_report` loads YAML settings, validates via Pydantic, builds `Data` settings from defaults, creates a `TVMediaReport`, and drives `create_report()`.
+- **Orchestration** (`core/services.py`): `AppService.run_report` loads JSON5 settings, validates via Pydantic, builds `Data` settings from defaults, creates a `TVMediaReport`, and drives `create_report()`.
 
 ## Test Environment
 
@@ -75,7 +75,7 @@ Configuration is in `pyproject.toml`:
 - `markers`: `slow` (use `-m slow` to run only slow tests; `-m "not slow"` to skip)
 
 Test fixtures live in `tests/conftest.py`: `mock_network_client`, `dummy_df`,
-`tv_yaml_content`, `tmp_report_dir`. `tests/test_services.py` defines the
+`tv_json5_content`, `tmp_report_dir`. `tests/test_services.py` defines the
 `local_app_service` fixture (hermetic `AppService` backed by `tmp_path`).
 
 ## Coding Standards

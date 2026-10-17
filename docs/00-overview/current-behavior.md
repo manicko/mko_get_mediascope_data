@@ -50,7 +50,7 @@ code.
 |---|---|---|
 | Console script | `mko-get-mediascope <command>` | `pyproject.toml:44` → `mko_get_mediascope_data.app:app` |
 | Python module | `uv run -m mko_get_mediascope_data <command>` (or `python -m …`) | `__main__.py:1-4` imports `app` from `app.py` |
-| Library (sync) | `from mko_get_mediascope_data import run_report; run_report("report.yaml")` | `app.py:90-98`, re-exported lazily via PEP 562 `__getattr__` in `__init__.py:17-30` |
+| Library (sync) | `from mko_get_mediascope_data import run_report; run_report("report.json5")` | `app.py:90-98`, re-exported lazily via PEP 562 `__getattr__` in `__init__.py:17-30` |
 | Library (async) | `from mko_get_mediascope_data import run_report_async` | `app.py:80-87` |
 | Library (setup) | `initialize_settings(force=False)` | `app.py:101-103` → `init_project` |
 
@@ -62,15 +62,15 @@ Both library functions delegate to `AppService.run_report`
 | Command | Arguments / options | Behavior |
 |---|---|---|
 | `init` | `--force / -f` | Copies the package's bundled `settings/` tree into the user settings folder via `_copy_templates` (`init_service.py:37-57`, force skip at `:53-54`); also runs the legacy credential rename `_migrate_old_credential_name` (`init_service.py:60-90`); without `--force`, existing files are kept |
-| `run` | `REPORT` (required, must exist, must be a file), `--verbose / -v` (default true) | Runs the report(s) in the YAML file (`app.py:40-62`) |
-| `list-reports` | — | Lists `*.yaml` files (recursive) under the user settings `reports/` folder (`app.py:66-77`) |
+| `run` | `REPORT` (required, must exist, must be a file), `--verbose / -v` (default true) | Runs the report(s) in the JSON5 file (`app.py:40-62`) |
+| `list-reports` | — | Lists `*.json5` files (recursive) under the user settings `reports/` folder (`app.py:66-77`) |
 
 Discrepancies between the README and the actual CLI, verified by invoking the
 app with `typer.testing.CliRunner`:
 
 - The command is `list-reports`; `list_reports` fails with exit code 2
   (Typer hyphenates command names).
-- `--no-verbose` is not a valid option; `run report.yaml --no-verbose` fails
+- `--no-verbose` is not a valid option; `run report.json5 --no-verbose` fails
   with exit code 2, although the README documents it.
 
 ### Configuration and where it lives
@@ -79,8 +79,8 @@ app with `typer.testing.CliRunner`:
 |---|---|---|
 | Package templates | `<package>/settings/` (app_config, log_config, connections, defaults, reports) | `paths.py:44-46` (`app_settings_dir`) |
 | User settings | `platformdirs.user_config_dir("mko_get_mediascope_data")/settings/` — on the investigation machine this resolves to `…\AppData\Local\mko_get_mediascope_data\mko_get_mediascope_data\settings` | `paths.py:9` (`USER_DIR`), `:40-42` (`user_settings_dir`) |
-| Export root | `app_config.yaml → export_folder`, resolved against the user settings folder; default `output` | `services.py:79-83`, `settings/app_config.yaml` |
-| Log file | `log_config.yaml → handlers.rotating_file.filename` (`log.log`), resolved against the user settings folder | `services.py:58-65` (`prepare_app`), `settings/log_config.yaml` |
+| Export root | `app_config.json5 → export_folder`, resolved against the user settings folder; default `output` | `services.py:79-83`, `settings/app_config.json5` |
+| Log file | `log_config.json5 → handlers.rotating_file.filename` (`log.log`), resolved against the user settings folder | `services.py:58-65` (`prepare_app`), `settings/log_config.json5` |
 | Mediascope credentials | `<user settings>/connections/mediascope.json` (username, passw, client_id, client_secret, auth_server, root_url) | `paths.py:60-81` (`connection_config`), `settings/connections/` |
 
 On the investigation machine the resolved user settings folder is
@@ -95,17 +95,17 @@ Two startup defects are relevant to configuration handling:
   shipped template; after `init`, the expected file does not exist until the
   user renames it (`paths.py:58`; lead: audit CFG-003).
 - `AppService` is created lazily on first use and immediately reads
-  `log_config.yaml` and `app_config.yaml` (`services.py:33-36` calls `prepare_app()`, `services.py:58-65`; `get_app_service`
+  `log_config.json5` and `app_config.json5` (`services.py:33-36` calls `prepare_app()`, `services.py:58-65`; `get_app_service`
 at `services.py:210`). If the user has not run `init`, the first command raises
-  `FileNotFoundError` from `yaml_to_dict` (`utils.py:365-389`) and the CLI
+  `FileNotFoundError` from `json5_to_dict` (`utils.py:365-389`) and the CLI
   prints `❌ Error: …` and exits 1 (`app.py:60-62`).
 
 ### Scenario: `run` — step by step
 
-Entry: `run <report.yaml>` → `asyncio.run(get_app_service().run_report(path))`
+Entry: `run <report.json5>` → `asyncio.run(get_app_service().run_report(path))`
 (`app.py:57`).
 
-1. **Parse and validate.** `get_report_settings` iterates the YAML list and
+1. **Parse and validate.** `get_report_settings` iterates the JSON5 list and
    constructs `ReportSettings(**entry)` per entry (`services.py:86-98`). A
    validation error in any entry aborts the whole file: the generator logs the
    exception and re-raises (`services.py:96-98`).
@@ -155,7 +155,7 @@ Entry: `run <report.yaml>` → `asyncio.run(get_app_service().run_report(path))`
     worker wraps `_process_item` (send → wait → extract) in `try/except/finally`
     (W-02, `reports.py:149-188`): `task_done()` is always called in `finally`, so
     `queue.join()` cannot hang on an exception. Per-item failures are converted to
-    a failed task with an error YAML written via `yaml.safe_dump` (W-02,
+    a failed task with an error JSON5 written via `json5.dump` (W-02,
     `tasks.py:7, 52`). The branching on `log_error` distinguishes "no data"
     warnings from "processing failure" error files (W-02, `reports.py:164-169`).
     `send_task` (`reports.py:344-361`):
@@ -172,7 +172,7 @@ Entry: `run <report.yaml>` → `asyncio.run(get_app_service().run_report(path))`
     (`services.py:204`); the CLI prints a success line and exits 0
    (`app.py:58`).
 
-### Inputs: the report YAML file
+### Inputs: the report JSON5 file
 
 A report file is a **list** of report entries. Fields (from `ReportSettings`,
 `models.py:87-115`, plus keys that fall through to the API parameters via the
@@ -194,24 +194,24 @@ merge):
 | `slices`, `statistics`, `options`, `company_filter`, … | no | API parameters; overlaid onto the DEFAULT template when the key exists there (`services.py:126-128`) |
 
 Reference example that validates end-to-end:
-[`settings/reports/nat_tv_brands_tefal.yaml`](../../src/mko_get_mediascope_data/settings/reports/nat_tv_brands_tefal.yaml)
+[`settings/reports/nat_tv_brands_tefal.json5`](../../src/mko_get_mediascope_data/settings/reports/nat_tv_brands_tefal.json5)
 — the only bundled report whose entries pass `ReportSettings` validation
 (verified by probe; lead: audit TPL-001).
 
 ### Inputs: the DEFAULT templates
 
-`settings/defaults/<media>/<report_type>.yaml` provides `DATA_DEFAULTS` (the
+`settings/defaults/<media>/<report_type>.json5` provides `DATA_DEFAULTS` (the
 full Mediascope parameter set) plus optional subtype blocks. Bundled coverage
-(verified at HEAD — all 6 combinations ship, all parse with `yaml.safe_load`):
+(verified at HEAD — all 6 combinations ship, all parse with `json5.load`):
 
 | File | Status |
 |---|---|
-| `defaults/tv/crosstab.yaml` | Parses cleanly at HEAD (fixed in TPL-007); 15 `DATA_DEFAULTS` keys; subtype blocks: `DYNAMICS_BY_SPOTS` (kitId=1, L59), `DYNAMICS_BY_SPOTS_DICT` (kitId=1, L87), `TOP_NAT_TV_ADVERTISERS` (no kitId — duplicate `issueType` at L107), `TOP_NAT_TV_PROGRAMS` (kitId=7, L128), `NAT_TV_CHANNELS_ATV` (kitId=1, L150), `NAT_TV_CHANNELS_BA` (kitId=7, L166), `NAT_TV_CHANNELS_SOC_DEM` (kitId=1, L181) |
-| `defaults/tv/timeband.yaml` | Parses; `DATA_DEFAULTS` only (includes `time_filter`), no subtype blocks |
-| `defaults/tv/simple.yaml` | Ships at HEAD (was missing, now added) |
-| `defaults/tv_reg/crosstab.yaml` | Parses cleanly at HEAD (fixed in TPL-007); 15 `DATA_DEFAULTS` keys; `options.kitId=3` in base |
-| `defaults/tv_reg/timeband.yaml` | Ships at HEAD (was missing, now added) |
-| `defaults/tv_reg/simple.yaml` | Ships at HEAD (was missing, now added) |
+| `defaults/tv/crosstab.json5` | Parses cleanly at HEAD (fixed in TPL-007); 15 `DATA_DEFAULTS` keys; subtype blocks: `DYNAMICS_BY_SPOTS` (kitId=1, L59), `DYNAMICS_BY_SPOTS_DICT` (kitId=1, L87), `TOP_NAT_TV_ADVERTISERS` (no kitId — duplicate `issueType` at L107), `TOP_NAT_TV_PROGRAMS` (kitId=7, L128), `NAT_TV_CHANNELS_ATV` (kitId=1, L150), `NAT_TV_CHANNELS_BA` (kitId=7, L166), `NAT_TV_CHANNELS_SOC_DEM` (kitId=1, L181) |
+| `defaults/tv/timeband.json5` | Parses; `DATA_DEFAULTS` only (includes `time_filter`), no subtype blocks |
+| `defaults/tv/simple.json5` | Ships at HEAD (was missing, now added) |
+| `defaults/tv_reg/crosstab.json5` | Parses cleanly at HEAD (fixed in TPL-007); 15 `DATA_DEFAULTS` keys; `options.kitId=3` in base |
+| `defaults/tv_reg/timeband.json5` | Ships at HEAD (was missing, now added) |
+| `defaults/tv_reg/simple.json5` | Ships at HEAD (was missing, now added) |
 
 **Updated 2026-10-16 (W-01):** All 6 `(media, report_type)` DEFAULT combinations
 are now shipped and parse correctly. All 32 bundled report entries pass
@@ -235,28 +235,28 @@ the table below is resolved — see G-01.
 | Columns | slices (plus `targetAudience` first when `target_audiences` is set, and `frequencyDistInterval` when frequency distribution is configured) followed by statistics; `prj_name` renamed to `targetAudience` | `reports.py:279-293`, `:581-583` |
 | Frequency distribution | When `frequencyDistInterval` is among the columns, the base row and the per-interval frequencies are pivoted into one row per slice combination | `utils.pivot_df_frequency` `utils.py:236-274`, `reports.py:589` |
 | Dictionary output | Subtypes containing `DICT` produce the melted term-dictionary table instead of the raw columns | `reports.py:599-652` |
-| Error YAML | `<export path>/errors/<task name>.yaml` with name, report type/subtype, target, interval, error, log_error, settings — written with `yaml.safe_dump` (W-02) | `tasks.py:27-57` |
+| Error JSON5 | `<export path>/errors/<task name>.json5` with name, report type/subtype, target, interval, error, log_error, settings — written with `json5.dump` (W-02) | `tasks.py:27-57` |
 
 ### Errors, warnings, and edge cases
 
 | Situation | Current behavior | Evidence |
 |---|---|---|
 | Report entry fails validation | `ReportSettings` error is logged and re-raised; the whole file aborts; CLI prints the error, exit 1 | `services.py:86-98`, `app.py:60-62` |
-| Missing/malformed DEFAULT template | `FileNotFoundError` / `ParserError` propagates from `yaml_to_dict`; run aborts with exit 1 | `utils.py:381-389`, `services.py:100-114` |
+| Missing/malformed DEFAULT template | `FileNotFoundError` / `ParserError` propagates from `json5_to_dict`; run aborts with exit 1 | `utils.py:381-389`, `services.py:100-114` |
 | `date_filter` set, `last_time: null` | Works — `time_unit` is on `PeriodModel` (default `w`), so `get_period` reads it without dereferencing `last_time` | code (`reports.py:295-338`, `models.py:67-84`) |
 | Requested period entirely outside the API window | Period is clipped (`reports.py:322-325`); when the clipped period is inverted (`start > end`), `NoReportFoundError` is raised and the CLI prints `❌ Error: …` and exits 1 — visible, not silent. **Resolved by W-02 (G-01)**. | `reports.py:327-330`; `errors.py:1-9` (lead: audit PIPE-005) |
 | Requested period partially overlaps the API window | Period is clipped to the intersection; a `logger.warning()` names the uncovered remainder; the overlapping part is exported. **Resolved by W-02 (G-01)**. | `reports.py:331-336` (lead: audit PIPE-003, PIPE-004) |
 | Zero tasks generated (e.g. `target_audiences: {}` after repair) | `processing_tasks` raises `NoReportFoundError` when `enqueued == 0`; CLI prints the error, exits 1. **Resolved by W-02 (G-01)** — the run is now visible, not a silent empty exit. | `reports.py:213-218` (lead: audit PIPE-004) |
 | Output file already exists | `csv_to_file` uses `mode="w"` (overwrites). In the report pipeline, `check_done=True` pre-filters tasks by name match against existing files *before* submission (`reports.py:75-76`, `:507-509`, `:563-567`), so already-exported tasks are skipped with a warning. `check_done=False` re-runs bypass the pre-filter and overwrite. **Updated 2026-10-16 (W-02): `mode` changed from `"x"` to `"w"`; the old `FileExistsError`-swallow path is gone (`utils.py:214`).** | `utils.py:192-220`; `reports.py:75-76, 507-509, 563-567` (lead: audit PIPE-001 / OUT-003) |
-| Task fails logically (no key, empty result, missing columns) | `task.status = False` → worker checks `log_error`: if `True` (processing failure), writes error YAML via `yaml.safe_dump` and logs a warning; if `False` (no data), logs a warning only, no error YAML (D-15). Run continues. **Updated 2026-10-16 (W-02): worker branching on `log_error` (`reports.py:164-169`).** | `reports.py:164-169`, `tasks.py:27-57` |
+| Task fails logically (no key, empty result, missing columns) | `task.status = False` → worker checks `log_error`: if `True` (processing failure), writes error JSON5 via `json5.dump` and logs a warning; if `False` (no data), logs a warning only, no error JSON5 (D-15). Run continues. **Updated 2026-10-16 (W-02): worker branching on `log_error` (`reports.py:164-169`).** | `reports.py:164-169`, `tasks.py:27-57` |
 | Vendor rejects a request (HTTP 4xx / auth / bad request) | Raised immediately by `NetworkClient`, no retry | `network.py:76-118` |
 | Transient network failure | Retried up to 10 attempts with backoff + jitter inside `NetworkClient.call`; then `RuntimeError("Network retry limit exceeded")` | `network.py:59-126`; covered by `tests/test_network.py` (run: passed) |
-| Exception raised inside a worker | **Resolved by W-02 (G-02).** The worker now wraps `_process_item` in `try/except/finally`: `TimeoutError` and `Exception` are caught, the task is marked failed, an error YAML is written via `yaml.safe_dump`, and `task_done()` is always called in `finally` — so `queue.join()` cannot hang. The pre-W-02 behavior (worker death → silent hang, no traceback) is documented as historical context below. | `reports.py:149-188`; `tasks.py:7, 52` (lead: audit PIPE-002 / ASY-001) |
+| Exception raised inside a worker | **Resolved by W-02 (G-02).** The worker now wraps `_process_item` in `try/except/finally`: `TimeoutError` and `Exception` are caught, the task is marked failed, an error JSON5 is written via `json5.dump`, and `task_done()` is always called in `finally` — so `queue.join()` cannot hang. The pre-W-02 behavior (worker death → silent hang, no traceback) is documented as historical context below. | `reports.py:149-188`; `tasks.py:7, 52` (lead: audit PIPE-002 / ASY-001) |
 | Failure before the worker pool | Validation errors, missing/malformed DEFAULT templates, connection and availability-check failures (`create_report` → `get_period` → `get_available_period`) abort the run with a printed error and exit code 1 — visible, no hang | `services.py:86-114`, `app.py:60-62`, `reports.py:220-223, 327-330` |
 | `wait_task` never terminates | **Resolved by W-02 (G-02, slice 4).** `wait_task` now has two guard deadlines: `max_polls=60` iterations and `poll_deadline=3600.0` seconds (wall-clock). Additionally, the outer worker wraps `_process_item` in `asyncio.wait_for` when a `timeout` is set. A stuck task now marks itself failed and writes an error artifact instead of pinning a worker forever. | `reports.py:363-386, 403-408` (lead: audit PIPE-006) |
 | Task status `FAILED`/`CANCELLED` | Now sets `task.status = False`, `task.log_error = True`, and `task.error = f"Task {terminal}"` before breaking the poll loop — `extract_data` is NOT attempted for a failed task. **Updated 2026-10-16 (W-02).** | `reports.py:403-408` (lead: audit PIPE-006) |
-| Error YAML round-trip | Written with `yaml.safe_dump` (not `yaml.dump`), so tuples render as plain YAML sequences and `yaml.safe_load` round-trips correctly. **Updated 2026-10-16 (W-02).** | `tasks.py:7, 52-57`; probe (lead: audit OUT-001) |
-| `log_error` distinction | `log_error` is now **read** in the worker (`reports.py:165`): `True` → processing failure → error YAML written; `False` → "no data" → warning only, no error YAML (D-15). Written at 12 sites (`reports.py:177, 183, 356, 375, 381, 391, 402, 419, 427, 431, 436`; `tasks.py:20`), read at 1 site. **Updated 2026-10-16 (W-02: now consumed).** | `reports.py:164-169`; grep (lead: audit PIPE-009) |
+| Error JSON5 round-trip | Written with `json5.dump` (not `yaml.dump`), so tuples render as plain JSON5 and `json5.load` round-trips correctly. **Updated 2026-10-16 (W-02).** | `tasks.py:7, 52-57`; probe (lead: audit OUT-001) |
+| `log_error` distinction | `log_error` is now **read** in the worker (`reports.py:165`): `True` → processing failure → error JSON5 written; `False` → "no data" → warning only, no error JSON5 (D-15). Written at 12 sites (`reports.py:177, 183, 356, 375, 381, 391, 402, 419, 427, 431, 436`; `tasks.py:20`), read at 1 site. **Updated 2026-10-16 (W-02: now consumed).** | `reports.py:164-169`; grep (lead: audit PIPE-009) |
 | Duplicate output files on re-run | Prevented before submission by the `check_done` pre-filter (name match against existing files); `TVRegTaskStrategy` skip logs a warning (`reports.py:572-576`) | `reports.py:75-76, 507-509, 572-576` (lead: audit PIPE-011) |
 
 **Historical note (pre-W-02, preserved for context):** Before W-02
@@ -266,7 +266,7 @@ never returned. No traceback was printed; the symptom was a console that
 stopped advancing and a process that never exited. This contradicted the
 owner's "never stop an export" rule (D-09, D-17) — gap G-02. See the precision
 note in [Open Questions](open-questions.md#precision-note-on-g-02-which-failures-hang-and-the-owners-observation).
-Error YAML was previously written with `yaml.dump` (`!!python/tuple` tags),
+Error YAML was previously written with `yaml.dump` (`!!python/tuple` tags) [pre-JSON5 migration],
 `log_error` was write-only (5 writes, 0 reads), the poll loop had no deadline,
 `FAILED`/`CANCELLED` left `status=True`, and `csv_to_file` used `mode="x"` with
 a swallowed `FileExistsError`. All of these have been **resolved by W-02**.
@@ -275,8 +275,8 @@ a swallowed `FileExistsError`. All of these have been **resolved by W-02**.
 
 | Setting | Effect |
 |---|---|
-| `app_config.yaml → export_folder` | Root of all outputs (default `output`, resolved under the user settings folder) |
-| `log_config.yaml` | Handlers/formatters/levels applied via `logging.config.dictConfig` at service construction (`services.py:58-65`). The named loggers `__main__`, `tests`, `app` never match the real module loggers (which use `__name__`, e.g. `mko_get_mediascope_data.core.reports`), so everything falls through to `root`. `AppService.reload_config()` re-reads the YAML files and re-applies logging (`services.py:67-77`, covered by tests, run: passed) |
+| `app_config.json5 → export_folder` | Root of all outputs (default `output`, resolved under the user settings folder) |
+| `log_config.json5` | Handlers/formatters/levels applied via `logging.config.dictConfig` at service construction (`services.py:58-65`). The named loggers `__main__`, `tests`, `app` never match the real module loggers (which use `__name__`, e.g. `mko_get_mediascope_data.core.reports`), so everything falls through to `root`. `AppService.reload_config()` re-reads the JSON5 files and re-applies logging (`services.py:67-77`, covered by tests, run: passed) |
 | `compression` | File extension and on-disk compression |
 | `data_lang` | `ru` → slice fields `*EName` are requested as `*Name` (`utils.en_to_ru`, `services.py:130-131`) |
 | `multiple_files` + `time_unit` | Export granularity — the interval length used to split the period |
@@ -303,13 +303,13 @@ reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-mis
 | `tests/test_models.py` | `ReportSettings` validation with the current field names; `PeriodModel` exclusivity rules; `merge_data_settings` does not call `en_to_ru` when `data_lang="en"`; all 32 bundled entries pass `ReportSettings` validation; all 6 `ReportSubtype` values have matching DEFAULT keys |
 | `tests/test_network.py` | Retry exhaustion raises `RuntimeError("Network retry limit exceeded")`; `mock_network_client` fixture retries on retryable errors; success returns the function result; `BadRequestError` (4xx) and `AuthorizationError` (401) are re-raised without retry; semaphore limits concurrent in-flight calls; default `max_attempts=10` |
 | `tests/test_reports.py` | `DefaultTVTaskStrategy` task naming; `DictDataStrategy` output columns |
-| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error YAML |
+| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5 |
 | `tests/test_services.py` | Full `run_report` pipeline end-to-end (slow; doubled `MediaVortexTask`, real `AppService`); `app_config` caching; `reload_config()` invalidates cache, is safe before first access, reapplies logging, and re-resolves `export_folder`; missing credentials raise `FileNotFoundError` |
 | `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; gzip CSV writing; suffix mapping; `csv_to_file` writes into the report directory (`tmp_report_dir` fixture) |
 
 **Updated 2026-10-16:** W-02 added `test_create_report_timeout_does_not_hang`
 (verifies the worker does not hang on a non-terminal poll and writes an error
-YAML) and `test_create_report_skips_done_files` (verifies `check_done` skip
+JSON5) and `test_create_report_skips_done_files` (verifies `check_done` skip
 behavior — the test was updated to account for the `NoReportFoundError` change
 by testing the warning-only path when `check_done=True` and files exist). The
 lifecycle tests now exercise the real `worker` try/except/finally path, not just
@@ -337,15 +337,15 @@ background reading, not evidence.
 
 | Defect (code-verified) | Impact | Also recorded as |
 |---|---|---|
-| 30 of 32 bundled report entries fail `ReportSettings` validation (stale `period_type`/`period_num`, stale `report_type` values such as `TV_CROSSTAB`, missing `media`/`relative_path`) — verified by probe | A user following the README's example (`nat_tv_brands_last.yaml`) cannot run it; the owner requires all bundled templates to be runnable (D-06) | **RESOLVED — W-01 (2026-10-16):** all 32 entries now pass validation; all 6 DEFAULT templates ship; both crosstab defaults parse correctly. audit TPL-001 / CFG-001 leads; gap G-05 → CLOSED |
-| Both bundled crosstab DEFAULT templates were malformed YAML — verified by probe; the TV regression entered with commit `b04d177` | Fixed at HEAD — templates now parse at HEAD | audit TPL-004 (+ DISC-07); **RESOLVED — W-01 (2026-10-16)** |
+| 30 of 32 bundled report entries fail `ReportSettings` validation (stale `period_type`/`period_num`, stale `report_type` values such as `TV_CROSSTAB`, missing `media`/`relative_path`) — verified by probe | A user following the README's example (`nat_tv_brands_last.json5`) cannot run it; the owner requires all bundled templates to be runnable (D-06) | **RESOLVED — W-01 (2026-10-16):** all 32 entries now pass validation; all 6 DEFAULT templates ship; both crosstab defaults parse correctly. audit TPL-001 / CFG-001 leads; gap G-05 → CLOSED |
+| Both bundled crosstab DEFAULT templates were malformed YAML [pre-JSON5 migration] — verified by probe; the TV regression entered with commit `b04d177` | Fixed at HEAD — templates now parse at HEAD | audit TPL-004 (+ DISC-07); **RESOLVED — W-01 (2026-10-16)** |
 | CSV write collision is swallowed and the task reports "ready" — verified by probe at the audit baseline (`mode="x"`, `FileExistsError` swallowed) | A re-run without `check_done` silently produces no file. **Resolved by W-02 (2026-10-16):** `csv_to_file` now uses `mode="w"` (overwrites); the `FileExistsError`-swallow path is removed (`utils.py:214`). | audit PIPE-001 / OUT-003 |
-| Worker has no exception isolation; `queue.join()` hangs on any raise — verified by probe at the audit baseline | A single transient failure can stall the whole run instead of failing it. **Resolved by W-02 (2026-10-16):** the worker now wraps `_process_item` in `try/except/finally` with `task_done()` in `finally`; exceptions are caught, the task is marked failed, and an error YAML is written (`reports.py:149-188`). | audit PIPE-002 / ASY-001; gap G-02 → RESOLVED |
+| Worker has no exception isolation; `queue.join()` hangs on any raise — verified by probe at the audit baseline | A single transient failure can stall the whole run instead of failing it. **Resolved by W-02 (2026-10-16):** the worker now wraps `_process_item` in `try/except/finally` with `task_done()` in `finally`; exceptions are caught, the task is marked failed, and an error JSON5 is written (`reports.py:149-188`). | audit PIPE-002 / ASY-001; gap G-02 → RESOLVED |
 | Zero-task and out-of-window periods exit 0 with a success message — verified by probe at the audit baseline | An analyst cannot distinguish "no data" from "done". **Resolved by W-02 (2026-10-16):** `get_period` raises `NoReportFoundError` for entirely out-of-range periods; `processing_tasks` raises `NoReportFoundError` when zero tasks are enqueued; partial overlap emits a `logger.warning` (`reports.py:327-330, 213-218`). | audit PIPE-004 / PIPE-005; gap G-01 → RESOLVED |
 | Poll loop has no deadline — verified by reading `wait_task` at the audit baseline | A stuck vendor task pins a worker forever. **Resolved by W-02 (2026-10-16):** `wait_task` now has `max_polls=60` and `poll_deadline=3600.0` guards (`reports.py:363`, `373-386`). | audit PIPE-006; gap G-02 slice 4 → RESOLVED |
-| `log_error` is write-only — verified by grep (5 writes, 0 reads) at the audit baseline | "Empty result" and "error" are indistinguishable downstream. **Resolved by W-02 (2026-10-16):** `log_error` is now read in the worker branching at `reports.py:165`; `log_error=True` → error YAML, `log_error=False` → warning only. | audit PIPE-009; gap G-01/G-02 → RESOLVED |
+| `log_error` is write-only — verified by grep (5 writes, 0 reads) at the audit baseline | "Empty result" and "error" are indistinguishable downstream. **Resolved by W-02 (2026-10-16):** `log_error` is now read in the worker branching at `reports.py:165`; `log_error=True` → error JSON5, `log_error=False` → warning only. | audit PIPE-009; gap G-01/G-02 → RESOLVED |
 | Region id 99 is hard-coded as excluded — verified by reading `reports.py:539` | Users cannot include 99 or express an exclusion list; the owner requires template-driven region selection (D-10) | gap G-03; DISC-09 |
-| Error YAML written with `yaml.dump` — verified by probe (`!!python/tuple`, not `safe_load`-able) at the audit baseline | Error artifacts cannot be re-loaded with safe tooling. **Resolved by W-02 (2026-10-16):** `tasks.py` now uses `yaml.safe_dump` (`tasks.py:7, 52-57`). | audit OUT-001; gap G-02 → RESOLVED |
+| Error YAML written with `yaml.dump` [pre-JSON5 migration] — verified by probe (`!!python/tuple`, not `safe_load`-able) at the audit baseline | Error artifacts cannot be re-loaded with safe tooling. **Resolved by W-02 (2026-10-16):** `tasks.py` now uses `json5.dump` (`tasks.py:7, 52-57`). | audit OUT-001; gap G-02 → RESOLVED |
 | Module-import `sys.stdout.reconfigure()` | Fixed at HEAD — the call was moved into the `run` command (commit `706eed0`); importing the library no longer reconfigures stdout (verified: `app.py:51-52`) | audit ENT-001 (baseline only; fixed at HEAD) |
 | `print()` in `core/` | Fixed at HEAD — replaced by `logger.info()` in commit `606c899` (verified: no active `print(` in `core/`) | audit OPS-003 / CFG-010 (baseline only; fixed at HEAD) |
 
@@ -359,7 +359,7 @@ Further limitations observed during this investigation, each traceable to code:
   `TypeError: build_task() got an unexpected keyword argument …` (verified
   against the installed `mediascope_api.mediavortex.tasks.MediaVortexTask.build_task`,
   `.venv/Lib/site-packages/mediascope_api/mediavortex/tasks.py:50-60`). Unknown
-  keys in a *report* YAML are silently ignored instead, because the merge only
+  keys in a *report* JSON5 are silently ignored instead, because the merge only
   overlays keys that already exist in `DATA_DEFAULTS` (verified: legacy keys
   `folder`/`category_name` have zero references in `core/`).
 - The vendor library creates one `requests.Session` per
@@ -385,9 +385,9 @@ Read-only probes executed for this document (scripts kept for reproduction in
 | `.ai/tmp/doc_probe_cli_surface.py` | `run --help` shows `--verbose` only (no `--no-verbose`); `run … --no-verbose` exits 2 |
 | `.ai/tmp/doc_probe_cmdname.py` | `list_reports` exits 2; `list-reports` exits 0 |
 | `.ai/tmp/doc_probe_paths.py` | Resolved user settings folder, connection config path, default export folder; instantiating the service with a missing user config raises `FileNotFoundError` |
-| `.ai/tmp/doc_probe_git_defaults.py` | `tv/crosstab.yaml` parses at `3408747` and fails from `b04d177` onward |
+| `.ai/tmp/doc_probe_git_defaults.py` | `tv/crosstab.json5` parses at `3408747` and fails from `b04d177` onward |
 | `.ai/tmp/doc_probe_worker_hang_classes.py` | (Pre-W-02 probe) The real `MediaReport.worker` with `RuntimeError` and `BadRequestError` raised in `send_task`: both hang `queue.join()` and print no traceback — behavior since fixed by W-02 try/except/finally |
-| `.ai/tmp/doc_probe_reverify_audit.py` | 11 defect claims re-executed against the code: `get_period` crash, inverted-period → zero intervals, zero-task silent run, worker `queue.join()` hang, swallowed duplicate write, `en_to_ru(None)` TypeError, `!!python/tuple` in the error YAML + `safe_load` ConstructorError, FAILED/CANCELLED status handling, done_files keying — 11/11 pass |
+| `.ai/tmp/doc_probe_reverify_audit.py` | 11 defect claims re-executed against the code: `get_period` crash, inverted-period → zero intervals, zero-task silent run, worker `queue.join()` hang, swallowed duplicate write, `en_to_ru(None)` TypeError, `!!python/tuple` in the error JSON5 + `load` ConstructorError, FAILED/CANCELLED status handling, done_files keying — 11/11 pass |
 | `.ai/tmp/doc_probe_options_none.py` | A subtype with no defaults block leaves `slices`/`statistics`/`options` as `None`; `Data(**merged)` then raises a Pydantic `ValidationError` for `data_lang: en` (the `data_lang: ru` path crashes earlier in `en_to_ru`) |
 | `.ai/tmp/doc_probe_vendor_build_task.py` + reading `.venv/Lib/site-packages/mediascope_api/` | Vendor `build_task` has no `**kwargs` (unknown key → `TypeError`); one `requests.Session` per `MediaVortexTask` (`core/net.py:73`) |
 | `.ai/tmp/doc_probe_links.py` | All relative links and heading anchors in the documentation resolve |

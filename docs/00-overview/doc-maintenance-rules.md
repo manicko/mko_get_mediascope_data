@@ -139,6 +139,7 @@ Agents must:
 - [ ] Updated validation rules and error messages if constraints changed
 - [ ] Verified examples still parse with updated schema
 - [ ] Added migration notes for settings/config schema changes (W-01 template schema)
+- [ ] If the settings/config file format changed (e.g. YAML → JSON5), updated the migration note in `README.md` and all architecture docs
 
 ### Doc Splitting
 

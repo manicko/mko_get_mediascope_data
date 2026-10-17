@@ -34,9 +34,9 @@ meaning is unconfirmed are marked `[open]` and tracked in
 
 | Source | Format | Where it enters | Certainty |
 |---|---|---|---|
-| User report definition | YAML list of report entries | `run <file>` / `run_report(path)` → `ReportSettings` (`services.py:85-98`, `models.py:87-115`) | `[code]` |
-| DEFAULT parameter template | YAML with `DATA_DEFAULTS` + subtype blocks | `settings/defaults/<media>/<report_type>.yaml` → `DataDefaults` (`services.py:100-114`, `models.py:128-130`) | `[code]` |
-| App/log configuration | YAML | `settings/app_config.yaml`, `settings/log_config.yaml` (`services.py:33-56`) | `[code]` |
+| User report definition | JSON5 list of report entries | `run <file>` / `run_report(path)` → `ReportSettings` (`services.py:85-98`, `models.py:87-115`) | `[code]` |
+| DEFAULT parameter template | JSON5 with `DATA_DEFAULTS` + subtype blocks | `settings/defaults/<media>/<report_type>.json5` → `DataDefaults` (`services.py:100-114`, `models.py:128-130`) | `[code]` |
+| App/log configuration | JSON5 | `settings/app_config.json5`, `settings/log_config.json5` (`services.py:33-56`) | `[code]` |
 | Mediascope credentials | JSON | `settings/connections/mediascope.json` (`paths.py:60-81`) | `[code]` |
 | Mediascope API | HTTP JSON | vendor library `mediascope-api-lib` (`MediaVortexTask`), called through `NetworkClient` (`services.py:20`, `network.py:59-126`) | `[code]` |
 | Previously written outputs | CSV/CSV.gz files | read as a name set (not parsed) for resume logic (`reports.py:75-83`) | `[code]` |
@@ -45,8 +45,8 @@ meaning is unconfirmed are marked `[open]` and tracked in
 
 ```mermaid
 flowchart LR
-    A["CLIENT layer<br/>settings/reports/**/*.yaml<br/>ReportSettings"] --> M["merge_data_settings<br/>services.py:116-133"]
-    B["DEFAULT layer<br/>settings/defaults/&lt;media&gt;/&lt;type&gt;.yaml<br/>DataDefaults.DATA_DEFAULTS"] --> M
+    A["CLIENT layer<br/>settings/reports/**/*.json5<br/>ReportSettings"] --> M["merge_data_settings<br/>services.py:116-133"]
+    B["DEFAULT layer<br/>settings/defaults/&lt;media&gt;/&lt;type&gt;.json5<br/>DataDefaults.DATA_DEFAULTS"] --> M
     S["subtype block<br/>e.g. DYNAMICS_BY_SPOTS"] --> M
     M --> D["Data model<br/>services.py:135-138"]
     D --> T["TVTask.settings<br/>tasks.py:17"]
@@ -68,7 +68,7 @@ Merge rules, in order `[code]`:
    `ReportSettings` fields with `DATA_DEFAULTS` is `ad_filter` plus any API
    parameter keys the report defines as extras (for example `slices`,
    `statistics`, `options`, `company_filter` in
-   [`nat_tv_tvreport.yaml`](../../src/mko_get_mediascope_data/settings/reports/nat_tv_tvreport.yaml)).
+    [`nat_tv_tvreport.json5`](../../src/mko_get_mediascope_data/settings/reports/nat_tv_tvreport.json5)).
    Report-only fields (`media`, `period`, `relative_path`, …) never leak into
    the API parameters.
 4. If `data_lang == "ru"`, replace the `EName` suffix of every slice with
@@ -181,7 +181,7 @@ and no thread offloading `[code]`.
    frequencies into columns (`utils.pivot_df_frequency`, `utils.py:236-274`);
 4. any missing column raises `KeyError`, which is logged (column name, without
    the task name) and turned into `None` → the task is marked failed and an
-    error YAML is written (`reports.py:591-596`; lead: audit PIPE-008).
+    error JSON5 is written (`reports.py:591-596`; lead: audit PIPE-008).
 
 **Dictionary strategy** (`reports.py:599-652`, selected via
 `ReportSubtype.DYNAMICS_BY_SPOTS_DICT` in `ReportFactory.data_strategy`
@@ -219,12 +219,12 @@ repository — `[open]` Q-09.
 | Case | Handling | Certainty |
 |---|---|---|
 | Output file already exists (duplicate) | Pre-filtered before submission by `check_done`: existing file names (extension stripped) are collected by `get_done_files` and matching tasks are skipped (`reports.py:75-76, 78-83`, `:507-509`); the TV_REG strategy skips silently (`reports.py:563-567`; lead: audit PIPE-011) | `[code]` |
-| Empty result DataFrame | Task marked failed with `log_error=False` (no data → warning only, no error YAML written) (`reports.py:433-436`); the worker checks `log_error` at `reports.py:165`: `True` → error YAML, `False` → warning only (D-15, W-02). Now resolved per owner intent | `[code]` |
-| Result JSON not returned | Task marked failed with `log_error=True`, error YAML (`reports.py:421-424`) | `[code]` |
+| Empty result DataFrame | Task marked failed with `log_error=False` (no data → warning only, no error JSON5 written) (`reports.py:433-436`); the worker checks `log_error` at `reports.py:165`: `True` → error JSON5, `False` → warning only (D-15, W-02). Now resolved per owner intent | `[code]` |
+| Result JSON not returned | Task marked failed with `log_error=True`, error JSON5 (`reports.py:421-424`) | `[code]` |
 | Missing columns in the DataFrame | `KeyError` → log → task failed (`reports.py:591-596`) | `[code]` |
 | Unknown `report_subtype` (no matching defaults block) | No overlay happens, so the base `DATA_DEFAULTS` Nulls survive. With `data_lang: ru` (the default) the merge crashes in `en_to_ru(None)` with `TypeError` (probe-verified). With `data_lang: en` the merge completes and the run instead fails at `Data(**merged)` with a Pydantic `ValidationError` (probe-verified), because `slices`/`statistics`/`sortings`/`options` are non-optional `dict | list` fields (`models.py:135-137`) | `[code]` |
-| Unknown keys in a report YAML (e.g. legacy `folder`, `category_name`) | Absorbed as Pydantic extras, then dropped by the merge unless the key exists in `DATA_DEFAULTS`; no error, no warning (verified: both legacy keys have zero references in `core/`) | `[code]` |
-| Missing DEFAULT template for the `(media, report_type)` pair | `FileNotFoundError` from `yaml_to_dict`, run aborts (`services.py:100-114`; verified: files absent; lead: audit TPL-005) | `[code]` |
+| Unknown keys in a report JSON5 (e.g. legacy `folder`, `category_name`) | Absorbed as Pydantic extras, then dropped by the merge unless the key exists in `DATA_DEFAULTS`; no error, no warning (verified: both legacy keys have zero references in `core/`) | `[code]` |
+| Missing DEFAULT template for the `(media, report_type)` pair | `FileNotFoundError` from `json5_to_dict`, run aborts (`services.py:100-114`; verified: files absent; lead: audit TPL-005) | `[code]` |
 | Vendor rejects a request (HTTP 4xx / auth) | Raised immediately by `NetworkClient`, aborting the run (`network.py:76-118`) | `[code]` |
 
 ### Provenance and preservation of original values
@@ -233,13 +233,13 @@ repository — `[open]` Q-09.
   (`prj_name` → `targetAudience`) or localized (`*EName` → `*Name`); no
   values are recomputed by this tool `[code]`.
 - The original request that produced each file is preserved in
-  `TVTask.settings` (`tasks.py:17`) and written to the error YAML when a task
+  `TVTask.settings` (`tasks.py:17`) and written to the error JSON5 when a task
   fails (`tasks.py:27-57`). For successful tasks the settings are **not**
   persisted — the output file name encodes only interval and audience `[code]`.
   The owner confirmed this is intended: only failures are persisted (D-18).
 - Decimal values are written with a comma decimal separator and a BOM
   `[code]`; the owner confirmed these conventions are correct for now and are
-  to become configurable later — defaults in `settings/app_config.yaml` with
+  to become configurable later — defaults in `settings/app_config.json5` with
   per-report overrides (D-13).
 
 ## Related Docs

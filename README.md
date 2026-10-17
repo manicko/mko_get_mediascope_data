@@ -19,7 +19,7 @@ pip install git+https://github.com/manicko/mko_get_mediascope_data.git
 uv run -m mko_get_mediascope_data init
 
 # 3. Run a report
-uv run -m mko_get_mediascope_data run settings/reports/nat_tv_brands_last.yaml
+uv run -m mko_get_mediascope_data run settings/reports/nat_tv_brands_last.json5
 ```
 
 ### For developers (editable installation)
@@ -30,7 +30,7 @@ cd mko_get_mediascope_data
 
 uv pip install -e .
 uv run -m mko_get_mediascope_data init
-uv run -m mko_get_mediascope_data run settings/reports/nat_tv_brands_last.yaml
+uv run -m mko_get_mediascope_data run settings/reports/nat_tv_brands_last.json5
 ```
 
 ## 📁 Configuration
@@ -43,8 +43,8 @@ This command creates the full configuration structure in your user directory:
 
 ```
 ~/.config/mko_get_mediascope_data/settings/
-├── app_config.yaml
-├── log_config.yaml
+├── app_config.json5
+├── log_config.json5
 ├── connections/mediascope.json
 ├── defaults/
 └── reports/
@@ -57,6 +57,12 @@ Edit `settings/connections/mediascope.json` with your credentials (see official 
 Copy any file from `settings/reports/` as a template and adjust it to your needs.  
 All parameters follow the standard **Mediascope API** format.
 
+> **Migrating from YAML to JSON5:** Settings templates were migrated from YAML
+> to JSON5. Re-run `uv run -m mko_get_mediascope_data init --force` to refresh
+> your templates. Hand-authored `.yaml` report files must be renamed to `.json5`
+> (the content format is otherwise unchanged). Error artifacts (`errors/*.json5`)
+> and configuration files (`app_config`, `log_config`) are also now JSON5.
+
 ## 📋 CLI Commands
 
 ```bash
@@ -65,13 +71,13 @@ uv run -m mko_get_mediascope_data --help
 
 **Available commands:**
 - `init`          — Initialize user settings and templates
-- `run`           — Run one or more reports from YAML file(s)
+- `run`           — Run one or more reports from JSON5 file(s)
 - `list-reports`  — List all available report files
 
 **Examples:**
 ```bash
 # Run single report
-uv run -m mko_get_mediascope_data run settings/reports/nat_tv_tvreport.yaml
+uv run -m mko_get_mediascope_data run settings/reports/nat_tv_tvreport.json5
 ```
 
 ## 🔌 Public API (Jupyter, Airflow, scripts)
@@ -83,7 +89,7 @@ from mko_get_mediascope_data import run_report, initialize_settings
 initialize_settings(force=True)
 
 # Run report
-run_report("settings/reports/nat_tv_brands_last.yaml")
+run_report("settings/reports/nat_tv_brands_last.json5")
 ```
 
 ## 🛠️ Requirements

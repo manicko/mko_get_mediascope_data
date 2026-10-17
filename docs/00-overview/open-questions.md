@@ -48,7 +48,7 @@ answered on 2026-10-15; the register below reflects the answers.
 | D-10 | **Regional reports:** when the user specifies no region list, load **all** regions. The hard-coded exclusion of region id 99 in `core/reports.py` is incorrect and must be removed; instead the user template must be able to express an inclusion list (`id IN (1,2,3…)`) or an exclusion (`id NOT IN (99,100)`). Design approach to be researched first | Owner answer, 2026-10-15 |
 | D-11 | Reports/templates are intentionally incomplete and will be implemented as the product is used; nothing is deleted from the bundled examples | Owner answer, 2026-10-15 |
 | D-12 | The credential template should follow best setup practice (name, placeholders, validation). A recommendation is recorded under Q-07; the owner asked for a recommendation and has not yet chosen an implementation | Owner answer, 2026-10-15 |
-| D-13 | CSV conventions (`;` separator, `,` decimal, UTF-8 BOM, gzip) are correct for now and intentionally hard-coded. Future intent: defaults in `settings/app_config.yaml` overridable per report file in the user's own report | Owner answer, 2026-10-15 |
+| D-13 | CSV conventions (`;` separator, `,` decimal, UTF-8 BOM, gzip) are correct for now and intentionally hard-coded. Future intent: defaults in `settings/app_config.json5` overridable per report file in the user's own report | Owner answer, 2026-10-15 |
 | D-14 | The DICT dictionary column layout must not stay hard-coded. Future intent: a user settings file that defines which columns the dictionary gets and how. Design to be researched without breaking the current infrastructure | Owner answer, 2026-10-15 |
 | D-15 | Error files are written **only** when the remote calculation was rejected or a task could not be processed (network, processing errors). A period that simply has no data must produce a **warning**, not an error file | Owner answer, 2026-10-15 |
 | D-16 | Idempotency is best-effort, not guaranteed: network failures and data that appears later (a period absent today may exist next week) can change the result of a re-run. This is accepted | Owner answer, 2026-10-15 |
@@ -68,7 +68,7 @@ answered on 2026-10-15; the register below reflects the answers.
   `time_unit`/`unit_count`, `report_type` values like `TV_CROSSTAB` /
   `REG_TV_CROSSTAB` that are not in the enum, and omit the required `media` and
   `relative_path` fields. The only conforming example is
-  [`settings/reports/nat_tv_brands_tefal.yaml`](../../src/mko_get_mediascope_data/settings/reports/nat_tv_brands_tefal.yaml).
+  [`settings/reports/nat_tv_brands_tefal.json5`](../../src/mko_get_mediascope_data/settings/reports/nat_tv_brands_tefal.json5).
   Verified by probe (lead: audit TPL-001).
 - *Owner's answer (2026-10-15):* option (a) — **migrate all bundled templates to
   the current schema and keep them runnable.** Templates and reports are
@@ -115,7 +115,7 @@ answered on 2026-10-15; the register below reflects the answers.
 **Q-04 · answered (D-09) · HIGH impact — failure policy for individual tasks**
 
 - *Repository state:* logical failures (no task key, empty result, missing
-  columns) mark `task.status = False`, write an error YAML next to the output
+  columns) mark `task.status = False`, write an error JSON5 next to the output
    folder, and the run continues (`reports.py:344-361`, `:412-449`). Raised
   exceptions inside the worker are caught by `try/except/finally` since W-02:
   `task_done()` is always called in `finally` (`reports.py:149-188`), so
@@ -128,10 +128,10 @@ answered on 2026-10-15; the register below reflects the answers.
   that description (D-09).
 - *Recorded implementation gap:* G-02 — the error-description file existed for
   logical failures but was bypassed by raised exceptions (worker hang), and its
-  `yaml.dump` output could not be re-loaded with `safe_load`. **Resolved by W-02** —
+   `yaml.dump` output could not be re-loaded with `safe_load` [pre-JSON5 migration]. **Resolved by W-02** —
   see the [gaps table](#gaps-between-owner-intent-and-current-implementation).
-  The worker now catches raised exceptions, writes a re-loadable error YAML
-  (`yaml.safe_dump`), and always calls `task_done()` in `finally`.
+   The worker now catches raised exceptions, writes a re-loadable error JSON5
+   (`json5.dump`), and always calls `task_done()` in `finally`.
 
 ---
 
@@ -157,7 +157,7 @@ answered on 2026-10-15; the register below reflects the answers.
 
 **Q-06 · answered (D-11) · MEDIUM impact — DEFAULT template coverage**
 
-- *Repository state:* all 6 `(media, report_type)` DEFAULT templates ship and parse at HEAD (resolved by W-01); previously only `tv/crosstab`, `tv/timeband`, `tv_reg/crosstab` existed (the first and third were malformed YAML). The `ReportType` enum includes `simple`, which no client report template uses but for which DEFAULT templates now ship.
+- *Repository state:* all 6 `(media, report_type)` DEFAULT templates ship and parse at HEAD (resolved by W-01); previously only `tv/crosstab`, `tv/timeband`, `tv_reg/crosstab` existed (the first and third were malformed [pre-JSON5 migration]). The `ReportType` enum includes `simple`, which no client report template uses but for which DEFAULT templates now ship.
 - *Owner's answer (2026-10-15):* reports and templates are not finished yet and
   will be implemented as the product is used; nothing is to be deleted
   (D-11). Missing combinations are pending work, not rejected features.
@@ -192,7 +192,7 @@ answered on 2026-10-15; the register below reflects the answers.
   (`utils.py:211-220`). The repository does not say what reads them.
 - *Owner's answer (2026-10-15):* the current conventions are correct and
   intentionally hard-coded for now. Future intent: defaults in
-  `settings/app_config.yaml` (e.g. separators), with the ability to override
+  `settings/app_config.json5` (e.g. separators), with the ability to override
   them per report in the user's own report file; the design is not yet decided
   (D-13, research item R-02). The concrete downstream consumer remains
   undocumented.
@@ -204,7 +204,7 @@ answered on 2026-10-15; the register below reflects the answers.
 - *Repository state:* subtypes whose name contains `DICT` produce a melted
   table with the fixed columns `action, search_column_idx, value, term, cat,
   adv, bra, sbr, mdl, cln_0 … cln_5` (`reports.py:599-652`). The bundled
-  example is [`nat_tv_brands_tefal.yaml` entry 2](../../src/mko_get_mediascope_data/settings/reports/nat_tv_brands_tefal.yaml).
+  example is [`nat_tv_brands_tefal.json5` entry 2](../../src/mko_get_mediascope_data/settings/reports/nat_tv_brands_tefal.json5).
 - *Owner's answer (2026-10-15):* confirmed the hard-coded columns are bad.
   Future intent: a user settings file defining which columns the dictionary
   gets and how, implemented without breaking the current infrastructure;
@@ -285,11 +285,11 @@ answered on 2026-10-15; the register below reflects the answers.
 |---|---|---|---|
 | DISC-01 | Command name `list_reports` vs actual `list-reports` | README/AGENTS.md vs CLI (verified exit code 2 for the underscore form) | **Resolved** — README and AGENTS.md corrected to `list-reports` (2026-10-16) |
 | DISC-02 | README documents `run --no-verbose`, which does not exist (verified exit code 2) | README vs `app.py:42` | **Resolved** — invalid example removed from README (2026-10-16) |
-| DISC-03 | README's quick-start example (`nat_tv_brands_last.yaml`) fails validation | README vs `ReportSettings` (probe) | Covered by D-06 repair work |
+| DISC-03 | README's quick-start example (`nat_tv_brands_last.json5`) fails validation | README vs `ReportSettings` (probe) | Covered by D-06 repair work |
 | DISC-04 | Shipped credential template `mediascope_RENAME_.json` vs expected `mediascope.json` | `settings/connections/` vs `paths.py:60` (verified; lead: audit CFG-003) | Q-07 / D-12 recommendation recorded |
 | DISC-05 | `multiple_files` comment says "if period exceeds 1 year, split exports by month/week"; the code splits by `period_model.time_unit` | `models.py:103-105` vs `reports.py:317` (verified) | Documented current behavior (code); comment treated as stale |
 | DISC-06 | The audit corpus is pinned to frozen baselines (`d093d9c`/`b04d177`), contains errors, and several entries no longer match HEAD | `.ai/audit/99-validation/*` vs HEAD | Per owner ruling D-05 the audit is a lead source only; these docs follow the code and re-verify each claim |
-| DISC-07 | `defaults/tv/crosstab.yaml` parses at commit `3408747` and fails from `b04d177` onward — the i18n translation commit introduced the YAML syntax error at line 138 | Git probe | Documented as the cause of the TV-defaults outage; covered by D-06 repair work |
+| DISC-07 | `defaults/tv/crosstab.json5` parses at commit `3408747` and fails from `b04d177` onward — the i18n translation commit introduced the YAML syntax error at line 138 [pre-JSON5 migration] | Git probe | Documented as the cause of the TV-defaults outage; covered by D-06 repair work |
 | DISC-08 | The owner's personal settings folder still uses the legacy dialect and older templates, and its exports predate the current column-selection code | Machine state vs HEAD | Used as evidence for Q-01/Q-02, not as a specification |
 | DISC-09 | The owner recalled that regions **99 and 100** are excluded; the code excludes **only 99** | Owner answer vs `reports.py:539-540` (verified) | Recorded for the region-option redesign (R-01): start from the code |
 | DISC-10 | README instructs installation from (Test) PyPI; the owner's stated path is `pip install <github_url>`, with no PyPI publication | README vs owner answer (D-19) | **Resolved** — README corrected to `pip install git+https://github.com/manicko/mko_get_mediascope_data.git` (2026-10-16) |
@@ -308,16 +308,16 @@ The implementation sequence and agent assignments for all items are tracked in
 | Status | ID | Intent (owner decision) | Current code | Impact |
 |---|---|---|---|---|
 | **RESOLVED** — W-02 slice 3 (entirely out-of-range → `NoReportFoundError`, PIPE-005; partial overlap → `logger.warning()` + export overlap, PIPE-003/PIPE-004; zero-interval → warning, not silent exit) | G-01 | Warn on missing/partial period data; never interrupt (D-08) | `get_period` now intersects the requested range with the API window explicitly: entirely out-of-range raises `NoReportFoundError` (PIPE-005); partial overlap logs `logger.warning()` about the uncovered remainder and exports the overlapping part (PIPE-003, PIPE-004); a zero-interval run emits a warning naming the requested range instead of a silent exit-0 success | **RESOLVED** — analysts can now distinguish "no data" (warning) from "done"; the multi-report safety intent of D-08 is implemented |
-| **RESOLVED** — W-02 slices 1-2 (worker `try/except/finally` converts exceptions to a failed-task error artifact, PIPE-002/PIPE-007; `log_error` branching distinguishes "no data" warnings from "processing failure" error files, PIPE-009; `yaml.safe_dump` makes error YAML re-loadable, D-09) | G-02 | A failed task always leaves a persistable description (D-09); network failures must not stop the run | Worker now wraps its body in `try/except Exception` that sets `task.status = False`, reaches `TVTask.to_yaml`, and calls `task_done()` in `finally` (PIPE-002, PIPE-007); `log_error` is consumed by branching logic: "no data" → `logger.warning()` with no error file (D-15); "processing failure" → error YAML written with `yaml.safe_dump` so it is re-loadable with `safe_load` (PIPE-009, D-09) | **RESOLVED** — the recovery path works for all failure classes; raised exceptions in workers no longer hang `queue.join()` |
+| **RESOLVED** — W-02 slices 1-2 (worker `try/except/finally` converts exceptions to a failed-task error artifact, PIPE-002/PIPE-007; `log_error` branching distinguishes "no data" warnings from "processing failure" error files, PIPE-009; `json5.dump` makes error JSON5 re-loadable, D-09) | G-02 | A failed task always leaves a persistable description (D-09); network failures must not stop the run | Worker now wraps its body in `try/except Exception` that sets `task.status = False`, reaches `TVTask.to_file`, and calls `task_done()` in `finally` (PIPE-002, PIPE-007); `log_error` is consumed by branching logic: "no data" → `logger.warning()` with no error file (D-15); "processing failure" → error JSON5 written with `json5.dump` so it is re-loadable with `json5.load` (PIPE-009, D-09) | **RESOLVED** — the recovery path works for all failure classes; raised exceptions in workers no longer hang `queue.join()` |
 | OPEN — pending W-03 (R-01 region-selection design) | G-03 | Region selection belongs in the user template, not hard-coded (D-10) | Region id 99 is hard-coded as excluded (`reports.py:539`); no `regions`/exclusion support in any template | Users cannot include 99 or express an exclusion list; the owner requires template-driven region selection (D-10) |
 | OPEN — pending W-04 (R-02 output-conventions design) | G-04 | Per-report overrides of output conventions (D-13, D-14) | Separators/decimal/BOM/compression and the DICT column layout are hard-coded (`utils.py:211-220`, `reports.py:599-652`) | Users cannot adapt output to their downstream consumers |
-| **RESOLVED** — W-01 (2026-10-16) | G-05 | Bundled templates stay runnable (D-06) | All 6 DEFAULT templates ship and parse (formerly 3 were missing and both crosstab defaults were malformed); all 32 bundled report entries pass `ReportSettings` validation | No bundled report runs end-to-end → all templates parse and validate; `nat_tv_brands_tefal.yaml` is the reference runner |
+| **RESOLVED** — W-01 (2026-10-16) | G-05 | Bundled templates stay runnable (D-06) | All 6 DEFAULT templates ship and parse (formerly 3 were missing and both crosstab defaults were malformed); all 32 bundled report entries pass `ReportSettings` validation | No bundled report runs end-to-end → all templates parse and validate; `nat_tv_brands_tefal.json5` is the reference runner |
 
 ### Assumptions awaiting validation
 
 | ID | Assumption | Basis | Risk if wrong |
 |---|---|---|---|
-| A-01 | The folders under `settings/reports/` correspond to clients or analytical projects (`gap_resurs`, `sovcombank`, `last_category`, `tefal`, `theiss`, `tv_report`) | Directory names; user's local settings contain a `nat_tv_brands_theiss.yaml` not present in the package | Template organization may need restructuring |
+| A-01 | The folders under `settings/reports/` correspond to clients or analytical projects (`gap_resurs`, `sovcombank`, `last_category`, `tefal`, `theiss`, `tv_report`) | Directory names; user's local settings contain a `nat_tv_brands_theiss.json5` not present in the package | Template organization may need restructuring |
 | A-02 | Audience-name suffixes such as `BC` encode income groups (e.g. `incomeGroupRussia IN (2,3)`) per the analysts' convention | Template contents (`all 20-45 BC` ↔ `incomeGroupRussia IN (2,3)`) | Mislabeled outputs |
 | A-03 | The dictionary output feeds a downstream search-term configuration process | Column names (`term`, `action=upd`, `search_column_idx`) | Wrong dictionary layout |
 | A-04 | The concrete consumer of the CSV exports (and therefore the required format conventions) is outside this repository | No consumer is documented anywhere in the repository | Format choices may need to change (see D-13) |
@@ -330,7 +330,7 @@ decision first.
 | ID | Topic | Related decision | Notes from the owner |
 |---|---|---|---|
 | R-01 | Region selection design: template-expressed inclusion/exclusion lists (`id IN (…)` / `id NOT IN (99,100)`), all-regions default, removal of the hard-coded exclusion | D-10 | "Launch a researcher and study modern practices for this kind of implementation" — executed per the 3 × researcher → validator pattern (see `.ai/problems/01-delivery-plan.md`) |
-| R-02 | Configurable output conventions: defaults in `settings/app_config.yaml`, per-report overrides | D-13 | Owner has not decided the design yet |
+| R-02 | Configurable output conventions: defaults in `settings/app_config.json5`, per-report overrides | D-13 | Owner has not decided the design yet |
 | R-03 | Configurable dictionary (`DICT`) output columns via a user settings file, without breaking the current infrastructure | D-14 | Owner has not decided the design yet |
 
 ### Precision note on G-02: which failures hang, and the owner's observation
@@ -339,7 +339,7 @@ decision first.
 > pre-implementation record. After W-02 (commit `3f3dd56`), the worker wraps its
 > body in `try/except Exception` → `finally: task_done()`, so the third class (raised
 > exception inside a worker) no longer hangs `queue.join()`; it is converted to a
-> failed task with an error artifact written via `yaml.safe_dump` (PIPE-002,
+> failed task with an error artifact written via `json5.dump` (PIPE-002,
 > PIPE-007). The owner's observation about not noticing the hang in practice
 > remains valid as historical context.
 
@@ -349,8 +349,8 @@ hangs (all verified by probe against the real worker):
 | Failure | Where it happens | Current outcome |
 |---|---|---|
 | Validation error, missing/malformed template, connection/auth setup failure | **Before** the worker pool (`create_report` → `get_period` → `get_available_period`) | Clean abort: error printed by the CLI, exit code 1 — visible (`reports.py:220-223`) |
-| Logical failure: no task key, empty result, missing columns | **Inside** a worker, but signalled as `status=False`, not an exception | Error YAML written via `yaml.safe_dump`, warning logged, run continues — the recovery path the owner knows (`reports.py:149-188`) |
-| Raised exception inside a worker: `BadRequestError`, `AuthorizationError`, `RuntimeError("Network retry limit exceeded")`, unexpected `AttributeError` | **Inside** a worker (`send_task` / `wait_task` / `extract_data`) | **Resolved by W-02.** The worker's `try/except/finally` catches the exception, marks the task failed, writes an error YAML via `yaml.safe_dump`, and calls `task_done()` in `finally` — so `queue.join()` returns and the run continues. The pre-W-02 behavior (hang, no traceback) was probe-verified but is no longer current (`reports.py:149-188`). |
+| Logical failure: no task key, empty result, missing columns | **Inside** a worker, but signalled as `status=False`, not an exception | Error JSON5 written via `json5.dump`, warning logged, run continues — the recovery path the owner knows (`reports.py:149-188`) |
+| Raised exception inside a worker: `BadRequestError`, `AuthorizationError`, `RuntimeError("Network retry limit exceeded")`, unexpected `AttributeError` | **Inside** a worker (`send_task` / `wait_task` / `extract_data`) | **Resolved by W-02.** The worker's `try/except/finally` catches the exception, marks the task failed, writes an error JSON5 via `json5.dump`, and calls `task_done()` in `finally` — so `queue.join()` returns and the run continues. The pre-W-02 behavior (hang, no traceback) was probe-verified but is no longer current (`reports.py:149-188`). |
 
 *Owner's observation (2026-10-15):* errors were encountered in practice, but a
 worker hang was never noticed. This does not contradict the mechanism (the
@@ -381,14 +381,14 @@ per owner ruling D-05 the audit IDs are lead pointers, not evidence:
   `queue.join()` never returned — the run hung instead of failing (PIPE-002);
   now the worker has `try/except/finally` so a failure writes an error artifact
   and the run continues.
-- [Fixed by W-02, G-02] Error YAML was written with `yaml.dump`
+- [Fixed by W-02, G-02] Error YAML was written with `yaml.dump` [pre-JSON5 migration]
   (`!!python/tuple`) and raised exceptions never reached the error path;
-  now `yaml.safe_dump` is used and all failure classes produce a re-loadable
+  now `json5.dump` is used and all failure classes produce a re-loadable
   error file (PIPE-007, PIPE-009).
 - [Fixed by W-01 (2026-10-16)] Bundled report templates failed validation
   (30 of 32 entries used the stale `period_type`/`period_num` schema and
   missing `media`/`relative_path` fields; both crosstab DEFAULT templates were
-  malformed YAML). Now all 32 entries pass validation and all 6 DEFAULT templates
+   malformed (pre-JSON5 migration)). Now all 32 entries pass validation and all 6 DEFAULT templates
   ship (see G-05, test_models.py::test_bundled_templates_validate).
 - [Fixed by W-02 (2026-10-16)] Duplicate CSV writes were swallowed; the task was
   still reported as ready (PIPE-001). Now `csv_to_file` uses `mode="w"` and the

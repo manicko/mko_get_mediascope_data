@@ -52,8 +52,8 @@ flowchart LR
     LIB --> SVC
     SVC --> ENGINE
     ENGINE -->|"HTTP JSON (retry, semaphore 5)"| MS
-    SVC -->|"reads YAML/JSON settings"| FS
-    ENGINE -->|"writes CSV(.gz), error YAML, log.log"| FS
+    SVC -->|"reads JSON5/JSON settings"| FS
+    ENGINE -->|"writes CSV(.gz), error JSON5, log.log"| FS
 ```
 
 There is no database, no web server, and no message broker; the only external
@@ -71,9 +71,9 @@ dependency is the Mediascope HTTP API, reached through the vendor library
 | Models | `core/models.py` | Pydantic v2 schema for settings (`ReportSettings`, `PeriodModel`, `LastTimeModel`, `DataDefaults`, `Data`, …) and the fixed-value enums | no |
 | Orchestrator | `core/services.py` | `AppService`: config loading and caching, settings merge, connection creation, per-report loop; process-wide lazy singleton | no (`get_app_service` is the internal accessor) |
 | Report engine | `core/reports.py` | `ReportFactory` + strategies; `TVMediaReport` lifecycle: period resolution, task generation, submit/poll/extract, worker pool | no |
-| Task model | `core/tasks.py` | `TVTask`: name, settings, status, error; error-YAML serialization | no |
+| Task model | `core/tasks.py` | `TVTask`: name, settings, status, error; error-JSON5 serialization | no |
 | Network layer | `core/network.py` | `NetworkClient.call`: semaphore-bounded, thread-offloaded, retrying wrapper around every vendor call — the one exception is the direct `cats.get_tv_region()` catalog read in `TVRegTaskStrategy` | no |
-| Utilities | `core/utils.py` | Date/period math, YAML/CSV I/O, suffix mapping, slice localization, frequency pivot, file listing | no |
+| Utilities | `core/utils.py` | Date/period math, JSON5/CSV I/O, suffix mapping, slice localization, frequency pivot, file listing | no |
 | Errors | `core/errors.py` | `NoReportFoundError`, `WrongDataSettings` — `NoReportFoundError` is raised by `get_period` for out-of-range periods (`reports.py:327-330`) and by `processing_tasks` for zero enqueued tasks (`reports.py:213-218`); `WrongDataSettings` is declared but unused (reserved for future subtype-default validation) | no |
 
 ### Component diagram (call direction)
@@ -84,7 +84,7 @@ flowchart TD
     INIT["init_service.py"] --> PATHS["core/paths.py<br/>AppPaths / PathResolver"]
     SVC --> PATHS
     SVC --> MODELS["core/models.py<br/>(Pydantic v2 + enums)"]
-    SVC --> UTILS["core/utils.py<br/>(yaml/csv/date helpers)"]
+    SVC --> UTILS["core/utils.py<br/>(json5/csv/date helpers)"]
     SVC --> REPORTS["core/reports.py<br/>ReportFactory + strategies"]
     REPORTS --> MODELS
     REPORTS --> UTILS
@@ -118,8 +118,8 @@ Verified call directions (not inferred from names) `[code]`:
 
 ```mermaid
 flowchart LR
-    Y1["report YAML<br/>(CLIENT deltas)"] --> V["ReportSettings<br/>validation"]
-    Y2["defaults YAML<br/>(DEFAULT base + subtype)"] --> M["merge_data_settings<br/>shallow overlay"]
+    Y1["report JSON5<br/>(CLIENT deltas)"] --> V["ReportSettings<br/>validation"]
+    Y2["defaults JSON5<br/>(DEFAULT base + subtype)"] --> M["merge_data_settings<br/>shallow overlay"]
     V --> M
     M --> D["Data<br/>(API parameters)"]
     D --> G["task fan-out<br/>interval × audience [× region]"]
@@ -129,7 +129,7 @@ flowchart LR
     W --> E{"result ok?"}
     E -- yes --> DF["data strategy<br/>column select / pivot / melt"]
     DF --> CSV["CSV(.gz) per task<br/>export/&lt;relative_path&gt;/"]
-    E -- no --> ERR["error YAML<br/>export/&lt;relative_path&gt;/errors/"]
+    E -- no --> ERR["error JSON5<br/>export/&lt;relative_path&gt;/errors/"]
 ```
 
 The per-task transformation detail is documented in
@@ -146,7 +146,7 @@ sequenceDiagram
     participant NET as NetworkClient
     participant API as Mediascope API
     participant FS as File system
-    U->>CLI: run report.yaml
+    U->>CLI: run report.json5
     CLI->>SVC: run_report(path)
     SVC->>FS: read user settings (log/app config)
     SVC->>SVC: validate entries (ReportSettings)
@@ -185,13 +185,13 @@ Error path worth understanding, with the failure classes separated `[code]`:
   `get_available_period`): a failure aborts the run with a printed error and
   exit code 1 — visible and loud (`reports.py:220-223`).
 - **Logical failures inside the pool** (no task key, empty result, missing
-  columns): `task.status = False`, error YAML written, warning logged, run
+  columns): `task.status = False`, error JSON5 written, warning logged, run
   continues — the designed recovery path.
 - **Exceptions raised inside a worker** (`BadRequestError`, `AuthorizationError`,
   `RuntimeError` after retry exhaustion): since W-02 the worker wraps
   `_process_item` in `try/except/finally` (including `asyncio.wait_for` when a
   `timeout` is set), so exceptions are caught, the task is marked failed, an
-  error YAML is written via `yaml.safe_dump`, and `task_done()` is always called
+  error JSON5 is written via `json5.dump`, and `task_done()` is always called
   in `finally` — no hang, no silent worker death
    (`reports.py:149-188`). The pre-W-02 behavior (hang on `queue.join()`) was
   resolved by W-02; see the precision note in
@@ -206,7 +206,7 @@ Error path worth understanding, with the failure classes separated `[code]`:
 | `pydantic` v2 | All settings models and validation | see [settings-layers-architecture.md](settings-layers-architecture.md) |
 | `typer` + `rich` | CLI and console output | `app.py` |
 | `platformdirs` | User settings folder location | `paths.py:4` (import), `:9` (`USER_DIR`) |
-| `PyYAML` | Template/config parsing | `utils.yaml_to_dict` |
+| `json5` | Template/config parsing | `utils.json5_to_dict` |
 | `Unidecode` | ASCII-safe file names for audiences and regions | `reports.py:375`, `:413-421` |
 | `python-dateutil` | Calendar arithmetic for periods | `utils.get_last_period`, `iter_period_slices` |
 
@@ -220,11 +220,11 @@ sleep_time=40)` (`reports.py:388, 390-392`).
 
 | Decision | Rationale (as recorded) | Trade-off |
 |---|---|---|
-| Two-layer settings with shallow overlay | Owner decision (D-01); templates stay small and vendor parameters live in one place | A typo in a report YAML that is not a `DATA_DEFAULTS` key is silently dropped by the merge; a typo inside a DEFAULT/subtype block reaches the vendor `build_task`, which has no `**kwargs`, and raises `TypeError` (verified against the installed library) |
+| Two-layer settings with shallow overlay | Owner decision (D-01); templates stay small and vendor parameters live in one place | A typo in a report JSON5 that is not a `DATA_DEFAULTS` key is silently dropped by the merge; a typo inside a DEFAULT/subtype block reaches the vendor `build_task`, which has no `**kwargs`, and raises `TypeError` (verified against the installed library) |
 | Two-level concurrency (`max_tasks=100` vs HTTP semaphore 5) | Documented as intentional independence in [async-concurrency-architecture.md](async-concurrency-architecture.md) | More knobs to reason about; the worker pool can pin 100 vendor tasks while only 5 HTTP calls fly |
 | Resume via existing file names (`check_done`) | Cheap idempotent re-runs without a state store | The name is the only identity key — rename a file and the task re-runs; the skip is   silent in the TV_REG path (`reports.py:539`) |
 | `mode="w"` (overwrite) | Re-runs overwrite transparently; the `check_done` pre-filter is what prevents re-submission of already-written tasks | A `mode="x"` design would swallow `FileExistsError` and make skipped writes indistinguishable from success — since W-02, `mode="w"` is used and `FileExistsError` is never raised |
-| Errors as side-car YAML files | Keeps the export folder the single place to look | Written with `yaml.safe_dump`, producing plain YAML sequences that round-trip with `yaml.safe_load` (`tasks.py:7, 52-57`); since W-02 the worker catches exceptions and always reaches the error-YAML path |
+| Errors as side-car JSON5 files | Keeps the export folder the single place to look | Written with `json5.dump`, producing plain JSON5 that round-trips with `json5.load` (`tasks.py:7, 52-57`); since W-02 the worker catches exceptions and always reaches the error-JSON5 path |
 | `extra="allow"` on settings models | Intended pass-through of template-defined API parameters | No validation of unknown keys; legacy keys (`folder`, `category_name`) are silently ignored (zero references in `core/`) |
 | Lazy singleton `get_app_service()` | Importing the library must not touch the file system (commit `706eed0`; covered by `tests/test_app.py::test_package_import_does_not_bootstrap`, run: passed) | First use pays config loading; a missing user config surfaces at first command, not at import |
 
@@ -236,12 +236,12 @@ are pointers, not evidence, and several audit entries do not match HEAD.
 
 | Risk / limitation (code-verified) | Code evidence | Also recorded as |
 |---|---|---|
-| **RESOLVED (W-01):** No shipped report template could run end-to-end (30/32 entries failed validation; both crosstab defaults were malformed YAML) | probe + `test_models.py::test_bundled_templates_validate` | audit TPL-001 / TPL-004 leads; gap G-05 → CLOSED |
+| **RESOLVED (W-01):** No shipped report template could run end-to-end (30/32 entries failed validation; both crosstab defaults were malformed [pre-JSON5 migration]) | probe + `test_models.py::test_bundled_templates_validate` | audit TPL-001 / TPL-004 leads; gap G-05 → CLOSED |
 | **RESOLVED (W-02):** A single network raise could hang the whole run (no worker exception isolation) | `reports.py:149-188` (try/except/finally with `task_done()` in `finally`) | audit PIPE-002 / ASY-001 leads |
 | **RESOLVED (W-02):** Zero-task and out-of-window periods exited 0 silently | `reports.py:327-330` (NoReportFoundError for out-of-range), `:213-218` (NoReportFoundError for zero tasks) | audit PIPE-004 / PIPE-005 leads |
 | **RESOLVED (W-02):** Poll loop had no deadline | `reports.py:363` (`max_polls=60`, `poll_deadline=3600.0` params), `reports.py:373-386` (guard checks) | audit PIPE-006 lead |
 | **RESOLVED:** Type safety unenforced: mypy red, no CI | `pyproject.toml:137` (`mypy` files = src + tests); `.github/workflows/ci.yml` runs `ruff check src tests` + `pytest`; `uv run mypy src tests` → **0 errors** (verified 22 source files) | audit OPS-001 lead |
-| Named loggers in `log_config.yaml` never fire; root handler applies | `services.py:58-65` vs module logger names | audit OPS-003 lead |
+| Named loggers in `log_config.json5` never fire; root handler applies | `services.py:58-65` vs module logger names | audit OPS-003 lead |
 | Test suite covers utils/models/strategy selection only; no coverage of the period, worker, and CLI happy paths | `tests/` (42 collected, 42 pass, verified `test_create_report_skips_done_files` + `test_create_report_timeout_does_not_hang`) | audit TST-* leads |
 | **RESOLVED (W-02):** `errors.py` exceptions were dead code | `errors.py:1-9`; `NoReportFoundError` now raised at `reports.py:327-330` and `:213-218` | — |
 | One `requests.Session` per report entry, never closed | `services.py:140-154`; vendor `mediavortex/tasks.py:43-47`, `core/net.py:73` | audit EXT-006 lead |
@@ -261,7 +261,7 @@ introduced by this documentation:
   `NoReportFoundError`, and partial overlap emits a `logger.warning()`
   (intent: warn, never interrupt, D-08).
 - **G-02** — RESOLVED by W-02. Worker exceptions are caught in
-  `try/except/finally`, an error YAML is written via `yaml.safe_dump`, and
+  `try/except/finally`, an error JSON5 is written via `json5.dump`, and
   `task_done()` is always called in `finally` (intent: never stop the export;
   always persist a failed task's description, D-09/D-17).
 - **G-03** — region selection is hard-coded (id 99) instead of template-driven
