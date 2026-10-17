@@ -9,6 +9,11 @@ code_ref: "d093d9c"
 validator: "99-validate"
 ---
 
+<!-- JSON5-MIGRATION TODO: This validated-findings doc references pre-migration .yaml
+  file paths that are now .json5. Anchors need re-verification in a future audit pass;
+  this does NOT block the implementation PR. Verdicts remain factually accurate as
+  historical records of the code_ref (d093d9c). -->
+
 # Audit Findings — Validation Report: Arithmetic & Derived-Quantity Verification
 
 ## Summary

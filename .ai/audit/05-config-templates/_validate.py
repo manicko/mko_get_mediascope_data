@@ -1,6 +1,12 @@
 """Scratch audit reproduction for Phase 05 — NOT production code.
 
-Validates bundled YAML settings templates against the Pydantic models in
+JSON5-MIGRATION TODO: This audit script uses `yaml.safe_load`, `glob("**/*.yaml")`,
+and imports `yaml_to_dict`/`en_to_ru` from `core.utils` — all stale after the JSON5
+settings templates migration (yaml_to_dict → json5_to_dict, .yaml → .json5,
+yaml.safe_load → json5.load, PyYAML → json5). Reconcile in a future audit pass;
+does NOT block the implementation PR.
+
+Validates bundled JSON5 settings templates against the Pydantic models in
 core/models.py and reproduces the defects filed in findings.md.
 
 Repro: uv run python .ai/audit/05-config-templates/_validate.py

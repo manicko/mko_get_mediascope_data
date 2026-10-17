@@ -8,6 +8,12 @@ severity_taxonomy: ".kilo/commands/audit/phases/05-audit-config-templates.md#sev
 code_ref: "d093d9c"
 ---
 
+<!-- JSON5-MIGRATION TODO: This audit findings doc references pre-migration YAML symbols
+  (yaml_to_dict, *.yaml, yaml.safe_load, PyYAML) that no longer exist after the JSON5
+  settings templates migration. Anchors need re-verification in a future audit pass;
+  this does NOT block the implementation PR. Verdicts remain factually accurate as
+  historical records of the code_ref (d093d9c). -->
+
 # Audit Findings — Config Template Validation & Spec Conformance
 
 ## Summary

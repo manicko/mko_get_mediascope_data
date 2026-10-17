@@ -10,6 +10,12 @@ validator: "99-validate"
 validation_revision: "2026-10-14"
 ---
 
+<!-- JSON5-MIGRATION TODO: This validated-findings doc references pre-migration YAML
+  symbols (yaml_to_dict, *.yaml, yaml.safe_load) that no longer exist after the JSON5
+  settings templates migration. Anchors need re-verification in a future audit pass;
+  this does NOT block the implementation PR. Verdicts remain factually accurate as
+  historical records of the code_ref (d093d9c). -->
+
 # Audit Findings — Validation Report: Config Template Validation & Spec Conformance
 
 ## Summary
