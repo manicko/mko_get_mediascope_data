@@ -17,6 +17,7 @@ import pandas as pd
 import pytest
 from unidecode import unidecode
 
+from mko_get_mediascope_data.core.errors import NoReportFoundError
 from mko_get_mediascope_data.core.models import Data, ReportSettings
 from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
@@ -335,3 +336,136 @@ async def test_create_report_timeout_does_not_hang(
         f"Expected 1 error YAML in {export_path / 'errors'}, "
         f"found {len(error_files)}"
     )
+
+
+@pytest.mark.asyncio
+async def test_create_report_zero_tasks_raises_no_report_found(
+    tmp_path: Path,
+    mocker,
+    tv_yaml_content: str,
+    dummy_df: pd.DataFrame,
+):
+    """PIPE-004: empty ``target_audiences`` produces zero tasks.
+
+    With ``target_audiences`` set to ``{}``, ``DefaultTVTaskStrategy.generate``
+    yields no tasks.  ``processing_tasks`` counts ``enqueued == 0``, cancels
+    the idle workers, and raises ``NoReportFoundError`` (not the ``check_done``
+    early-return, since ``check_done`` is ``False``).
+    """
+
+    # ---- 1. Parse ReportSettings with empty target_audiences --------------
+    yaml_data = json.loads(tv_yaml_content)
+    yaml_data[0]["target_audiences"] = {}
+    report_settings = ReportSettings(**yaml_data[0])
+
+    # ---- 2. Hermetic AppService + data settings ---------------------------
+    app_service = _build_hermetic_app_service(tmp_path)
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns ----------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask --------------------------------------
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) -------------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) --------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 7. Export path ---------------------------------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    # ---- 8. Construct report with check_done=False ------------------------
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 9. Run — expect NoReportFoundError -------------------------------
+    with pytest.raises(NoReportFoundError):
+        await report.create_report()
+
+
+@pytest.mark.asyncio
+async def test_create_report_out_of_range_date_filter_raises(
+    tmp_path: Path,
+    mocker,
+    tv_yaml_content: str,
+    dummy_df: pd.DataFrame,
+):
+    """PIPE-005: out-of-range ``date_filter`` produces an inverted period.
+
+    With ``date_filter`` set to ``["1900-01-01", "1900-02-01"]`` — outside the
+    available data range (2025-01-01 .. 2025-12-31 from ``dummy_df``) —
+    ``get_period`` clamps to ``(2025-01-01, 1900-02-01)`` which is inverted
+    (``period[0] > period[1]``).  ``NoReportFoundError`` is raised with a
+    "no overlap" message before any tasks are generated.
+    """
+
+    # ---- 1. Parse ReportSettings with out-of-range date_filter ------------
+    yaml_data = json.loads(tv_yaml_content)
+    yaml_data[0]["period"]["date_filter"] = ["1900-01-01", "1900-02-01"]
+    report_settings = ReportSettings(**yaml_data[0])
+
+    # ---- 2. Hermetic AppService + data settings ---------------------------
+    app_service = _build_hermetic_app_service(tmp_path)
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns ----------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask --------------------------------------
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) -------------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) --------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 7. Export path ---------------------------------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    # ---- 8. Construct report with check_done=False ------------------------
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 9. Run — expect NoReportFoundError with "no overlap" -------------
+    with pytest.raises(NoReportFoundError, match="no overlap"):
+        await report.create_report()
