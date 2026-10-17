@@ -6,7 +6,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Literal, overload
 
-import yaml
+import json5
 from dateutil.relativedelta import relativedelta
 from pandas import DataFrame
 
@@ -274,13 +274,13 @@ def pivot_df_frequency(df: DataFrame, dim_cols) -> DataFrame:
         return df
 
 
-def dir_content_to_dict(files, suffix: str = "yaml"):
+def dir_content_to_dict(files, suffix: str = "json5"):
     return {file.name.removesuffix(suffix): file for file in files}
 
 
 def list_files_in_directory(
     path: str | PathLike[str],
-    extensions: tuple[str, ...] = ("yaml", "json"),
+    extensions: tuple[str, ...] = ("json5", "json"),
     include_subfolders: bool = False,
 ) -> list[Path]:
     """
@@ -362,26 +362,26 @@ def resolve_path(path: str | Path, base_dir: Path | None = None) -> Path:
     return resolved_path
 
 
-def yaml_to_dict(file: str | PathLike[str]) -> dict[str, Any] | list[Any]:
+def json5_to_dict(file: str | PathLike[str]) -> dict[str, Any] | list[Any]:
     """
-    Loads configuration from a YAML file.
+    Loads configuration from a JSON5 file.
 
     Args:
-        file (Path): Path to the YAML configuration file.
+        file (Path): Path to the JSON5 configuration file.
 
     Returns:
         Dict[str, Any]: Parsed configuration dictionary. For an empty file,
-        returns an empty dict (``yaml.safe_load`` returns ``None`` for null
+        returns an empty dict (``json5.load`` returns ``None`` for null
         nodes, which is normalized to ``{}``).
 
     Raises:
         FileNotFoundError: If the file does not exist.
-        yaml.YAMLError: If the file contains invalid YAML.
+        ValueError: If the file contains invalid JSON5.
     """
     try:
         with open(file, encoding="utf8") as cfg:
-            return yaml.safe_load(cfg) or {}
-    except yaml.YAMLError as err:
+            return json5.load(cfg) or {}
+    except ValueError as err:
         logger.error(err)
         raise
     except FileNotFoundError as err:

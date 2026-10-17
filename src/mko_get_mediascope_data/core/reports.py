@@ -607,41 +607,37 @@ class DictDataStrategy(DataPreparationStrategy):
         self, report: TVMediaReport, df: DataFrame, task_name: str | None = None
     ) -> DataFrame | None:
         data_settings = report.data_settings
+
         if isinstance(data_settings, dict):
             output_columns = data_settings.get("slices")
         else:
             output_columns = getattr(data_settings, "slices", None)
+
         if not output_columns:
             return None
+
         missing = set(output_columns) - set(df.columns)
+
         if missing:
             logger.error(f"Missing columns: {missing}")
             return None
 
-        df = df[output_columns]
+        shift = 3
+
         df_long = (
-            df
+            df[output_columns]
             .melt(var_name="column", value_name="value")
             .dropna(subset=["value"])
             .drop_duplicates()
+            .copy()
         )
-
-        shift = 3
-        action = "r"
-        match = "p"
-        d_col_names = [
-            "action",
-            "match",
-            "search_column_idx",
-            "value",
-            "term",
-            *output_columns,
-        ]
 
         col_position_map = {
             col: idx for idx, col in enumerate(output_columns, start=shift)
         }
+
         df_long["search_column_idx"] = df_long["column"].map(col_position_map)
+
         df_long["term"] = (
             df_long["value"]
             .astype(str)
@@ -649,18 +645,26 @@ class DictDataStrategy(DataPreparationStrategy):
             .str.strip()
         )
 
-        df_long["action"] = action
-        df_long["match"] = match
-        start = d_col_names.index("cat")
-        end = d_col_names.index("mdl") + 1
-        for i, col_name in enumerate(d_col_names[start:end]):
-            df_long[col_name] = None
-            mask = df_long["search_column_idx"] == shift + i
-            df_long.loc[mask, col_name] = (
-                df_long["value"]
-                .astype(str)
-                .str.replace(r"\s+\(.*\)", "", regex=True)
-                .str.strip()
-            )
+        df_long["action"] = "r"
+        df_long["match"] = "p"
 
-        return df_long.reindex(columns=d_col_names)
+        clean_columns = []
+
+        for i, col_name in enumerate(output_columns):
+            clean_col = f"{col_name}_clean"
+            clean_columns.append(clean_col)
+
+            mask = df_long["search_column_idx"] == shift + i
+
+            df_long[clean_col] = df_long["term"].where(mask)
+
+        result_columns = [
+            "action",
+            "match",
+            "search_column_idx",
+            "value",
+            "term",
+            *clean_columns,
+        ]
+
+        return df_long.reindex(columns=result_columns)

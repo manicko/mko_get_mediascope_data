@@ -37,7 +37,7 @@ class AppService:
 
     @cached_property
     def app_config(self) -> AppConfig:
-        log_config_dict = utils.yaml_to_dict(self.app_paths.log_config)
+        log_config_dict = utils.json5_to_dict(self.app_paths.log_config)
         if not isinstance(log_config_dict, dict):
             raise TypeError(
                 f"Expected dict in {self.app_paths.log_config}, "
@@ -45,7 +45,7 @@ class AppService:
             )
         logging_settings = LoggingSettings(**log_config_dict)
 
-        app_config_dict = utils.yaml_to_dict(self.app_paths.app_config)
+        app_config_dict = utils.json5_to_dict(self.app_paths.app_config)
         if not isinstance(app_config_dict, dict):
             raise TypeError(
                 f"Expected dict in {self.app_paths.app_config}, "
@@ -65,10 +65,10 @@ class AppService:
         logging.config.dictConfig(self.app_config.logging_settings.model_dump())
 
     def reload_config(self) -> None:
-        """Invalidate cached configuration and re-apply from YAML files.
+        """Invalidate cached configuration and re-apply from JSON5 files.
 
         Invalidates the ``cached_property`` caches for ``app_config`` and
-        ``export_folder`` so the next access re-reads the YAML config files.
+        ``export_folder`` so the next access re-reads the JSON5 config files.
         Also re-runs ``prepare_app()`` to re-resolve handler paths and
         re-apply ``dictConfig``.
         """
@@ -85,8 +85,8 @@ class AppService:
     @staticmethod
     def get_report_settings(report_settings_path: Path) -> Generator[ReportSettings]:
         try:
-            report_configs = utils.yaml_to_dict(report_settings_path)
-            # yaml_to_dict returns dict[str, Any] | list[Any]; normalize to a list
+            report_configs = utils.json5_to_dict(report_settings_path)
+            # json5_to_dict returns dict[str, Any] | list[Any]; normalize to a list
             # of report-config dicts so we never iterate dict keys (str) by mistake.
             if isinstance(report_configs, dict):
                 report_configs = list(report_configs.values())
@@ -104,8 +104,8 @@ class AppService:
             self.app_paths.defaults_dir,
             report_settings.media.value.lower(),
             report_settings.report_type.value.lower(),
-        ).with_suffix(".yaml")
-        data_defaults_dict = utils.yaml_to_dict(data_default_settings_path)
+        ).with_suffix(".json5")
+        data_defaults_dict = utils.json5_to_dict(data_default_settings_path)
         if not isinstance(data_defaults_dict, dict):
             raise TypeError(
                 f"Expected dict in {data_default_settings_path}, "

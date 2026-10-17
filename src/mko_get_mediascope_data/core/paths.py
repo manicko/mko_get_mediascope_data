@@ -47,7 +47,7 @@ class AppPaths(BaseModel):
 
     @property
     def app_config(self) -> Path:
-        return Path(self.user_settings_dir, "app_config.yaml")
+        return Path(self.user_settings_dir, "app_config.json5")
 
     @property
     def defaults_dir(self) -> Path:
@@ -55,7 +55,7 @@ class AppPaths(BaseModel):
 
     @property
     def log_config(self) -> Path:
-        return Path(self.user_settings_dir, "log_config.yaml")
+        return Path(self.user_settings_dir, "log_config.json5")
 
     @property
     def connection_config(self) -> Path:
