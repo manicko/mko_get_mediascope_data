@@ -42,7 +42,7 @@ def run(
     report: Annotated[
         Path,
         typer.Argument(
-            exists=True, dir_okay=False, help="Path to the report YAML file"
+            exists=True, dir_okay=False, help="Path to the report JSON5 file"
         ),
     ],
     verbose: bool = typer.Option(True, "--verbose", "-v"),
@@ -67,7 +67,7 @@ def list_reports():
     """Show all available report files"""
     reports_dir = get_app_service().app_paths.reports
     files = list_files_in_directory(
-        reports_dir, extensions=("yaml",), include_subfolders=True
+        reports_dir, extensions=("json5",), include_subfolders=True
     )
     if not files:
         console.print("[yellow]No report files found in reports/[/yellow]")
@@ -93,7 +93,7 @@ def run_report(report_path: str | Path) -> None:
 
     Example in Jupyter:
         from mko_get_mediascope_data import run_report
-        run_report("settings/reports/nat_tv_brands_last.yaml")
+        run_report("settings/reports/nat_tv_brands_last.json5")
     """
     asyncio.run(run_report_async(report_path))
 
