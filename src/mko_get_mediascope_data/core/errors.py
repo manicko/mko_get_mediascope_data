@@ -1,5 +1,12 @@
 class NoReportFoundError(Exception):
-    pass
+    """Raised when no report data or tasks can be produced.
+
+    Covers scenarios where the report configuration yields nothing to
+    process — e.g. empty ``target_audiences``, an inverted or fully
+    out-of-range period, or a zero-task pipeline after all filtering.
+    Per D-08 this is a warning-level condition surfaced to the caller
+    rather than a silent failure.
+    """
 
 
 class WrongDataSettings(Exception):

@@ -207,20 +207,17 @@ def csv_to_file(
     ext = get_files_suffix(compression)
     out_file = Path(csv_path_out, f"{file_prefix}{time_str}{ext}")
 
-    try:
-        encoding = kwargs.pop("encoding", "utf-8-sig")
-        data_frame.to_csv(
-            path_or_buf=out_file,
-            index=False,
-            mode="x",
-            decimal=",",
-            sep=";",
-            encoding=encoding,
-            compression=compression,
-            **kwargs,
-        )
-    except FileExistsError:
-        logger.warning(f"File report {out_file} already exists. Skip it.")
+    encoding = kwargs.pop("encoding", "utf-8-sig")
+    data_frame.to_csv(
+        path_or_buf=out_file,
+        index=False,
+        mode="w",
+        decimal=",",
+        sep=";",
+        encoding=encoding,
+        compression=compression,
+        **kwargs,
+    )
 
 
 def en_to_ru(slices_en: list[Any]) -> list[Any]:
@@ -229,8 +226,10 @@ def en_to_ru(slices_en: list[Any]) -> list[Any]:
         for i, param in enumerate(slices_en):
             slices_ru[i] = param.replace("EName", "Name")
         return slices_ru
-    except TypeError as err:
-        logger.error(f"parameter should be list {type(slices_en)} is given")
+    except (TypeError, AttributeError) as err:
+        logger.error(
+            f"Element must be a string, got {type(slices_en)}"
+        )
         raise err
 
 

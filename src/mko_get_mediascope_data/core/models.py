@@ -85,6 +85,11 @@ class PeriodModel(BaseModel):
 
 
 class ReportSettings(BaseModel):
+    # extra="allow" permits API parameter overrides (slices, statistics,
+    # options, company_filter, …) at the report level, enabling the intended
+    # two-layer merge (DEFAULT base + CLIENT deltas) described in
+    # data-flow-architecture.md. The merge_data_settings method only overlays
+    # keys that already exist in DATA_DEFAULTS, so unknown keys are harmless.
     model_config = ConfigDict(extra="allow")
     check_done: bool | None = True
     report_type: ReportType

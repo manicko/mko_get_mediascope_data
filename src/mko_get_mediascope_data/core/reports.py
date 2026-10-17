@@ -20,6 +20,7 @@ from mko_get_mediascope_data.core.models import (
     ReportSubtype,
     ReportType,
 )
+from mko_get_mediascope_data.core.errors import NoReportFoundError
 from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.tasks import TVTask
 
@@ -43,7 +44,7 @@ class ReportFactory:
 
     @property
     def data_strategy(self):
-        if "DICT" in self.report_subtype.value.upper():
+        if self.report_subtype == ReportSubtype.DYNAMICS_BY_SPOTS_DICT:
             return DictDataStrategy
         else:
             return self._data_strategy
@@ -161,8 +162,11 @@ class MediaReport(Report):
                 else:
                     await coro
                 if item.status is False:
-                    logger.warning(f"Calculation: '{item.name}' will be skipped.")
-                    await asyncio.to_thread(item.to_yaml, self.export_path)
+                    if item.log_error:
+                        logger.warning(f"Calculation: '{item.name}' will be skipped.")
+                        await asyncio.to_thread(item.to_yaml, self.export_path)
+                    else:
+                        logger.warning(f"No data for task '{item.name}' — skipping.")
                 else:
                     logger.info(f"Task {item.name} is ready.")
             except TimeoutError:
@@ -190,8 +194,25 @@ class MediaReport(Report):
             asyncio.create_task(self.worker(timeout=timeout))
             for _ in range(self.max_tasks)
         ]
+        enqueued = 0
         async for task in self.generate_tasks():
             await self.task_queue.put(task)
+            enqueued += 1
+        if enqueued == 0:
+            for t in task_group:
+                t.cancel()
+            if self.check_done and self.done_files:
+                logger.warning(
+                    "All tasks were skipped because their output files "
+                    "already exist (check_done=True). Nothing to do."
+                )
+                return
+            raise NoReportFoundError(
+                "No tasks were generated for this report. Check that "
+                "target_audiences and the period produce at least one "
+                "interval — the requested period may be empty or outside "
+                "the available data range."
+            )
         await self.task_queue.join()
         for t in task_group:
             t.cancel()
@@ -298,6 +319,17 @@ class TVMediaReport(MediaReport):
                 max(available_period[0], raw_period[0]),
                 min(available_period[1], raw_period[1]),
             )
+            if period[0] > period[1]:
+                raise NoReportFoundError(
+                    f"Requested period {raw_period} has no overlap with the "
+                    f"available data range {tuple(available_period)}."
+                )
+            if period != (raw_period[0], raw_period[1]):
+                logger.warning(
+                    f"Requested period {tuple(raw_period)} partially overlaps "
+                    f"available range {tuple(available_period)}; "
+                    f"using clamped intersection {period}."
+                )
             if self.report_settings.multiple_files:
                 return utils.slice_period(period, frequency)
             return [period]
@@ -324,14 +356,32 @@ class TVMediaReport(MediaReport):
             task.log_error = True
             task.error = "Task.key is not received from API."
 
-    async def wait_task(self, task):
+    async def wait_task(self, task, *, max_polls: int = 60, poll_deadline: float = 3600.0):
         """
         Requesting status of the task using Mediascope API
         :param task: Task object keeping params for the request
+        :param max_polls: Maximum number of poll iterations before giving up.
+        :param poll_deadline: Maximum wall-clock seconds before giving up.
         :return: Nothing
         """
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        polls = 0
+        sleep_interval = 2.0
         while True:
-            await asyncio.sleep(2)
+            polls += 1
+            if polls >= max_polls:
+                task.status = False
+                task.log_error = True
+                task.error = f"Poll deadline exceeded ({max_polls} polls)"
+                break
+            if loop.time() - start > poll_deadline:
+                task.status = False
+                task.log_error = True
+                task.error = f"Poll deadline exceeded ({poll_deadline}s)"
+                break
+
+            await asyncio.sleep(sleep_interval)
 
             status = await self.network_client.call(
                 self.report_service.get_status, task.key, sleep_time=40
@@ -345,8 +395,15 @@ class TVMediaReport(MediaReport):
             elif isinstance(status, dict):
                 # print(f'\n Task {task.name} status:
                 # {status.get('taskStatus', None)}, {status.get('message', None)}')
-                if status.get("taskStatus", None) in ("DONE", "FAILED", "CANCELLED"):
+                terminal = status.get("taskStatus", None)
+                if terminal in ("DONE", "FAILED", "CANCELLED"):
+                    if terminal in ("FAILED", "CANCELLED"):
+                        task.status = False
+                        task.log_error = True
+                        task.error = f"Task {terminal}"
                     break
+
+            sleep_interval = min(sleep_interval * 2, 60.0)
 
     async def extract_data(self, task):
         """Exports data to the CSV file
@@ -373,7 +430,7 @@ class TVMediaReport(MediaReport):
                 task.status = False
                 task.log_error = False
             else:
-                df = await self.prepare_data(df)
+                df = await self.prepare_data(df, task_name=task.name)
                 if df is None:
                     task.status = False
                     task.log_error = False
@@ -392,8 +449,10 @@ class TVMediaReport(MediaReport):
         async for task in self.task_strategy.generate(self):
             yield task
 
-    async def prepare_data(self, df: DataFrame) -> DataFrame | None:
-        return await self.data_strategy.prepare(self, df)
+    async def prepare_data(
+        self, df: DataFrame, task_name: str | None = None
+    ) -> DataFrame | None:
+        return await self.data_strategy.prepare(self, df, task_name=task_name)
 
 
 # ====================== STRATEGIES ======================
@@ -409,8 +468,14 @@ class TaskGenerationStrategy(ABC):
 
 class DataPreparationStrategy(ABC):
     @abstractmethod
-    async def prepare(self, report: TVMediaReport, df: DataFrame) -> DataFrame | None:
-        """Prepare DataFrame."""
+    async def prepare(
+        self, report: TVMediaReport, df: DataFrame, task_name: str | None = None
+    ) -> DataFrame | None:
+        """Prepare DataFrame.
+
+        :param task_name: Name of the task being processed, included in
+            error logging for traceability (PIPE-008).
+        """
 
 
 class DefaultTVTaskStrategy(TaskGenerationStrategy):
@@ -492,16 +557,22 @@ class TVRegTaskStrategy(TaskGenerationStrategy):
                     task.interval = interval
                     task.target = t_name
                     if task.name in report.done_files:
+                        logger.warning(
+                            f"File '{task.name}' already exists in folder, skipping."
+                        )
                         continue
                     yield task
 
 
 class DefaultDataStrategy(DataPreparationStrategy):
-    async def prepare(self, report: TVMediaReport, df: DataFrame) -> DataFrame | None:
+    async def prepare(
+        self, report: TVMediaReport, df: DataFrame, task_name: str | None = None
+    ) -> DataFrame | None:
         """
         Prepare DataFrame with data
         :param df: pandas DataFrame
         :param report: TVMediaReport
+        :param task_name: Name of the task being processed (for error logging).
         :return:
         """
         try:
@@ -514,12 +585,17 @@ class DefaultDataStrategy(DataPreparationStrategy):
                 df = utils.pivot_df_frequency(df, report.output_columns["slices"])
             return df
         except KeyError as err:
-            logger.error(f"Error '{err}' while processing data.")
+            logger.error(
+                f"Error '{err}' while processing data "
+                f"for task '{task_name}'."
+            )
             return None
 
 
 class DictDataStrategy(DataPreparationStrategy):
-    async def prepare(self, report: TVMediaReport, df: DataFrame) -> DataFrame | None:
+    async def prepare(
+        self, report: TVMediaReport, df: DataFrame, task_name: str | None = None
+    ) -> DataFrame | None:
         data_settings = report.data_settings
         if isinstance(data_settings, dict):
             output_columns = data_settings.get("slices")
