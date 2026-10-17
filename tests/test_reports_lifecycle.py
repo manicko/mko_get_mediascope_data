@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pandas as pd
 import pytest
+import yaml
 from unidecode import unidecode
 
 from mko_get_mediascope_data.core.errors import NoReportFoundError
@@ -23,6 +24,7 @@ from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
 from mko_get_mediascope_data.core.reports import ReportFactory, TVMediaReport
 from mko_get_mediascope_data.core.services import AppService
+from mko_get_mediascope_data.core.tasks import TVTask
 
 _LOG_CONFIG_YAML = """
 version: 1
@@ -469,3 +471,187 @@ async def test_create_report_out_of_range_date_filter_raises(
     # ---- 9. Run — expect NoReportFoundError with "no overlap" -------------
     with pytest.raises(NoReportFoundError, match="no overlap"):
         await report.create_report()
+
+
+@pytest.mark.asyncio
+async def test_wait_task_max_polls_limit(
+    tmp_path: Path,
+    mocker,
+    tv_yaml_content: str,
+    dummy_df: pd.DataFrame,
+):
+    """PIPE-006: the inner ``max_polls`` guard breaks the ``wait_task`` loop.
+
+    The existing timeout test only exercises the outer ``asyncio.wait_for``
+    wrapper in ``worker`` — the inner ``max_polls`` / ``poll_deadline`` guards
+    in ``wait_task`` are never triggered.  Here ``get_status`` is doubled to
+    return a non-terminal ``IN_PROGRESS`` status so the poll loop would spin
+    forever without the guard.
+
+    The guard is ``if polls >= max_polls`` and is checked at the *top* of each
+    iteration, before the status poll.  Therefore ``max_polls=2`` is the smallest
+    value that lets exactly one real poll run (so ``get_status`` is called once,
+    receiving the non-terminal status) and then trips the counter on the next
+    iteration — terminating via the inner guard rather than any outer timeout.
+    (``max_polls=1`` would trip the guard before any poll, calling ``get_status``
+    zero times, which would not exercise the poll path.)
+    """
+
+    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
+    yaml_data = json.loads(tv_yaml_content)
+    report_settings = ReportSettings(**yaml_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = _build_hermetic_app_service(tmp_path)
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns --------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask — non-terminal status -------------
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    # Non-terminal status — without the max_polls guard the loop would spin
+    # indefinitely waiting for the (mocked) task to finish.
+    mock_report_service.get_status.return_value = {"taskStatus": "IN_PROGRESS"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) ------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 7. Export path + report construction -------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 8. Build a simple task and drive wait_task directly -----------
+    # wait_task is called directly — no need for the full create_report()
+    # pipeline or the outer asyncio.wait_for wrapper.
+    task = TVTask("test_wait_task", {}, "DYNAMICS_BY_SPOTS", "crosstab")
+    task.key = {"taskJson": "mock_key"}
+
+    await report.wait_task(task, max_polls=2)
+
+    # ---- 9. Assertions -------------------------------------------------
+    # The inner max_polls guard terminated the loop -> task marked failed.
+    assert task.status is False
+    assert task.log_error is True
+    assert "Poll deadline" in task.error
+
+    # Exactly one poll ran before the guard tripped the counter.
+    assert mock_report_service.get_status.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_handles_exception_and_writes_error_yaml(
+    tmp_path: Path,
+    mocker,
+    tv_yaml_content: str,
+    dummy_df: pd.DataFrame,
+):
+    """PIPE-007: worker's ``except Exception`` branch writes the error YAML.
+
+    ``send_task`` is doubled to raise ``RuntimeError`` — a non-timeout failure
+    from the upstream API layer.  ``worker`` must catch it via
+    ``except Exception`` (distinct from the ``except TimeoutError`` path
+    covered by ``test_create_report_timeout_does_not_hang``), mark the task
+    failed, and write an error YAML before draining the queue.
+    """
+
+    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
+    yaml_data = json.loads(tv_yaml_content)
+    report_settings = ReportSettings(**yaml_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = _build_hermetic_app_service(tmp_path)
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns --------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask — send_task raises RuntimeError ---
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    # Non-timeout API failure — must be caught by ``except Exception``, not
+    # the ``except TimeoutError`` branch exercised elsewhere.
+    mock_report_service.send_task.side_effect = RuntimeError("API connection refused")
+    # The real ``NetworkClient.call`` reads ``func.__name__`` while logging a
+    # failed call.  A bare ``MagicMock`` raises ``AttributeError('__name__')``
+    # on that access (masking the intended ``RuntimeError``), so give the mock
+    # a ``__name__`` like a real bound method to let the original error through.
+    mock_report_service.send_task.__name__ = "send_task"
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) ------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 7. Export path ------------------------------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    # ---- 8. Construct report with check_done=False --------------------
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 9. Run — worker must catch the RuntimeError, not re-raise -----
+    # Inner timeout (1.0s) is per-task; the outer wait_for (10.0s) is the
+    # safety net ensuring the suite cannot hang if task_done() is ever dropped.
+    await asyncio.wait_for(report.create_report(timeout=1.0), timeout=10.0)
+
+    # ---- 10. Assertions ------------------------------------------------
+    # No status poll should occur: the task fails in send_task before
+    # wait_task is ever reached.
+    mock_report_service.get_status.assert_not_called()
+
+    # Error YAML written for the failed task (task name + .yaml).
+    error_files = list(export_path.glob("errors/*.yaml"))
+    assert len(error_files) >= 1, (
+        f"Expected an error YAML in {export_path / 'errors'}, "
+        f"found {len(error_files)}"
+    )
+
+    # The recorded error is the API failure ("API connection refused"), NOT a
+    # "Timeout after ..." message — proving the ``except Exception`` branch
+    # (not ``except TimeoutError``) ran.
+    error_payload = yaml.safe_load(error_files[0].read_text(encoding="utf-8"))
+    assert error_payload["error"] == "API connection refused"
+    assert error_payload["log_error"] is True
+
+    # Queue accounting: every enqueued task was task_done()'d — no join hang.
+    assert report.task_queue.qsize() == 0
