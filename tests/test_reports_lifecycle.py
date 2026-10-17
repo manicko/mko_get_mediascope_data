@@ -9,6 +9,7 @@ mocked -- only the external Mediascope API client is doubled.
 
 import asyncio
 import json
+import logging
 import shutil
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -655,3 +656,189 @@ async def test_worker_handles_exception_and_writes_error_yaml(
 
     # Queue accounting: every enqueued task was task_done()'d — no join hang.
     assert report.task_queue.qsize() == 0
+
+
+# ---------------------------------------------------------------------------
+# PIPE-009: worker log_error True/False branches
+# ---------------------------------------------------------------------------
+
+_REPORTER_LOGGER = "mko_get_mediascope_data.core.reports"
+
+
+@pytest.mark.asyncio
+async def test_worker_log_error_true_writes_yaml(
+    tmp_path: Path,
+    mocker,
+    tv_yaml_content: str,
+    dummy_df: pd.DataFrame,
+):
+    """PIPE-009 (``log_error=True``): worker writes error YAML on API key failure.
+
+    ``send_task`` on the doubled ``MediaVortexTask`` is configured to return
+    an empty string (falsy).  ``TVMediaReport.send_task`` then sets
+    ``task.key = ""``; the ``not task.key`` guard marks the task as
+    ``status=False, log_error=True``.
+
+    The ``worker`` logs a "will be skipped" warning and calls ``to_yaml``,
+    writing the error artifact to ``export_path/errors/`` with
+    ``log_error=True``.
+    """
+
+    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
+    yaml_data = json.loads(tv_yaml_content)
+    report_settings = ReportSettings(**yaml_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = _build_hermetic_app_service(tmp_path)
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns --------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask — send_task returns falsy key ----
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    # Empty string is falsy → TVMediaReport.send_task sets log_error=True
+    mock_report_service.send_task.return_value = ""
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) ------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 7. Export path ------------------------------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    # ---- 8. Construct report with check_done=False ---------------------
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 9. Run real pipeline ----------------------------------------
+    await asyncio.wait_for(report.create_report(), timeout=10.0)
+
+    # ---- 10. Assertions ------------------------------------------------
+    # task_done() always called — queue fully drained (no join hang).
+    assert report.task_queue.qsize() == 0
+
+    # Error YAML written for the failed task.
+    error_files = list(export_path.glob("errors/*.yaml"))
+    assert len(error_files) == 1, (
+        f"Expected 1 error YAML in {export_path / 'errors'}, "
+        f"found {len(error_files)}"
+    )
+
+    # The recorded log_error field must be True.
+    error_payload = yaml.safe_load(error_files[0].read_text(encoding="utf-8"))
+    assert error_payload["log_error"] is True
+
+
+@pytest.mark.asyncio
+async def test_worker_log_error_false_no_yaml(
+    tmp_path: Path,
+    mocker,
+    tv_yaml_content: str,
+    dummy_df: pd.DataFrame,
+):
+    """PIPE-009 (``log_error=False``): worker logs "No data" and writes no YAML.
+
+    ``send_task`` returns a valid key, ``get_status`` returns DONE,
+    ``get_result`` returns a non-False result, and ``result2table`` returns
+    an **empty** DataFrame.  ``extract_data`` then sets
+    ``task.status=False, log_error=False`` (reports.py:433-436).
+
+    The ``worker`` logs "No data for task … — skipping" and does **not**
+    call ``to_yaml``.
+    """
+
+    # ---- 1. Parse ReportSettings from the fixture YAML ----------------
+    yaml_data = json.loads(tv_yaml_content)
+    report_settings = ReportSettings(**yaml_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = _build_hermetic_app_service(tmp_path)
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Empty result DataFrame — triggers df.empty branch ----------
+    result_df = pd.DataFrame()
+
+    # ---- 4. Doubled MediaVortexTask — successful path to empty df -----
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    # Empty DataFrame → df.empty is True → log_error=False
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) ------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # dictConfig (called by _build_hermetic_app_service) replaces the root
+    # logger handlers, so caplog loses its handler.  Spy on the module-level
+    # logger.warning instead — this intercepts calls regardless of handler
+    # configuration.
+    reports_logger = logging.getLogger(_REPORTER_LOGGER)
+    mock_warning = mocker.spy(reports_logger, "warning")
+
+    # ---- 7. Export path ------------------------------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    # ---- 8. Construct report with check_done=False ---------------------
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 9. Run real pipeline ----------------------------------------
+    await asyncio.wait_for(report.create_report(), timeout=10.0)
+
+    # ---- 10. Assertions ------------------------------------------------
+    # task_done() always called — queue fully drained (no join hang).
+    assert report.task_queue.qsize() == 0
+
+    # No error YAML — the "No data" branch must not call to_yaml.
+    error_files = list(export_path.glob("errors/*.yaml"))
+    assert len(error_files) == 0, (
+        f"Expected 0 error YAML files, found {len(error_files)} at "
+        f"{export_path / 'errors'}"
+    )
+
+    # The "No data for task" warning confirms the log_error=False path.
+    warning_messages = [
+        str(call.args[0]) if call.args else ""
+        for call in mock_warning.call_args_list
+    ]
+    assert any("No data" in msg for msg in warning_messages), (
+        f"Expected a 'No data' warning, got calls: {mock_warning.call_args_list}"
+    )
