@@ -1,31 +1,31 @@
-"""Tests for ``TVTask.to_yaml`` (PIPE-010).
+"""Tests for ``TVTask.to_file`` (PIPE-010).
 
-``TVTask.to_yaml`` must raise ``TypeError`` when *folder* is ``None`` and
-must write a valid YAML round-trip to ``folder/errors/<name>.yaml`` when a
+``TVTask.to_file`` must raise ``TypeError`` when *folder* is ``None`` and
+must write a valid JSON5 round-trip to ``folder/errors/<name>.json5`` when a
 valid folder is supplied.
 """
 
+import json5
 import pytest
-import yaml
 
 from mko_get_mediascope_data.core.tasks import TVTask
 
 
-def test_to_yaml_raises_on_none_folder():
-    """PIPE-010: ``TVTask.to_yaml(None)`` raises ``TypeError``.
+def test_to_file_raises_on_none_folder():
+    """PIPE-010: ``TVTask.to_file(None)`` raises ``TypeError``.
 
     The method guards against a ``None`` folder — without a destination
     directory there is nowhere to write the error artifact.
     """
     task = TVTask("test_task", {}, "crosstab", "TV")
     with pytest.raises(TypeError, match="folder must be provided"):
-        task.to_yaml(None)
+        task.to_file(None)
 
 
-def test_to_yaml_writes_valid_yaml(tmp_path):
-    """PIPE-010: ``TVTask.to_yaml`` writes valid YAML to ``folder/errors/name.yaml``.
+def test_to_file_writes_valid_json5(tmp_path):
+    """PIPE-010: ``TVTask.to_file`` writes valid JSON5 to ``folder/errors/name.json5``.
 
-    The round-tripped YAML must contain ``name``, ``error``, ``log_error``,
+    The round-tripped JSON5 must contain ``name``, ``error``, ``log_error``,
     ``interval``, and ``target`` with the values set on the task.
     """
     task = TVTask("test_task", {}, "crosstab", "TV")
@@ -34,12 +34,12 @@ def test_to_yaml_writes_valid_yaml(tmp_path):
     task.error = "some error"
     task.log_error = True
 
-    task.to_yaml(tmp_path)
+    task.to_file(tmp_path)
 
-    yaml_file = tmp_path / "errors" / "test_task.yaml"
-    assert yaml_file.exists()
+    json5_file = tmp_path / "errors" / "test_task.json5"
+    assert json5_file.exists()
 
-    data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+    data = json5.load(json5_file.open(encoding="utf-8"))
     assert data["name"] == "test_task"
     assert data["error"] == "some error"
     assert data["log_error"] is True

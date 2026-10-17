@@ -165,7 +165,7 @@ class MediaReport(Report):
                 if item.status is False:
                     if item.log_error:
                         logger.warning(f"Calculation: '{item.name}' will be skipped.")
-                        await asyncio.to_thread(item.to_yaml, self.export_path)
+                        await asyncio.to_thread(item.to_file, self.export_path)
                     else:
                         logger.warning(f"No data for task '{item.name}' — skipping.")
                 else:
@@ -177,13 +177,13 @@ class MediaReport(Report):
                 item.status = False
                 item.log_error = True
                 item.error = f"Timeout after {timeout}s"
-                await asyncio.to_thread(item.to_yaml, self.export_path)
+                await asyncio.to_thread(item.to_file, self.export_path)
             except Exception as exc:
                 logger.error(f"Task '{item.name}' failed: {exc} — skipping.")
                 item.status = False
                 item.log_error = True
                 item.error = str(exc)
-                await asyncio.to_thread(item.to_yaml, self.export_path)
+                await asyncio.to_thread(item.to_file, self.export_path)
             finally:
                 self.task_queue.task_done()
 

@@ -4,7 +4,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, cast
 
-from yaml import safe_dump
+import json5
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +24,14 @@ class TVTask:
         self.report_type = report_type
         self.report_subtype = report_subtype
 
-    def to_yaml(self, folder: str | PathLike[str] | None = None):
+    def to_file(self, folder: str | PathLike[str] | None = None):
         if folder is None:
             raise TypeError(
-                "folder must be provided — to_yaml requires an output directory path"
+                "folder must be provided — to_file requires an output directory path"
             )
         folder = Path(folder) / "errors"
         folder.mkdir(parents=True, exist_ok=True)
-        export_file = folder / f"{self.name}.yaml"
+        export_file = folder / f"{self.name}.json5"
 
         interval: list[str] | list[date] | None = None
         if self.interval is not None:
@@ -49,9 +49,11 @@ class TVTask:
         }
         logger.info(f"Saving task settings for {self.name}")
         with open(export_file, "w", encoding="utf-8") as outfile:
-            safe_dump(
+            json5.dump(
                 dump_settings,
                 outfile,
-                sort_keys=False,
-                allow_unicode=True,
+                indent=2,
+                ensure_ascii=False,
+                quote_keys=True,
+                trailing_commas=False,
             )
