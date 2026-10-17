@@ -11,6 +11,12 @@ val_findings: 4
 problems_only: true
 ---
 
+<!-- JSON5-MIGRATION TODO: This validated-findings doc references pre-migration YAML
+  symbols (settings/log_config.yaml, yaml.safe_dump) that no longer exist after the
+  JSON5 settings templates migration. Anchors need re-verification in a future audit
+  pass; this does NOT block the implementation PR. Verdicts remain factually
+  accurate as historical records of the code_ref (d093d9c). -->
+
 # Phase 09 (External API) — Validated Findings
 
 ## Summary
