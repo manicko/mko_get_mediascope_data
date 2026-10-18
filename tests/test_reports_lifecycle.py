@@ -848,3 +848,266 @@ async def test_worker_log_error_false_no_json5(
     assert any("No data" in msg for msg in warning_messages), (
         f"Expected a 'No data' warning, got calls: {mock_warning.call_args_list}"
     )
+
+
+# ---------------------------------------------------------------------------
+# EXT-003: FAILED / CANCELLED terminal-status reset in wait_task
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_wait_task_resets_status_on_failed(
+    tmp_path: Path,
+    mocker,
+    tv_json5_content: str,
+    dummy_df: pd.DataFrame,
+):
+    """EXT-003: terminal FAILED status resets task fields and skips extract_data.
+
+    ``get_status`` returns ``{"taskStatus": "FAILED"}`` immediately.
+    ``wait_task`` must reset ``task.status=False``, ``task.log_error=True``,
+    ``task.error="Task FAILED"`` and never reach ``extract_data``
+    (which calls ``get_result``).
+    """
+
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = _build_hermetic_app_service(tmp_path)
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns --------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask — FAILED status -------------------
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.get_status.return_value = {"taskStatus": "FAILED"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) -------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 7. Export path + report construction ---------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 8. Build a task and drive wait_task directly -------------------
+    # wait_task is called directly — no need for the full create_report()
+    # pipeline.  max_polls=5 lets the single terminal poll run before the
+    # inner guard could trip.
+    task = TVTask("test_wait_task_failed", {}, "DYNAMICS_BY_SPOTS", "crosstab")
+    task.key = {"taskJson": "mock_key"}
+
+    await report.wait_task(task, max_polls=5)
+
+    # ---- 9. Assertions --------------------------------------------------
+    # EXT-003: terminal FAILED resets status and records the error.
+    assert task.status is False
+    assert task.log_error is True
+    assert task.error == "Task FAILED"
+
+    # extract_data was never reached — get_result was not called.
+    mock_report_service.get_result.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_wait_task_resets_status_on_cancelled(
+    tmp_path: Path,
+    mocker,
+    tv_json5_content: str,
+    dummy_df: pd.DataFrame,
+):
+    """EXT-003: terminal CANCELLED status resets task fields and skips extract_data.
+
+    Same as ``test_wait_task_resets_status_on_failed`` but with a
+    ``CANCELLED`` terminal status from the API.
+    """
+
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = _build_hermetic_app_service(tmp_path)
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns --------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask — CANCELLED status ----------------
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.get_status.return_value = {"taskStatus": "CANCELLED"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) -------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 7. Export path + report construction ---------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 8. Build a task and drive wait_task directly -------------------
+    task = TVTask("test_wait_task_cancelled", {}, "DYNAMICS_BY_SPOTS", "crosstab")
+    task.key = {"taskJson": "mock_key"}
+
+    await report.wait_task(task, max_polls=5)
+
+    # ---- 9. Assertions --------------------------------------------------
+    # EXT-003: terminal CANCELLED resets status and records the error.
+    assert task.status is False
+    assert task.log_error is True
+    assert task.error == "Task CANCELLED"
+
+    # extract_data was never reached — get_result was not called.
+    mock_report_service.get_result.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_worker_does_not_log_ready_on_failed(
+    tmp_path: Path,
+    mocker,
+    tv_json5_content: str,
+    dummy_df: pd.DataFrame,
+):
+    """EXT-003: worker logs "will be skipped" (not "is ready") for FAILED tasks.
+
+    The full ``create_report`` pipeline runs with ``get_status`` returning
+    ``{"taskStatus": "FAILED"}``.  ``wait_task`` resets ``task.status=False`` /
+    ``log_error=True``, so ``_process_item`` skips ``extract_data``.  The
+    ``worker`` must log a "will be skipped" warning (not "is ready"),
+    write an error JSON5, and never call ``get_result``.
+    """
+
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = _build_hermetic_app_service(tmp_path)
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns --------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask — FAILED status -------------------
+    # send_task returns a valid key (so task enters wait_task), then
+    # get_status returns FAILED — exercising the EXT-003 reset path.
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.get_status.return_value = {"taskStatus": "FAILED"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) ------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 7. Spy on reports logger ---------------------------------------
+    # dictConfig (called by _build_hermetic_app_service) replaces the root
+    # logger handlers, so caplog loses its handler.  Spy on the module-level
+    # logger.info / logger.warning instead — this intercepts calls regardless
+    # of handler configuration.
+    reports_logger = logging.getLogger(_REPORTER_LOGGER)
+    mock_warning = mocker.spy(reports_logger, "warning")
+    mock_info = mocker.spy(reports_logger, "info")
+
+    # ---- 8. Export path + report construction ---------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 9. Run real pipeline ----------------------------------------
+    await asyncio.wait_for(report.create_report(), timeout=10.0)
+
+    # ---- 10. Assertions ------------------------------------------------
+    # task_done() always called — queue fully drained (no join hang).
+    assert report.task_queue.qsize() == 0
+
+    # "is ready" must NOT be logged for the failed task.
+    info_messages = [
+        str(call.args[0]) if call.args else ""
+        for call in mock_info.call_args_list
+    ]
+    assert not any("is ready" in msg for msg in info_messages), (
+        f"Expected 'is ready' NOT to be logged, got calls: {mock_info.call_args_list}"
+    )
+
+    # "will be skipped" must be logged.
+    warning_messages = [
+        str(call.args[0]) if call.args else ""
+        for call in mock_warning.call_args_list
+    ]
+    assert any("will be skipped" in msg for msg in warning_messages), (
+        f"Expected a 'will be skipped' warning, got calls: {mock_warning.call_args_list}"
+    )
+
+    # Error JSON5 written for the failed task.
+    error_files = list(export_path.glob("errors/*.json5"))
+    assert len(error_files) == 1, (
+        f"Expected 1 error JSON5 in {export_path / 'errors'}, "
+        f"found {len(error_files)}"
+    )
+
+    # extract_data was never reached — get_result was not called.
+    mock_report_service.get_result.assert_not_called()
