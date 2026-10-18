@@ -213,8 +213,10 @@ Error path worth understanding, with the failure classes separated `[code]`:
 Runtime knobs that shape behavior, all hard-coded defaults (no config file
 maps to them): `max_tasks = 100` (`reports.py:94`), `NetworkClient`
 (`max_concurrent_requests=5`, `sleep_time=2`, `max_attempts=10`,
-`network.py:51-59`), poll cadence `asyncio.sleep(2)` + `get_status(
-sleep_time=40)` (`reports.py:388, 390-392`).
+`call_timeout=300.0`, `retry_5xx=False`, `log_errors_detail=False`,
+`network.py:58-66`), task-submission POST passes `retryable=False`
+(reports.py:354), poll cadence `asyncio.sleep(2)` + `get_status(
+sleep_time=2)` (`reports.py:389, 391-393`).
 
 ### Design decisions and trade-offs
 
