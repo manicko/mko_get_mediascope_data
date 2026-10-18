@@ -169,3 +169,22 @@ async def test_call_preserves_return_type(mocker):
     assert result == {"result": "ok"}
     assert isinstance(result, dict)
     assert all(isinstance(k, str) and isinstance(v, str) for k, v in result.items())
+
+
+@pytest.mark.asyncio
+async def test_send_task_not_retried_on_retryable_error(mocker):
+    """EXT-001: non-retryable call does not retry on a retryable exception."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+    call_count = [0]
+
+    def send_task_func(_task_json):
+        call_count[0] += 1
+        raise ConnectTimeout("connection timed out")
+
+    with pytest.raises(ConnectTimeout, match="connection timed out"):
+        await client.call(send_task_func, {"task": "json"}, retryable=False)
+
+    assert call_count[0] == 1, (
+        f"Expected exactly 1 call (no retry), got {call_count[0]}"
+    )

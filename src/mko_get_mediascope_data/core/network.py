@@ -65,12 +65,17 @@ class NetworkClient:
         func: Callable[..., T],
         *args: Any,
         sleep_time: int | float = 2,
+        retryable: bool = True,
         **kwargs: Any,
     ) -> T:
         _sleep_time = max(sleep_time, self._sleep_time)
 
         # Small initial delay to smooth peak loads
         await asyncio.sleep(uniform(_sleep_time * 0.5, _sleep_time * 2))
+
+        if not retryable:
+            async with self._semaphore:
+                return await asyncio.to_thread(func, *args, **kwargs)
 
         for attempt in range(1, self._max_attempts + 1):
             try:

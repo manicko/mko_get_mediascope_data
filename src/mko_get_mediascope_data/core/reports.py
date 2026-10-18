@@ -351,7 +351,7 @@ class TVMediaReport(MediaReport):
         )
         if task_json is not False:
             task.key = {}
-            task.key = await self.network_client.call(self.sender, task_json)
+            task.key = await self.network_client.call(self.sender, task_json, retryable=False)
 
             logger.info("=")
         if not task.key:
