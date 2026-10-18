@@ -54,10 +54,10 @@ The settings system has two layers, each loaded by a distinct Pydantic model:
 
 | File | MediaType | ReportType | Key characteristics |
 |---|---|---|---|
-| `settings/defaults/tv/crosstab.json5` | TV | crosstab | 15 keys in `DATA_DEFAULTS`; subtype blocks `DYNAMICS_BY_SPOTS` (kitId=1, L59), `DYNAMICS_BY_SPOTS_DICT` (kitId=1, L87), `TOP_NAT_TV_ADVERTISERS` (no kitId — duplicate `issueType` at L107), `TOP_NAT_TV_PROGRAMS` (kitId=7, L128), `NAT_TV_CHANNELS_ATV` (kitId=1, L150), `NAT_TV_CHANNELS_BA` (kitId=7, L166), `NAT_TV_CHANNELS_SOC_DEM` (kitId=1, L181) |
+| `settings/defaults/tv/crosstab.json5` | TV | crosstab | 15 keys in `DATA_DEFAULTS`; subtype blocks `DYNAMICS_BY_SPOTS` (kitId=1, L60), `DYNAMICS_BY_SPOTS_DICT` (kitId=1, L88), `TOP_NAT_TV_ADVERTISERS` (kitId=1, L105), `TOP_NAT_TV_PROGRAMS` (kitId=7, L127), `NAT_TV_CHANNELS_ATV` (kitId=1, L149), `NAT_TV_CHANNELS_BA` (kitId=7, L165), `NAT_TV_CHANNELS_SOC_DEM` (kitId=1, L180) |
 | `settings/defaults/tv/timeband.json5` | TV | timeband | `DATA_DEFAULTS` only (includes `time_filter`), no subtype blocks |
 | `settings/defaults/tv/simple.json5` | TV | simple | Ships at HEAD (was missing, now added) |
-| `settings/defaults/tv_reg/crosstab.json5` | TV_REG | crosstab | 15 keys in `DATA_DEFAULTS`; `options.kitId=3` in base; subtype blocks `DYNAMICS_BY_SPOTS`, `DYNAMICS_BY_SPOTS_DICT` |
+| `settings/defaults/tv_reg/crosstab.json5` | TV_REG | crosstab | 17 keys in `DATA_DEFAULTS`; `options.kitId=3` ("TV Index Cities") in base; subtype blocks `DYNAMICS_BY_SPOTS` (kitId=3, L73), `DYNAMICS_BY_SPOTS_DICT` (kitId=3, L99) |
 | `settings/defaults/tv_reg/timeband.json5` | TV_REG | timeband | Ships at HEAD (was missing, now added) |
 | `settings/defaults/tv_reg/simple.json5` | TV_REG | simple | Ships at HEAD (was missing, now added) |
 
