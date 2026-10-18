@@ -9,7 +9,7 @@
     "location_filter": null,  // Set viewing location
     "basedemo_filter": null,  // Set target audience
     "targetdemo_filter": null, // Additional target audience filter, only needed when calculating the ratio between audiences, e.g. when calculating Affinity Index
-    "slices": null,  // Specify list of slices
+    "slices": [],  // Specify list of slices
     "statistics": null,  // Specify list of statistics for calculation
     "sortings": null,  // Set sorting conditions:
     "options": null  // Set calculation options

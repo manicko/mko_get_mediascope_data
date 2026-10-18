@@ -221,6 +221,8 @@ def csv_to_file(
 
 
 def en_to_ru(slices_en: list[Any]) -> list[Any]:
+    if slices_en is None:
+        return []
     try:
         slices_ru: list[list[Any]] = [[] for _ in range(len(slices_en))]
         for i, param in enumerate(slices_en):

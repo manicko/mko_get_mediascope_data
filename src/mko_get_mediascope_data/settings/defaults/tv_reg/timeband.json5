@@ -12,7 +12,7 @@
     "break_filter": null,  // Break filter
     "ad_filter": null,  // Ad filter:
     "sortings": null,  // Set sorting conditions:
-    "slices": null,  // Specify list of slices
+    "slices": [],  // Specify list of slices
     "statistics": null,  // Specify list of statistics for calculation
 
     "options": {

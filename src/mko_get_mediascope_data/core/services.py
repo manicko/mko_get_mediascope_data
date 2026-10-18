@@ -128,7 +128,9 @@ class AppService:
                 data_settings[k] = v
 
         if report_settings.data_lang == "ru":
-            data_settings["slices"] = utils.en_to_ru(data_settings["slices"])
+            slices = data_settings.get("slices")
+            if slices is not None:
+                data_settings["slices"] = utils.en_to_ru(slices)
 
         return data_settings
 

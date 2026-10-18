@@ -64,6 +64,28 @@ def test_merge_data_settings_en_does_not_translate(mocker):
     assert result["slices"] == ["EName_col"]
 
 
+def test_merge_data_settings_ru_with_none_slices():
+    """merge_data_settings must not crash when data_lang='ru' and slices is None.
+
+    Reproduces TPL-003: defaults with slices=null and data_lang='ru' should
+    not raise TypeError from en_to_ru(None).
+    """
+    defaults = DataDefaults(DATA_DEFAULTS={"slices": None})
+
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        relative_path="tv/test",  # type: ignore[arg-type]
+        data_lang="ru",
+        period={"last_time": {"unit_count": 1}, "time_unit": "m"},  # type: ignore[arg-type]
+    )
+
+    result = AppService.merge_data_settings(defaults, report_settings)
+    # slices remains None (not translated); coerce_none_to_empty on Data will
+    # convert it to [] later.
+    assert result["slices"] is None
+
+
 def test_bundled_templates_validate():
     """All 32 entries across 16 bundled JSON5 report templates must pass
     ReportSettings validation.

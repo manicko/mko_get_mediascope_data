@@ -3,6 +3,7 @@ import pytest
 
 from mko_get_mediascope_data.core.utils import (
     csv_to_file,
+    en_to_ru,
     get_files_suffix,
     slice_period,
     str_to_date,
@@ -47,3 +48,8 @@ def test_csv_to_file_writes_to_report_dir(tmp_report_dir):
     files = list(tmp_report_dir.glob("*.csv.gz"))
     assert len(files) == 1
     assert files[0].parent == tmp_report_dir
+
+
+def test_en_to_ru_handles_none():
+    """en_to_ru(None) returns [] rather than raising TypeError."""
+    assert en_to_ru(None) == []

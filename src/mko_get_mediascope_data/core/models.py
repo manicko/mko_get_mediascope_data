@@ -143,6 +143,6 @@ class Data(BaseModel):
 
         JSON5 ``null`` values resolve to ``None`` when loaded, but the
         downstream consumers expect a list. This prevents ``ValidationError``
-        when ``DATA_DEFAULTS`` contains ``Null`` entries.
+        when ``DATA_DEFAULTS`` contains ``null`` entries.
         """
         return [] if v is None else v
