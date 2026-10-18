@@ -17,6 +17,7 @@ from mko_get_mediascope_data.core.models import (
     MediaType,
     ReportSettings,
 )
+from mko_get_mediascope_data.core.errors import WrongDataSettings
 from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
 from mko_get_mediascope_data.core.reports import ReportFactory, TVMediaReport
@@ -105,6 +106,13 @@ class AppService:
             report_settings.media.value.lower(),
             report_settings.report_type.value.lower(),
         ).with_suffix(".json5")
+        if not data_default_settings_path.exists():
+            raise WrongDataSettings(
+                f"Default data settings file not found for "
+                f"media={report_settings.media.value}, "
+                f"report_type={report_settings.report_type.value}: "
+                f"{data_default_settings_path}"
+            )
         data_defaults_dict = utils.json5_to_dict(data_default_settings_path)
         if not isinstance(data_defaults_dict, dict):
             raise TypeError(

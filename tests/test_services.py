@@ -248,3 +248,27 @@ def test_get_default_data_settings_missing_file() -> None:
         defaults = DataDefaults(**data)
         assert defaults.DATA_DEFAULTS is not None
 
+
+def test_get_default_data_settings_missing_defaults_raises_wrong_data_settings(
+    local_app_service: AppService,
+) -> None:
+    """Missing defaults file raises WrongDataSettings (not FileNotFoundError).
+
+    Reproduces TPL-005: get_default_data_settings must check path.exists()
+    and raise WrongDataSettings with a clear (media, report_type) message.
+    """
+    from mko_get_mediascope_data.core.errors import WrongDataSettings
+
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        relative_path="tv/test",
+        period={"last_time": {"unit_count": 1}, "time_unit": "m"},
+    )
+    # Remove the defaults file to trigger the missing-file path
+    missing_path = local_app_service.app_paths.defaults_dir / "tv" / "crosstab.json5"
+    missing_path.unlink()
+
+    with pytest.raises(WrongDataSettings, match="crosstab"):
+        local_app_service.get_default_data_settings(report_settings)
+
