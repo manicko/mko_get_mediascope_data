@@ -154,3 +154,18 @@ async def test_call_retries_with_default_max_attempts(mocker):
         await client.call(failing_func)
 
     assert call_count[0] == 10
+
+
+@pytest.mark.asyncio
+async def test_call_preserves_return_type(mocker):
+    """Verify that NetworkClient.call forwards the wrapped function's return value with the correct type."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+
+    def typed_func() -> dict[str, str]:
+        return {"result": "ok"}
+
+    result: dict[str, str] = await client.call(typed_func)
+    assert result == {"result": "ok"}
+    assert isinstance(result, dict)
+    assert all(isinstance(k, str) and isinstance(v, str) for k, v in result.items())

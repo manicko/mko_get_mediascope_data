@@ -5,7 +5,7 @@ import logging
 import socket
 from collections.abc import Callable
 from random import uniform
-from typing import Any
+from typing import Any, TypeVar
 
 from mediascope_api.core.errors import AuthorizationError, BadRequestError
 from requests.exceptions import (
@@ -21,6 +21,8 @@ from urllib3.exceptions import NameResolutionError, ProtocolError
 from mko_get_mediascope_data.core.errors import MaxRetriesExceeded
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 # All errors considered transient and worthy of retries
 RETRIABLE_EXCEPTIONS = (
@@ -60,11 +62,11 @@ class NetworkClient:
 
     async def call(
         self,
-        func: Callable[..., Any],
-        *args,
+        func: Callable[..., T],
+        *args: Any,
         sleep_time: int | float = 2,
-        **kwargs,
-    ) -> Any:
+        **kwargs: Any,
+    ) -> T:
         _sleep_time = max(sleep_time, self._sleep_time)
 
         # Small initial delay to smooth peak loads
