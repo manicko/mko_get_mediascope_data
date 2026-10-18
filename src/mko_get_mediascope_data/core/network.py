@@ -7,12 +7,16 @@ from collections.abc import Callable
 from random import uniform
 from typing import Any, TypeVar
 
-from mediascope_api.core.errors import AuthorizationError, BadRequestError
+from mediascope_api.core.errors import (
+    AuthorizationError,
+    BadRequestError,
+    MediascopeApiError,
+    TooManyRequestsError,
+)
 from requests.exceptions import (
     ChunkedEncodingError,
     ConnectionError,
     ConnectTimeout,
-    HTTPError,
     RetryError,
     Timeout,
 )
@@ -57,11 +61,15 @@ class NetworkClient:
         sleep_time: int = 2,
         max_attempts: int = 10,
         call_timeout: float | None = 300.0,
+        retry_5xx: bool = False,
+        log_errors_detail: bool = False,
     ):
         self._semaphore = asyncio.Semaphore(max_concurrent_requests)
         self._sleep_time = sleep_time
         self._max_attempts = max_attempts
         self._call_timeout = call_timeout
+        self._retry_5xx = retry_5xx
+        self._log_errors_detail = log_errors_detail
 
     async def _invoke(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         """Execute *func* in a worker thread, bounded by ``call_timeout``."""
@@ -69,6 +77,17 @@ class NetworkClient:
         if self._call_timeout is not None:
             return await asyncio.wait_for(coro, timeout=self._call_timeout)
         return await coro
+
+    def _redact_args(self, value: Any) -> str:
+        """Redact potentially sensitive arguments from error-log messages.
+
+        When ``log_errors_detail`` is ``False`` (default), args and kwargs are
+        replaced with ``"<redacted>"`` to avoid leaking PII (e.g. userName in
+        task JSON).  Set ``log_errors_detail=True`` for debugging.
+        """
+        if self._log_errors_detail:
+            return repr(value)
+        return "<redacted>"
 
     async def call(
         self,
@@ -100,14 +119,14 @@ class NetworkClient:
                 # 401 — is a known client error, not "Unexpected"
                 logger.error(
                     f'Authorization error (token invalid/expired) in "{func.__name__}" '
-                    f'with args="{args}" and kwargs="{kwargs}": {err}'
+                    f'with args="{self._redact_args(args)}" and kwargs="{self._redact_args(kwargs)}": {err}'
                 )
                 raise
 
             except FileNotFoundError as err:
                 logger.error(
                     f'File not found: "{err}" in function "{func.__name__}" '
-                    f'with args="{args}" and kwargs="{kwargs}"'
+                    f'with args="{self._redact_args(args)}" and kwargs="{self._redact_args(kwargs)}"'
                 )
                 raise
 
@@ -117,22 +136,29 @@ class NetworkClient:
                     f"attempt {attempt}/{self._max_attempts}: {err}"
                 )
 
-            except HTTPError as err:
-                status = getattr(err.response, "status_code", None)
+            except TooManyRequestsError as err:
+                # 429 — vendor does not expose Retry-After header on the
+                # exception (verified); falls back to exponential backoff below.
+                logger.warning(
+                    f"Rate limited (429) on attempt {attempt}/{self._max_attempts}: {err}"
+                )
 
-                if status and 400 <= status < 500:
-                    logger.error(f"Client error {status}: {err}")
-                    raise
-                else:
+            except MediascopeApiError as err:
+                # Unhandled HTTP status (403, 404, 204, 500, 502, etc.).
+                # 5xx is retried when retry_5xx=True; all others re-raise.
+                code = getattr(err, "code", None)
+                if self._retry_5xx and code is not None and 500 <= code < 600:
                     logger.warning(
-                        f"Server error {status} "
-                        f"attempt {attempt}/{self._max_attempts}: {err}"
+                        f"Server error ({code}) on attempt {attempt}/{self._max_attempts}: {err}"
                     )
+                else:
+                    logger.error(f"HTTP error ({code}) for {func.__name__}: {err}")
+                    raise
 
             except Exception as err:
                 logger.exception(
                     f'Unexpected error in "{func.__name__}" '
-                    f'with args="{args}" and kwargs="{kwargs}": {err}'
+                    f'with args="{self._redact_args(args)}" and kwargs="{self._redact_args(kwargs)}": {err}'
                 )
                 raise
 

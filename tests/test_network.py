@@ -1,10 +1,17 @@
 import asyncio
+import logging
 import threading
 import time
 from unittest.mock import AsyncMock
 
 import pytest
-from mediascope_api.core.errors import AuthorizationError, BadRequestError
+from mediascope_api.core.errors import (
+    AuthorizationError,
+    BadRequestError,
+    MediascopeApiError,  # noqa: F401  # imported for documentation / future use
+    ServerError,
+    TooManyRequestsError,
+)
 from requests.exceptions import ConnectTimeout
 
 from mko_get_mediascope_data.core.errors import MaxRetriesExceeded
@@ -215,3 +222,98 @@ async def test_call_raises_timeout_after_call_timeout(mocker):
 
     assert call_count[0] == 1  # single attempt (max_attempts=1)
     assert elapsed < 1.0  # bounded by call_timeout (0.5s), NOT the 2s blocking sleep
+
+
+@pytest.mark.asyncio
+async def test_call_retries_on_429(mocker):
+    """EXT-005: HTTP 429 (TooManyRequestsError) is retried, not raised immediately."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+    call_count = [0]
+
+    def rate_limited_func():
+        call_count[0] += 1
+        raise TooManyRequestsError("Слишком много запросов", 429)
+
+    with pytest.raises(MaxRetriesExceeded, match="Network retry limit exceeded"):
+        await client.call(rate_limited_func)
+
+    assert call_count[0] == 3  # retried up to max_attempts
+
+
+@pytest.mark.asyncio
+async def test_call_5xx_not_retried_by_default(mocker):
+    """EXT-005: 5xx (ServerError 500) raises immediately when retry_5xx=False (default)."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)  # retry_5xx defaults to False
+    call_count = [0]
+
+    def server_error_func():
+        call_count[0] += 1
+        raise ServerError("Ошибка сервера", 500)
+
+    with pytest.raises(ServerError):
+        await client.call(server_error_func)
+
+    assert call_count[0] == 1  # single attempt, no retry
+
+
+@pytest.mark.asyncio
+async def test_call_5xx_retried_when_enabled(mocker):
+    """EXT-005: 5xx (ServerError 500) is retried when retry_5xx=True."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0, retry_5xx=True)
+    call_count = [0]
+
+    def server_error_func():
+        call_count[0] += 1
+        raise ServerError("Ошибка сервера", 500)
+
+    with pytest.raises(MaxRetriesExceeded, match="Network retry limit exceeded"):
+        await client.call(server_error_func)
+
+    assert call_count[0] == 3  # retried up to max_attempts
+
+
+@pytest.mark.asyncio
+async def test_call_redacts_pii_in_error_logs(mocker, caplog):
+    """EXT-008: error logs redact args/kwargs by default (PII protection).
+
+    A function that raises RuntimeError is called with sensitive args and
+    kwargs.  The default NetworkClient (log_errors_detail=False) must NOT
+    include those values in the log output — only ``"<redacted>"``.
+    """
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=1, sleep_time=0)
+
+    def failing_func(*args, **kwargs):
+        raise RuntimeError("kaboom")
+
+    with caplog.at_level(logging.ERROR, logger="mko_get_mediascope_data.core.network"):
+        with pytest.raises(RuntimeError, match="kaboom"):
+            await client.call(
+                failing_func,
+                "sensitive_positional",
+                secret="secret_value_42",
+            )
+
+    log_text = caplog.text
+    assert "secret_value_42" not in log_text
+    assert "sensitive_positional" not in log_text
+    assert "<redacted>" in log_text
+
+
+@pytest.mark.asyncio
+async def test_call_logs_full_args_when_detail_enabled(mocker, caplog):
+    """EXT-008: log_errors_detail=True logs full args (debug mode)."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=1, sleep_time=0, log_errors_detail=True)
+
+    def failing_func(*args, **kwargs):
+        raise RuntimeError("kaboom")
+
+    with caplog.at_level(logging.ERROR, logger="mko_get_mediascope_data.core.network"):
+        with pytest.raises(RuntimeError, match="kaboom"):
+            await client.call(failing_func, "secret_value_42")
+
+    assert "secret_value_42" in caplog.text
