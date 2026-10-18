@@ -1,5 +1,6 @@
 import pytest
 import json5
+import re
 from datetime import date
 from pydantic import ValidationError
 
@@ -34,7 +35,9 @@ def test_period_model_validation():
     with pytest.raises(ValidationError):
         PeriodModel()  # neither date_filter nor last_time
 
-    valid = PeriodModel(last_time=LastTimeModel.model_validate({"unit_count": 4}), time_unit="m")
+    valid = PeriodModel(
+        last_time=LastTimeModel.model_validate({"unit_count": 4}), time_unit="m"
+    )
     assert valid.last_time is not None
     assert valid.last_time.unit_count == 4
 
@@ -112,7 +115,9 @@ def test_bundled_templates_validate():
                 failures.append(f"{rel} entry[{idx}]: {exc}")
 
     if failures:
-        msg = f"{len(failures)} of {total_entries} entries failed:\n" + "\n".join(failures)
+        msg = f"{len(failures)} of {total_entries} entries failed:\n" + "\n".join(
+            failures
+        )
         pytest.fail(msg)
 
     assert total_entries == 32, f"Expected 32 entries, found {total_entries}"
@@ -150,8 +155,47 @@ def test_period_model_rejects_both_date_filter_and_last_time():
     with pytest.raises(ValidationError, match="not both"):
         PeriodModel(
             date_filter=[date(2025, 1, 1), date(2025, 1, 7)],
-            last_time=LastTimeModel.model_validate(
-                {"unit_count": 1}
-            ),
+            last_time=LastTimeModel.model_validate({"unit_count": 1}),
             time_unit="m",
         )
+
+
+def test_bundled_templates_kitId_conformance() -> None:
+    """All kitId values in defaults and report templates must be from the
+    valid legend set {1,2,3,4,5,6,7,9,10}. No undefined kitId values.
+
+    Also verifies TOP_NAT_TV_ADVERTISERS in defaults has a kitId defined.
+    """
+    valid_kit_ids = {1, 2, 3, 4, 5, 6, 7, 9, 10}
+    reports_dir = APP_PATHS.app_settings_dir / "reports"
+    defaults_dir = APP_PATHS.app_settings_dir / "defaults"
+
+    # Check all JSON5 files for kitId values
+    all_json5 = list(reports_dir.rglob("*.json5")) + list(defaults_dir.rglob("*.json5"))
+    for f in all_json5:
+        text = f.read_text()
+        kit_ids = [int(m) for m in re.findall(r"kitId\s*:\s*(\d+)", text)]
+        for kid in kit_ids:
+            assert kid in valid_kit_ids, (
+                f"Invalid kitId={kid} in {f.relative_to(APP_PATHS.app_settings_dir)}"
+            )
+
+    # Verify TOP_NAT_TV_ADVERTISERS has kitId in defaults
+    tv_crosstab = defaults_dir / "tv" / "crosstab.json5"
+    text = tv_crosstab.read_text()
+    assert '"kitId": 1' in text or "'kitId': 1" in text or "kitId: 1" in text, (
+        "TOP_NAT_TV_ADVERTISERS default must define kitId"
+    )
+
+
+def test_tv_report_template_entry0_has_options() -> None:
+    """VAL-003: nat_tv_tvreport.json5 entry[0] (TOP_NAT_TV_ADVERTISERS)
+    must have an explicit options block (no longer relying on silent default).
+    """
+    report_path = APP_PATHS.app_settings_dir / "reports" / "nat_tv_tvreport.json5"
+    data = json5.loads(report_path.read_text())
+    entry0 = data[0]
+    assert "options" in entry0, (
+        "Entry[0] TOP_NAT_TV_ADVERTISERS must have options block"
+    )
+    assert entry0["options"]["kitId"] == 1, "kitId must be 1 (TV Index All Russia)"

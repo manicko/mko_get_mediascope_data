@@ -17,9 +17,9 @@
     ], // Specify list of slices
     statistics: null, // Specify list of statistics for calculation
     options: {
-      // dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      // dataset id (1-TV Index All Russia, 2-TV Index Russia 100+, 3-TV Index Cities, 4-TV Index Plus All Russia, 5-TV Index Plus Russia 100+, 6-TV Index Moscow, 7-Big TV, 9-TV Index Russia Special, 10-TV Index Moscow Special)
       // Only one value can be specified
-      kitId: 3, //TV Reg
+      kitId: 3, //TV Index Cities
       issueType: 'AD', // Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       standRtg: {
         useRealDuration: false, // Calculated based on actual ad duration.
@@ -68,9 +68,9 @@
     ],
     // Set calculation options
     options: {
-      // dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      // dataset id (1-TV Index All Russia, 2-TV Index Russia 100+, 3-TV Index Cities, 4-TV Index Plus All Russia, 5-TV Index Plus Russia 100+, 6-TV Index Moscow, 7-Big TV, 9-TV Index Russia Special, 10-TV Index Moscow Special)
       // Only one value can be specified
-      kitId: 3, //TV Index Russia all
+      kitId: 3, //TV Index Cities
       issueType: 'AD', // Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       standRtg: {
         useRealDuration: true, // Calculated based on actual ad duration.
@@ -94,9 +94,9 @@
     ],
     // Set calculation options
     options: {
-      // dataset id (1-Russia all, 2-Russia 100+, 3-Cities, 4-TVI+ Russia all, 5-TVI+ Russia 100+, 6-Moscow)
+      // dataset id (1-TV Index All Russia, 2-TV Index Russia 100+, 3-TV Index Cities, 4-TV Index Plus All Russia, 5-TV Index Plus Russia 100+, 6-TV Index Moscow, 7-Big TV, 9-TV Index Russia Special, 10-TV Index Moscow Special)
       // Only one value can be specified
-      kitId: 3, //TV Index Russia all
+      kitId: 3, //TV Index Cities
       issueType: 'AD', // Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       standRtg: {
         useRealDuration: true, // Calculated based on actual ad duration.

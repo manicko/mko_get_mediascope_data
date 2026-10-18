@@ -23,6 +23,14 @@
       },
       "time_unit": "m",
     },
+    "options": {
+      "kitId": 1,
+      "issueType": "AD",
+      "standRtg": {
+        "useRealDuration": false,
+        "standardDuration": 20,
+      },
+    },
   },
   {
     "media": "TV",
