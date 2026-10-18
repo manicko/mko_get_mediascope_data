@@ -94,6 +94,7 @@ def get_last_period(
     as_strings: Literal[False] = False,
 ) -> tuple[date, date]: ...
 
+
 @overload
 def get_last_period(
     settings: LastTimeModel,
@@ -102,6 +103,7 @@ def get_last_period(
     time_unit: Literal["d", "w", "m", "y"] = "w",
     as_strings: Literal[True],
 ) -> tuple[str, ...]: ...
+
 
 def get_last_period(
     settings: LastTimeModel,
@@ -214,13 +216,17 @@ def csv_to_file(
         mode="w",
         decimal=",",
         sep=";",
+        # Null policy is deliberate, not a pandas default: empty cells
+        # represent missing/NaN statistic values. Documented in the output
+        # contract (see docs/00-overview/open-questions.md, G-04 / D-13).
+        na_rep="",
         encoding=encoding,
         compression=compression,
         **kwargs,
     )
 
 
-def en_to_ru(slices_en: list[Any]) -> list[Any]:
+def en_to_ru(slices_en: list[Any] | None) -> list[Any]:
     if slices_en is None:
         return []
     try:
@@ -229,9 +235,7 @@ def en_to_ru(slices_en: list[Any]) -> list[Any]:
             slices_ru[i] = param.replace("EName", "Name")
         return slices_ru
     except (TypeError, AttributeError) as err:
-        logger.error(
-            f"Element must be a string, got {type(slices_en)}"
-        )
+        logger.error(f"Element must be a string, got {type(slices_en)}")
         raise err
 
 
