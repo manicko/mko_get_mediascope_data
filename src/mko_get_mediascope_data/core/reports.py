@@ -389,7 +389,7 @@ class TVMediaReport(MediaReport):
             await asyncio.sleep(sleep_interval)
 
             status = await self.network_client.call(
-                self.report_service.get_status, task.key, sleep_time=40
+                self.report_service.get_status, task.key, sleep_time=2
             )
             if status is False:
                 task.status = False
