@@ -54,7 +54,7 @@ src/mko_get_mediascope_data/
 ### Key patterns
 
 - **Strategy pattern** (`core/reports.py`): `ReportFactory` selects a `TaskGenerationStrategy` and `DataPreparationStrategy` based on `MediaType`/`ReportSubtype`. New report types add a strategy subclass.
-- **Async pipeline** (`core/network.py`): `NetworkClient.call` wraps every API call with retries, exponential backoff + jitter, and concurrency limiting via `asyncio.Semaphore`. Transient errors (timeouts, connection errors) are retried; client errors (4xx) raise immediately.
+- **Async pipeline** (`core/network.py`): `NetworkClient.call` wraps every API call with retries, exponential backoff + jitter, a per-call `asyncio.wait_for` timeout (`call_timeout`, default 300s), and concurrency limiting via `asyncio.Semaphore`. Transient errors (timeouts, connection errors, HTTP 429) are retried; other client errors (4xx) raise immediately; 502/503/504 also retry at the vendor transport layer (`urllib3.Retry`). The task-submission POST is sent once (`retryable=False`) to prevent duplicate task creation.
 - **Orchestration** (`core/services.py`): `AppService.run_report` loads JSON5 settings, validates via Pydantic, builds `Data` settings from defaults, creates a `TVMediaReport`, and drives `create_report()`.
 
 ## Test Environment

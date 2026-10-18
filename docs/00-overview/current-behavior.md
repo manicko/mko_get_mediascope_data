@@ -292,7 +292,7 @@ for in the test (which sets up existing files and verifies the
 `check_done` warning path at `reports.py:204-208` rather than expecting a
 silent pass). One test, `test_run_report_with_real_models`, carries the
 `@pytest.mark.slow` marker and can be excluded with
-`uv run pytest -m "not slow"` (41 passed, 1 deselected). Coverage is
+`uv run pytest -m "not slow"` (68 passed, 1 deselected). Coverage is
 reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-missing`
 (configured in `pyproject.toml`).
 
@@ -315,12 +315,20 @@ by testing the warning-only path when `check_done=True` and files exist). The
 lifecycle tests now exercise the real `worker` try/except/finally path, not just
 the happy path.
 
-**Updated 2026-10-18:** Phase 09 (External API) added tests for `NetworkClient.call`
-covering `retryable=False` on the task-submission POST (EXT-001), `call_timeout`
-capping wall-clock via `asyncio.wait_for` (EXT-002), HTTP 429 retry
-(`TooManyRequestsError`, EXT-005), the `retry_5xx` toggle for 5xx classification
-(EXT-005), and PII redaction of args/kwargs via `log_errors_detail` (EXT-008). See
-the `tests/test_network.py` row above.
+**Updated 2026-10-18:** Phase 09 (External API) added tests covering
+`NetworkClient.call` behavior and the report lifecycle:
+- `retryable=False` on the task-submission POST (EXT-001)
+- `call_timeout` capping wall-clock via `asyncio.wait_for` (EXT-002)
+- `sleep_time=2` on `get_status` polling (EXT-004)
+- HTTP 429 retry (`TooManyRequestsError`, EXT-005); the `retry_5xx` toggle for 5xx
+  classification (EXT-005)
+- PII redaction of args/kwargs via `log_errors_detail` (EXT-008)
+- EXT-003 regression tests (`test_wait_task_resets_status_on_failed`,
+  `test_wait_task_resets_status_on_cancelled`, `test_worker_does_not_log_ready_on_failed`)
+  verifying that FAILED/CANCELLED terminal statuses reset `task.status=False` and are
+  not logged as "is ready"
+
+See the `tests/test_network.py` and `tests/test_reports_lifecycle.py` rows above.
 
 Behaviors with **no test coverage** — these code paths were therefore never
 executed during this investigation: `TVRegTaskStrategy` (tests use `media=TV`

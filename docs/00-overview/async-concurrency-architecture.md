@@ -140,9 +140,13 @@ jitter = uniform(0, 5)                        # network.py:168
 await asyncio.sleep(backoff + jitter)         # network.py:169
 ```
 
-Retryable conditions (see `RETRIABLE_EXCEPTIONS`, network.py:32–44) include:
-connection timeouts, connection errors, HTTP 429 (`TooManyRequestsError`), and
-`TimeoutError` from `asyncio.wait_for` (`call_timeout` ceiling, network.py:78).
+Retryable conditions:
+- Members of `RETRIABLE_EXCEPTIONS` (network.py:32–44): transport errors such as
+  `ConnectTimeout`, `ConnectionError`, `Timeout`, `socket.timeout`, and `TimeoutError`
+  (from `asyncio.wait_for`, network.py:76)
+- HTTP 429 (`TooManyRequestsError`) — handled by a dedicated `except` clause
+  (network.py:139–144), retried with exponential backoff (the vendor does not
+  expose the `Retry-After` header)
 
 Client errors raise immediately without retry:
 - `BadRequestError` — HTTP 400, configuration is wrong
