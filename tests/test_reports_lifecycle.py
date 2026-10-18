@@ -10,7 +10,6 @@ mocked -- only the external Mediascope API client is doubled.
 import asyncio
 import json
 import logging
-import shutil
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -19,52 +18,26 @@ import pytest
 import json5
 from unidecode import unidecode
 
+from tests.conftest import expected_output_columns
 from mko_get_mediascope_data.core.errors import NoReportFoundError
-from mko_get_mediascope_data.core.models import Data, ReportSettings
+from mko_get_mediascope_data.core.models import (
+    Data,
+    MediaType,
+    ReportSettings,
+    ReportSubtype,
+    ReportType,
+)
 from mko_get_mediascope_data.core.network import NetworkClient
-from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
-from mko_get_mediascope_data.core.reports import ReportFactory, TVMediaReport
+from mko_get_mediascope_data.core.reports import (
+    DefaultDataStrategy,
+    DefaultTVTaskStrategy,
+    DictDataStrategy,
+    ReportFactory,
+    TVMediaReport,
+    TVRegTaskStrategy,
+)
 from mko_get_mediascope_data.core.services import AppService
 from mko_get_mediascope_data.core.tasks import TVTask
-
-_LOG_CONFIG_JSON5 = """
-{
-  "version": 1,
-  "disable_existing_loggers": false,
-  "formatters": {
-    "basic": {
-      "class": "logging.Formatter",
-      "format": "%(levelname)s %(message)s",
-    },
-  },
-  "handlers": {
-    "console": {
-      "class": "logging.StreamHandler",
-      "formatter": "basic",
-      "level": "INFO",
-      "stream": "ext://sys.stdout",
-    },
-  },
-  "root": {
-    "level": "INFO",
-    "handlers": ["console"],
-  },
-  "loggers": {},
-}
-"""
-
-_APP_CONFIG_JSON5 = '{"export_folder": "output",}'
-
-
-def _build_hermetic_app_service(tmp_path: Path) -> AppService:
-    """Create an ``AppService`` backed by isolated temp config files."""
-    settings_dir = tmp_path / "settings"
-    settings_dir.mkdir()
-    (settings_dir / "log_config.json5").write_text(_LOG_CONFIG_JSON5, encoding="utf-8")
-    (settings_dir / "app_config.json5").write_text(_APP_CONFIG_JSON5, encoding="utf-8")
-    shutil.copytree(APP_PATHS.app_settings_dir / "defaults", settings_dir / "defaults")
-    app_paths = AppPaths(app_dir=tmp_path, app_name="test", user_dir=tmp_path)
-    return AppService(app_paths=app_paths, resolver=PathResolver(tmp_path))
 
 
 def _build_result_df(
@@ -72,41 +45,25 @@ def _build_result_df(
 ) -> pd.DataFrame:
     """Build a DataFrame whose columns match ``output_columns``.
 
-    Mirrors ``TVMediaReport.set_output_columns`` (reports.py:207-221) so the
-    doubled ``result2table`` returns columns that ``DefaultDataStrategy.prepare``
+    Delegates to the shared ``expected_output_columns`` helper (conftest)
+    which mirrors ``TVMediaReport.set_output_columns`` (reports.py:282-296),
+    including the ``frequencyDistInterval`` branch.  The doubled
+    ``result2table`` thus returns columns that ``DefaultDataStrategy.prepare``
     can select without a ``KeyError``.
     """
-    columns = list(data_settings.slices) + list(data_settings.statistics)
-    if report_settings.target_audiences:
-        columns.insert(0, "targetAudience")
+    output_columns = expected_output_columns(data_settings, report_settings)
+    columns = output_columns["slices"] + output_columns["statistics"]
     df = pd.DataFrame(columns=columns)
     df.loc[0] = 0
     return df
 
 
-def _yielding_sleep(real_sleep):
-    """Return an ``asyncio.sleep`` replacement that yields to the event loop.
-
-    ``asyncio.wait_for`` schedules its deadline via ``loop.call_later``,
-    not ``asyncio.sleep``, so mocking ``asyncio.sleep`` does not affect
-    the timeout.  A real ``sleep(0)`` yields control so the deadline
-    callback fires between fast poll iterations.  A plain ``AsyncMock``
-    returns immediately without yielding, which would let ``wait_task``'s
-    ``while True`` spin without ever letting the ``call_later`` timer fire.
-    """
-
-    async def _yielding(*args, **kwargs):
-        await real_sleep(0)
-
-    return _yielding
-
-
-@pytest.mark.asyncio
 async def test_create_report_writes_csv_and_marks_queue_done(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """Real ``create_report`` pipeline produces CSV output.
 
@@ -120,7 +77,7 @@ async def test_create_report_writes_csv_and_marks_queue_done(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns --------------------
@@ -172,12 +129,12 @@ async def test_create_report_writes_csv_and_marks_queue_done(
     assert report.task_queue.qsize() == 0
 
 
-@pytest.mark.asyncio
 async def test_create_report_skips_done_files(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """Real ``create_report`` pipeline skips tasks whose CSV already exists.
 
@@ -193,7 +150,7 @@ async def test_create_report_skips_done_files(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns --------------------
@@ -258,12 +215,12 @@ async def test_create_report_skips_done_files(
     mock_report_service.get_result.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_create_report_timeout_does_not_hang(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """Worker must not hang when ``wait_task`` polls forever.
 
@@ -283,7 +240,7 @@ async def test_create_report_timeout_does_not_hang(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns --------------------
@@ -303,13 +260,17 @@ async def test_create_report_timeout_does_not_hang(
     # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
     network_client = NetworkClient(sleep_time=0, max_attempts=1)
 
-    # ---- 6. Mock asyncio.sleep to yield (enables wait_for timer) ------
+    # ---- 6. Patch asyncio.sleep with a real 0.3 s delay ------------------
     # asyncio.wait_for schedules its deadline via loop.call_later (not
-    # asyncio.sleep), so the mock does not affect the timeout timer.
-    # A real sleep(0) yields control so the deadline callback can fire
-    # between wait_task iterations.
+    # asyncio.sleep), so the mock does not affect the timeout timer itself.
+    # A real 0.3 s delay per poll means 2 polls (0.6 s) exceed wait_for's
+    # 0.5 s inner deadline, triggering TimeoutError in worker's except clause.
     real_sleep = asyncio.sleep
-    mocker.patch("asyncio.sleep", new=_yielding_sleep(real_sleep))  # noqa: N812
+
+    async def _delayed_sleep(*_args, **_kwargs):
+        await real_sleep(0.3)
+
+    mocker.patch("asyncio.sleep", new=_delayed_sleep)
 
     # ---- 7. Export path ------------------------------------------------
     export_path = tmp_path / "output" / report_settings.relative_path
@@ -346,13 +307,20 @@ async def test_create_report_timeout_does_not_hang(
         f"found {len(error_files)}"
     )
 
+    # The error message confirms the TimeoutError branch ran — not the
+    # max_polls guard or poll_deadline fallback in wait_task.
+    error_payload = json5.loads(error_files[0].read_text(encoding="utf-8"))
+    assert "Timeout after" in error_payload["error"], (
+        f"Expected 'Timeout after' in error, got: {error_payload['error']}"
+    )
 
-@pytest.mark.asyncio
+
 async def test_create_report_zero_tasks_raises_no_report_found(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """PIPE-004: empty ``target_audiences`` produces zero tasks.
 
@@ -368,7 +336,7 @@ async def test_create_report_zero_tasks_raises_no_report_found(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings ---------------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns ----------------------
@@ -413,12 +381,12 @@ async def test_create_report_zero_tasks_raises_no_report_found(
         await report.create_report()
 
 
-@pytest.mark.asyncio
 async def test_create_report_out_of_range_date_filter_raises(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """PIPE-005: out-of-range ``date_filter`` produces an inverted period.
 
@@ -435,7 +403,7 @@ async def test_create_report_out_of_range_date_filter_raises(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings ---------------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns ----------------------
@@ -480,12 +448,12 @@ async def test_create_report_out_of_range_date_filter_raises(
         await report.create_report()
 
 
-@pytest.mark.asyncio
 async def test_wait_task_max_polls_limit(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """PIPE-006: the inner ``max_polls`` guard breaks the ``wait_task`` loop.
 
@@ -509,7 +477,7 @@ async def test_wait_task_max_polls_limit(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns --------------------
@@ -568,12 +536,12 @@ async def test_wait_task_max_polls_limit(
     assert mock_report_service.get_status.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_worker_handles_exception_and_writes_error_json5(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """PIPE-007: worker's ``except Exception`` branch writes the error JSON5.
 
@@ -589,7 +557,7 @@ async def test_worker_handles_exception_and_writes_error_json5(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns --------------------
@@ -671,12 +639,12 @@ async def test_worker_handles_exception_and_writes_error_json5(
 _REPORTER_LOGGER = "mko_get_mediascope_data.core.reports"
 
 
-@pytest.mark.asyncio
 async def test_worker_log_error_true_writes_json5(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """PIPE-009 (``log_error=True``): worker writes error JSON5 on API key failure.
 
@@ -695,7 +663,7 @@ async def test_worker_log_error_true_writes_json5(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns --------------------
@@ -755,12 +723,12 @@ async def test_worker_log_error_true_writes_json5(
     assert error_payload["log_error"] is True
 
 
-@pytest.mark.asyncio
 async def test_worker_log_error_false_no_json5(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """PIPE-009 (``log_error=False``): worker logs "No data" and writes no JSON5.
 
@@ -778,7 +746,7 @@ async def test_worker_log_error_false_no_json5(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Empty result DataFrame — triggers df.empty branch ----------
@@ -801,7 +769,7 @@ async def test_worker_log_error_false_no_json5(
     # ---- 6. Mock asyncio.sleep (no real delays) ------------------------
     mocker.patch("asyncio.sleep", new_callable=AsyncMock)
 
-    # dictConfig (called by _build_hermetic_app_service) replaces the root
+    # dictConfig (called by the hermetic_app_service fixture) replaces the root
     # logger handlers, so caplog loses its handler.  Spy on the module-level
     # logger.warning instead — this intercepts calls regardless of handler
     # configuration.
@@ -855,12 +823,12 @@ async def test_worker_log_error_false_no_json5(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_wait_task_resets_status_on_failed(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """EXT-003: terminal FAILED status resets task fields and skips extract_data.
 
@@ -875,7 +843,7 @@ async def test_wait_task_resets_status_on_failed(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns --------------------
@@ -933,12 +901,12 @@ async def test_wait_task_resets_status_on_failed(
     mock_report_service.get_result.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_wait_task_resets_status_on_cancelled(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """EXT-003: terminal CANCELLED status resets task fields and skips extract_data.
 
@@ -951,7 +919,7 @@ async def test_wait_task_resets_status_on_cancelled(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns --------------------
@@ -1006,12 +974,12 @@ async def test_wait_task_resets_status_on_cancelled(
     mock_report_service.get_result.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_worker_does_not_log_ready_on_failed(
     tmp_path: Path,
     mocker,
     tv_json5_content: str,
     dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
 ):
     """EXT-003: worker logs "will be skipped" (not "is ready") for FAILED tasks.
 
@@ -1027,7 +995,7 @@ async def test_worker_does_not_log_ready_on_failed(
     report_settings = ReportSettings(**json5_data[0])
 
     # ---- 2. Hermetic AppService + data settings -----------------------
-    app_service = _build_hermetic_app_service(tmp_path)
+    app_service = hermetic_app_service
     data_settings = app_service.get_data_settings(report_settings)
 
     # ---- 3. Compute result2table DataFrame columns --------------------
@@ -1052,7 +1020,7 @@ async def test_worker_does_not_log_ready_on_failed(
     mocker.patch("asyncio.sleep", new_callable=AsyncMock)
 
     # ---- 7. Spy on reports logger ---------------------------------------
-    # dictConfig (called by _build_hermetic_app_service) replaces the root
+    # dictConfig (called by the hermetic_app_service fixture) replaces the root
     # logger handlers, so caplog loses its handler.  Spy on the module-level
     # logger.info / logger.warning instead — this intercepts calls regardless
     # of handler configuration.
@@ -1111,3 +1079,535 @@ async def test_worker_does_not_log_ready_on_failed(
 
     # extract_data was never reached — get_result was not called.
     mock_report_service.get_result.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.2 — Reporting pipeline gap coverage (13 new tests)
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Factory strategy selection (reports.py:30-50)
+# ---------------------------------------------------------------------------
+
+
+def test_factory_selects_tvreg_task_strategy():
+    """ReportFactory with TV_REG media selects TVRegTaskStrategy (reports.py:40-41)."""
+    report_settings = ReportSettings(
+        media=MediaType.TV_REG,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv_reg/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    factory = ReportFactory(report_settings)
+    assert factory.task_strategy is TVRegTaskStrategy
+
+
+def test_factory_selects_dict_data_strategy():
+    """ReportFactory with DYNAMICS_BY_SPOTS_DICT subtype selects DictDataStrategy (reports.py:47-48)."""
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.DYNAMICS_BY_SPOTS_DICT,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    factory = ReportFactory(report_settings)
+    assert factory.data_strategy is DictDataStrategy
+
+
+def test_factory_default_strategies():
+    """Default media/subtype selects DefaultTVTaskStrategy + DefaultDataStrategy."""
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    factory = ReportFactory(report_settings)
+    assert factory.task_strategy is DefaultTVTaskStrategy
+    assert factory.data_strategy is DefaultDataStrategy
+
+
+# ---------------------------------------------------------------------------
+# DictDataStrategy error paths (reports.py:616-623)
+# ---------------------------------------------------------------------------
+
+
+def test_dict_data_strategy_missing_columns_returns_none():
+    """DictDataStrategy.prepare returns None when required columns are missing (reports.py:619-623)."""
+    data_settings = Data(slices=["col_a", "col_b"])
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.DYNAMICS_BY_SPOTS_DICT,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    mock_service = MagicMock()
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=Path("/tmp/dummy_export"),
+        report_service=mock_service,
+        network_client=MagicMock(),
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DictDataStrategy,
+        check_done=False,
+    )
+    df = pd.DataFrame({"other_col": [1]})
+    strategy = DictDataStrategy()
+    result = asyncio.run(strategy.prepare(report, df))
+    assert result is None
+
+
+def test_dict_data_strategy_empty_slices_returns_none():
+    """DictDataStrategy.prepare returns None when slices list is empty (reports.py:616)."""
+    data_settings = Data(slices=[])
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.DYNAMICS_BY_SPOTS_DICT,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    mock_service = MagicMock()
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=Path("/tmp/dummy_export"),
+        report_service=mock_service,
+        network_client=MagicMock(),
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DictDataStrategy,
+        check_done=False,
+    )
+    df = pd.DataFrame({"col_a": [1]})
+    strategy = DictDataStrategy()
+    result = asyncio.run(strategy.prepare(report, df))
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# poll_deadline guard (reports.py:383-387)
+# ---------------------------------------------------------------------------
+
+
+async def test_wait_task_poll_deadline_exceeded(
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+):
+    """wait_task's poll_deadline guard trips when wall-clock exceeds deadline.
+
+    reports.py:383-387 — the ``loop.time() - start > poll_deadline`` branch.
+    Distinct from ``max_polls`` (tested in test_wait_task_max_polls_limit).
+    """
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.get_status.return_value = {"taskStatus": "IN_PROGRESS"}
+
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DefaultDataStrategy,
+        check_done=False,
+    )
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    task = TVTask("test_poll_deadline", {}, "crosstab", "TV")
+    task.key = {"taskJson": "mock_key"}
+
+    # poll_deadline=0.0 → immediately exceeded; max_polls=60 so the
+    # poll_deadline guard (not max_polls) is the one that trips.
+    await report.wait_task(task, max_polls=60, poll_deadline=0.0)
+
+    assert task.status is False
+    assert task.log_error is True
+    assert "Poll deadline exceeded" in task.error
+
+
+# ---------------------------------------------------------------------------
+# send_task is-False branch (reports.py:352-360)
+# ---------------------------------------------------------------------------
+
+
+def test_send_task_false_key_marks_task_failed(
+    hermetic_app_service: AppService,
+    dummy_df: pd.DataFrame,
+):
+    """send_task: builder returns False → task.key is empty → status=False, log_error=True.
+
+    reports.py:349-360 — when ``task_json is False`` (builder returns False),
+    ``send_task`` skips key assignment; ``not task.key`` guard sets
+    ``task.error = "Task.key is not received from API."``.
+    """
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = False
+
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(return_value=False)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=mock_network_client,
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DefaultDataStrategy,
+        check_done=False,
+    )
+
+    task = TVTask("test_send_false", {}, "crosstab", "TV")
+    asyncio.run(report.send_task(task))
+
+    assert task.status is False
+    assert task.log_error is True
+    assert task.error == "Task.key is not received from API."
+
+
+# ---------------------------------------------------------------------------
+# extract_data branches (reports.py:422-441)
+# ---------------------------------------------------------------------------
+
+
+def test_extract_data_get_result_false_marks_failed(
+    hermetic_app_service: AppService,
+    dummy_df: pd.DataFrame,
+):
+    """extract_data: get_result returns False → task.error='Task json is not returned' (reports.py:422-425)."""
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.get_result.return_value = False
+
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(return_value=False)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=mock_network_client,
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DefaultDataStrategy,
+        check_done=False,
+    )
+
+    task = TVTask("test_get_result_false", {"options": {"kitId": 1}}, "crosstab", "TV")
+    task.key = {"taskJson": "mock_key"}
+    task.status = True
+    asyncio.run(report.extract_data(task))
+
+    assert task.status is False
+    assert task.log_error is True
+    assert task.error == "Task json is not returned"
+
+
+def test_extract_data_result2table_none_marks_failed(
+    hermetic_app_service: AppService,
+    dummy_df: pd.DataFrame,
+):
+    """extract_data: result2table returns None → task.error='Got empty dataframe' (reports.py:430-433)."""
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.get_result.return_value = {"result": "mock"}
+    mock_report_service.result2table.return_value = None
+
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(
+        side_effect=[{"result": "mock"}, None]
+    )
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=mock_network_client,
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DefaultDataStrategy,
+        check_done=False,
+    )
+
+    task = TVTask("test_result2table_none", {"options": {"kitId": 1}}, "crosstab", "TV")
+    task.key = {"taskJson": "mock_key"}
+    task.status = True
+    asyncio.run(report.extract_data(task))
+
+    assert task.status is False
+    assert task.log_error is True
+    assert task.error == "Got empty dataframe"
+
+
+def test_extract_data_prepare_data_none_marks_failed(
+    hermetic_app_service: AppService,
+    dummy_df: pd.DataFrame,
+):
+    """extract_data: prepare_data returns None → log_error=False (reports.py:439-441).
+
+    ``prepare_data`` returns ``None`` when ``df.empty`` is True. We give
+    result2table a DataFrame with correct columns but zero rows.
+    """
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.get_result.return_value = {"result": "mock"}
+
+    result_df = _build_result_df(data_settings, report_settings)
+    empty_df = result_df.iloc[0:0]
+    mock_report_service.result2table.return_value = empty_df
+
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(
+        side_effect=[{"result": "mock"}, empty_df]
+    )
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=mock_network_client,
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DefaultDataStrategy,
+        check_done=False,
+    )
+
+    task = TVTask("test_prepare_none", {"options": {"kitId": 1}}, "crosstab", "TV")
+    task.key = {"taskJson": "mock_key"}
+    task.status = True
+    asyncio.run(report.extract_data(task))
+
+    assert task.status is False
+    assert task.log_error is False
+
+
+# ---------------------------------------------------------------------------
+# frequency_dist_conditions (reports.py:293-294)
+# ---------------------------------------------------------------------------
+
+
+def test_output_columns_includes_frequency_dist_interval(
+    hermetic_app_service: AppService,
+):
+    """set_output_columns appends 'frequencyDistInterval' when frequency_dist_conditions is set (reports.py:293-294)."""
+    data_settings = Data(
+        slices=["channel"],
+        statistics=["avg"],
+        frequency_dist_conditions={"start": 0, "end": 10, "step": 1},
+    )
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    mock_service = MagicMock()
+    mock_service.cats = MagicMock()
+    mock_service.cats.get_availability_period.return_value = pd.DataFrame(
+        {"id": ["1"], "periodFrom": ["2025-01-01"], "periodTo": ["2025-12-31"]}
+    )
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=Path("/tmp/dummy"),
+        report_service=mock_service,
+        network_client=MagicMock(),
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DefaultDataStrategy,
+        check_done=False,
+    )
+    assert "frequencyDistInterval" in report.output_columns["statistics"]
+
+
+# ---------------------------------------------------------------------------
+# multiple_files=False (reports.py:336-338)
+# ---------------------------------------------------------------------------
+
+
+async def test_get_period_multiple_files_false_returns_single_period(
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+):
+    """With multiple_files=False, get_period returns [period] not sliced intervals (reports.py:336-338)."""
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",
+        multiple_files=False,
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=NetworkClient(sleep_time=0, max_attempts=1),
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DefaultDataStrategy,
+        check_done=False,
+    )
+
+    period = await report.get_period()
+    assert len(period) == 1  # single interval, not sliced
+
+
+# ---------------------------------------------------------------------------
+# last_time path (reports.py:309-317)
+# ---------------------------------------------------------------------------
+
+
+async def test_get_period_last_time_calls_get_last_period(
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+):
+    """get_period calls utils.get_last_period when date_filter is None (reports.py:309-317)."""
+    from datetime import date as date_cls
+
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",
+        period={"last_time": {"unit_count": 1}, "time_unit": "m"},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=NetworkClient(sleep_time=0, max_attempts=1),
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DefaultDataStrategy,
+        check_done=False,
+    )
+
+    mock_get_last_period = mocker.patch(
+        "mko_get_mediascope_data.core.utils.get_last_period",
+        return_value=(date_cls(2025, 1, 1), date_cls(2025, 1, 7)),
+    )
+
+    period = await report.get_period()
+    mock_get_last_period.assert_called_once()
+    assert len(period) >= 1
+
+
+# ---------------------------------------------------------------------------
+# wait_task status-False (reports.py:394-399)
+# ---------------------------------------------------------------------------
+
+
+async def test_wait_task_status_false_marks_max_retries(
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+):
+    """wait_task: get_status returns False → task.error='Max retries exceeded' (reports.py:394-399)."""
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.get_status.return_value = False
+
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=DefaultTVTaskStrategy,
+        data_strategy=DefaultDataStrategy,
+        check_done=False,
+    )
+
+    task = TVTask("test_status_false", {"options": {"kitId": 1}}, "crosstab", "TV")
+    task.key = {"taskJson": "mock_key"}
+
+    await report.wait_task(task, max_polls=5)
+
+    assert task.status is False
+    assert task.log_error is True
+    assert task.error == "Max retries exceeded"

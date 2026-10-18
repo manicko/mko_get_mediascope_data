@@ -56,4 +56,5 @@ class TVTask:
                 ensure_ascii=False,
                 quote_keys=True,
                 trailing_commas=False,
+                default=lambda o: o.isoformat() if isinstance(o, date) else str(o),
             )

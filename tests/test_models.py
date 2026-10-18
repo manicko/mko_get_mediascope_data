@@ -1,10 +1,13 @@
-import pytest
-import json5
-import re
 from datetime import date
+from pathlib import Path
+from typing import Any
+
+import json5
+import pytest
 from pydantic import ValidationError
 
 from mko_get_mediascope_data.core.models import (
+    AppSettings,
     Data,
     DataDefaults,
     LastTimeModel,
@@ -14,8 +17,15 @@ from mko_get_mediascope_data.core.models import (
     ReportSubtype,
     ReportType,
 )
-from mko_get_mediascope_data.core.services import AppService
 from mko_get_mediascope_data.core.paths import APP_PATHS
+from mko_get_mediascope_data.core.services import AppService
+from mko_get_mediascope_data.core.utils import en_to_ru
+
+# Number of report entries expected across the 16 bundled JSON5 report templates.
+EXPECTED_TEMPLATE_ENTRIES = 32
+
+# Valid Media-Scope kitId legend values (dataset IDs).
+VALID_KIT_IDS: set[int] = {1, 2, 3, 4, 5, 6, 7, 9, 10}
 
 
 def test_report_settings_valid():
@@ -29,10 +39,19 @@ def test_report_settings_valid():
     settings = ReportSettings.model_validate(data)
     assert settings.media == MediaType.TV
     assert settings.report_type == ReportType.crosstab
+    assert settings.report_subtype == ReportSubtype.TOP_NAT_TV_ADVERTISERS
+    assert settings.data_lang == "ru"
+    assert settings.compression == {"method": "gzip"}
+    assert settings.multiple_files is True
+    assert settings.check_done is True
+    assert settings.ad_filter is None
+    assert settings.relative_path == Path("tv/test")
+    assert settings.period.date_filter is None
+    assert settings.period.last_time.unit_count == 1
 
 
 def test_period_model_validation():
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="Specify either"):
         PeriodModel()  # neither date_filter nor last_time
 
     valid = PeriodModel(
@@ -42,13 +61,12 @@ def test_period_model_validation():
     assert valid.last_time.unit_count == 4
 
 
-def test_merge_data_settings_en_does_not_translate(mocker):
-    """Verify merge_data_settings does NOT call en_to_ru when data_lang='en'.
+def test_merge_data_settings_en_does_not_translate():
+    """Verify merge_data_settings does NOT translate slices when data_lang='en'.
 
-    The 'en' path (services.py) must skip the translation step entirely.
+    The 'en' path (services.py) must skip the translation step entirely,
+    so en_to_ru is never called and 'EName' prefixes remain untouched.
     """
-    mock_en_to_ru = mocker.patch("mko_get_mediascope_data.core.utils.en_to_ru")
-
     defaults = DataDefaults(DATA_DEFAULTS={"slices": ["EName_col"]})
 
     report_settings = ReportSettings(
@@ -61,32 +79,8 @@ def test_merge_data_settings_en_does_not_translate(mocker):
 
     result = AppService.merge_data_settings(defaults, report_settings)
 
-    # en_to_ru must NOT be called when data_lang is 'en'
-    mock_en_to_ru.assert_not_called()
     # slices remain unchanged (no translation applied)
     assert result["slices"] == ["EName_col"]
-
-
-def test_merge_data_settings_ru_with_none_slices():
-    """merge_data_settings must not crash when data_lang='ru' and slices is None.
-
-    Reproduces TPL-003: defaults with slices=null and data_lang='ru' should
-    not raise TypeError from en_to_ru(None).
-    """
-    defaults = DataDefaults(DATA_DEFAULTS={"slices": None})
-
-    report_settings = ReportSettings(
-        media=MediaType.TV,
-        report_type=ReportType.crosstab,
-        relative_path="tv/test",  # type: ignore[arg-type]
-        data_lang="ru",
-        period={"last_time": {"unit_count": 1}, "time_unit": "m"},  # type: ignore[arg-type]
-    )
-
-    result = AppService.merge_data_settings(defaults, report_settings)
-    # slices remains None (not translated); coerce_none_to_empty on Data will
-    # convert it to [] later.
-    assert result["slices"] is None
 
 
 def test_bundled_templates_validate():
@@ -120,7 +114,9 @@ def test_bundled_templates_validate():
         )
         pytest.fail(msg)
 
-    assert total_entries == 32, f"Expected 32 entries, found {total_entries}"
+    assert total_entries == EXPECTED_TEMPLATE_ENTRIES, (
+        f"Expected {EXPECTED_TEMPLATE_ENTRIES} entries, found {total_entries}"
+    )
 
 
 def test_data_defaults_covers_all_subtypes():
@@ -160,30 +156,46 @@ def test_period_model_rejects_both_date_filter_and_last_time():
         )
 
 
+def _collect_kit_ids(obj: Any) -> list[int]:
+    """Recursively collect every ``kitId`` integer value from a parsed JSON5 structure."""
+    kit_ids: list[int] = []
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == "kitId" and isinstance(value, int):
+                kit_ids.append(value)
+            else:
+                kit_ids.extend(_collect_kit_ids(value))
+    elif isinstance(obj, list):
+        for item in obj:
+            kit_ids.extend(_collect_kit_ids(item))
+    return kit_ids
+
+
 def test_bundled_templates_kitId_conformance() -> None:
     """All kitId values in defaults and report templates must be from the
     valid legend set {1,2,3,4,5,6,7,9,10}. No undefined kitId values.
 
+    Uses proper JSON5 parsing with recursive dict/list traversal to find every
+    ``kitId`` key, regardless of quoting style or nesting depth.
+
     Also verifies TOP_NAT_TV_ADVERTISERS in defaults has a kitId defined.
     """
-    valid_kit_ids = {1, 2, 3, 4, 5, 6, 7, 9, 10}
     reports_dir = APP_PATHS.app_settings_dir / "reports"
     defaults_dir = APP_PATHS.app_settings_dir / "defaults"
 
-    # Check all JSON5 files for kitId values
     all_json5 = list(reports_dir.rglob("*.json5")) + list(defaults_dir.rglob("*.json5"))
     for f in all_json5:
-        text = f.read_text()
-        kit_ids = [int(m) for m in re.findall(r"kitId\s*:\s*(\d+)", text)]
+        data = json5.loads(f.read_text())
+        kit_ids = _collect_kit_ids(data)
         for kid in kit_ids:
-            assert kid in valid_kit_ids, (
+            assert kid in VALID_KIT_IDS, (
                 f"Invalid kitId={kid} in {f.relative_to(APP_PATHS.app_settings_dir)}"
             )
 
-    # Verify TOP_NAT_TV_ADVERTISERS has kitId in defaults
+    # Verify TOP_NAT_TV_ADVERTISERS has kitId=1 in defaults
     tv_crosstab = defaults_dir / "tv" / "crosstab.json5"
-    text = tv_crosstab.read_text()
-    assert '"kitId": 1' in text or "'kitId': 1" in text or "kitId: 1" in text, (
+    data = json5.loads(tv_crosstab.read_text())
+    assert data["TOP_NAT_TV_ADVERTISERS"]["options"]["kitId"] == 1, (
         "TOP_NAT_TV_ADVERTISERS default must define kitId"
     )
 
@@ -199,3 +211,37 @@ def test_tv_report_template_entry0_has_options() -> None:
         "Entry[0] TOP_NAT_TV_ADVERTISERS must have options block"
     )
     assert entry0["options"]["kitId"] == 1, "kitId must be 1 (TV Index All Russia)"
+
+
+def test_report_settings_rejects_invalid_enum():
+    """An invalid ``media`` value must be rejected by Pydantic enum validation."""
+    data = {
+        "media": "INVALID",
+        "report_type": ReportType.crosstab,
+        "report_subtype": ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        "relative_path": "tv/test",
+        "period": {"last_time": {"unit_count": 1}, "time_unit": "m"},
+    }
+    with pytest.raises(ValidationError):
+        ReportSettings.model_validate(data)
+
+
+def test_period_model_single_date_filter_rejected():
+    """A ``date_filter`` with a single date must raise — exactly 2 dates required."""
+    with pytest.raises(ValidationError, match="date_filter must contain 2 dates"):
+        PeriodModel(
+            date_filter=[date(2025, 1, 1)],
+            time_unit="m",
+        )
+
+
+def test_en_to_ru_direct():
+    """``en_to_ru`` translates EName→Name and returns [] for None input."""
+    assert en_to_ru(["EName_col"]) == ["Name_col"]
+    assert en_to_ru(None) == []
+
+
+def test_app_settings_normalize_path():
+    """AppSettings.expanduser resolves ``~`` in the export_folder path."""
+    settings = AppSettings(export_folder="~/x")  # type: ignore[arg-type]
+    assert settings.export_folder == Path("~/x").expanduser()

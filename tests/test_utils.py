@@ -1,3 +1,4 @@
+import gzip
 import pandas as pd
 import pytest
 
@@ -53,3 +54,40 @@ def test_csv_to_file_writes_to_report_dir(tmp_report_dir):
 def test_en_to_ru_handles_none():
     """en_to_ru(None) returns [] rather than raising TypeError."""
     assert en_to_ru(None) == []
+
+
+def test_csv_to_file_renders_nulls_as_empty_cells(tmp_path):
+    """Null/NaN values render as empty CSV cells per the declared output contract.
+
+    The null policy is deliberate: ``na_rep`` is set explicitly in ``csv_to_file``
+    rather than relying on the pandas default. This test asserts the policy so
+    that an accidental change to the default or an override via ``**kwargs`` is
+    caught.
+    """
+    df = pd.DataFrame(
+        {
+            "regionName": ["Msk", "SPb", "Tula"],
+            "FrequencyDistPer": [0.3, 0.5, float("nan")],
+            "RtgPerSum": [33.0, None, 0.0],
+        }
+    )
+    csv_to_file(
+        df,
+        tmp_path,
+        file_prefix="nulls",
+        add_time=False,
+        compression={"method": "gzip"},
+    )
+    files = list(tmp_path.glob("*.csv.gz"))
+    assert len(files) == 1
+
+    content = gzip.decompress(files[0].read_bytes()).decode("utf-8-sig")
+    lines = content.strip().splitlines()
+
+    expected = [
+        "regionName;FrequencyDistPer;RtgPerSum",
+        "Msk;0,3;33,0",
+        "SPb;0,5;",
+        "Tula;;0,0",
+    ]
+    assert lines == expected

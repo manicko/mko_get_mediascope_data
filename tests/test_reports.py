@@ -2,43 +2,15 @@ import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pandas as pd
-import pytest
 
+from mko_get_mediascope_data.core.models import Data, ReportSubtype, ReportType
 from mko_get_mediascope_data.core.reports import (
     DefaultDataStrategy,
-    DefaultTVTaskStrategy,
     DictDataStrategy,
     TVRegTaskStrategy,
 )
 
 
-@pytest.fixture
-def mock_report(dummy_df):
-    report = MagicMock()
-    report.period = [("2025-01-01", "2025-01-07")]
-    report.targets = {"all 18+": None}
-    report.done_files = {}
-    report.data_settings = MagicMock()
-    report.data_settings.model_dump.return_value = {}
-    report.report_settings = MagicMock()
-    report.report_settings.model_dump.return_value = {}
-    report.report_settings.relative_path = "test"
-    report.subtype = MagicMock(value="crosstab")
-    report.type = MagicMock(value="TV")
-    report.network_client = MagicMock()
-    report.network_client.call = AsyncMock(return_value=dummy_df)
-    return report
-
-
-@pytest.mark.asyncio
-async def test_default_task_strategy(mock_report):
-    strategy = DefaultTVTaskStrategy()
-    tasks = [task async for task in strategy.generate(mock_report)]
-    assert len(tasks) == 1
-    assert tasks[0].name.startswith("2025-01-01")
-
-
-@pytest.mark.asyncio
 async def test_dict_data_strategy():
     """DictDataStrategy melts a wide DICT-report DataFrame into a long-format
     "search dictionary" table.
@@ -47,7 +19,7 @@ async def test_dict_data_strategy():
     ``None``, empty strings, parenthetical suffixes, and repeated values
     across different columns:
 
-    1. Selects only the columns listed in ``data_settings["slices"]``.
+    1. Selects only the columns listed in ``data_settings.slices``.
     2. Melts them into ``(column, value)`` rows, dropping NaN and duplicates.
     3. Assigns ``search_column_idx`` starting at a fixed shift (3) and sets
        ``action="r"`` / ``match="p"``.
@@ -91,7 +63,7 @@ async def test_dict_data_strategy():
     ], columns=["channel", "program", "category"])
 
     report_mock = MagicMock()
-    report_mock.data_settings = {"slices": ["channel", "program", "category"]}
+    report_mock.data_settings = Data(slices=["channel", "program", "category"])
 
     result = await strategy.prepare(report_mock, df)
 
@@ -162,7 +134,6 @@ async def test_dict_data_strategy():
 _REPORTER_LOGGER = "mko_get_mediascope_data.core.reports"
 
 
-@pytest.mark.asyncio
 async def test_default_data_strategy_prepare_logs_task_name(caplog):
     """PIPE-008: ``DefaultDataStrategy.prepare`` includes *task_name* in the
     ``KeyError`` error log and returns ``None``.
@@ -188,7 +159,6 @@ async def test_default_data_strategy_prepare_logs_task_name(caplog):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_tv_reg_task_strategy_skip_logs_warning(caplog):
     """PIPE-011: ``TVRegTaskStrategy.generate`` logs a warning and skips a task
     when its generated name already appears in ``report.done_files``.
@@ -211,7 +181,7 @@ async def test_tv_reg_task_strategy_skip_logs_warning(caplog):
     report.network_client.call = AsyncMock(return_value=regions_df)
 
     report.report_settings = MagicMock()
-    report.report_settings.model_dump.return_value = {}
+    report.report_settings.model_dump.return_value = {"regions": [1]}
 
     report.period = [("2025-01-01", "2025-01-07")]
     report.targets = {"all 18+": None}
@@ -220,11 +190,52 @@ async def test_tv_reg_task_strategy_skip_logs_warning(caplog):
     expected_name = "2025-01-01_2025-01-07_all 18+_Moscow"
     report.done_files = {expected_name: "file_exists.csv.gz"}
 
-    report.subtype = MagicMock(value="crosstab")
-    report.type = MagicMock(value="TV_REG")
+    report.subtype = MagicMock(value=ReportSubtype.TOP_NAT_TV_ADVERTISERS.value)
+    report.type = MagicMock(value=ReportType.crosstab.value)
 
     with caplog.at_level(logging.WARNING, logger=_REPORTER_LOGGER):
         tasks = [task async for task in strategy.generate(report)]
 
     assert len(tasks) == 0
     assert "already exists" in caplog.text
+
+
+async def test_tv_reg_task_strategy_generates_tasks_for_regions():
+    """TVRegTaskStrategy.generate yields tasks for explicit regions list.
+
+    With ``regions=[1, 2, 99]`` in report_settings, region id 99 is
+    skipped (reports.py:544 ``if int(reg_id) == 99: continue``), so
+    exactly 2 tasks are yielded — not 3.
+    """
+    strategy = TVRegTaskStrategy()
+
+    report = MagicMock()
+    report.data_settings = MagicMock()
+    report.data_settings.model_dump.return_value = {}
+
+    regions_df = pd.DataFrame(
+        {"id": [1, 2, 99], "ename": ["Moscow", "SPb", "Russia"]}
+    )
+    report.network_client.call = AsyncMock(return_value=regions_df)
+
+    report.report_settings = MagicMock()
+    report.report_settings.model_dump.return_value = {"regions": [1, 2, 99]}
+
+    report.period = [("2025-01-01", "2025-01-07")]
+    report.targets = {"all 18+": None}
+    report.catalogs = MagicMock()
+    report.done_files = {}
+
+    report.subtype = MagicMock(value=ReportSubtype.TOP_NAT_TV_ADVERTISERS.value)
+    report.type = MagicMock(value=ReportType.crosstab.value)
+
+    tasks = [task async for task in strategy.generate(report)]
+
+    # Region 99 is skipped → 2 tasks, not 3.
+    assert len(tasks) == 2
+
+    first_task = tasks[0]
+    # company_filter for region 1: "regionId IN (1)"
+    assert "regionId IN (1)" in first_task.settings["company_filter"]
+    assert first_task.interval == ("2025-01-01", "2025-01-07")
+    assert first_task.target == "all 18+"

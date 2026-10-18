@@ -1,21 +1,73 @@
 import json
-from unittest.mock import AsyncMock
+import shutil
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from mko_get_mediascope_data.core.models import MediaType, ReportSubtype, ReportType
-from mko_get_mediascope_data.core.network import NetworkClient
+from mko_get_mediascope_data.core.models import (
+    Data,
+    MediaType,
+    ReportSettings,
+    ReportSubtype,
+    ReportType,
+)
+from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
+from mko_get_mediascope_data.core.services import AppService
 
 # Matches reports.py:189: data_settings.options.get("kitId", 1)
 DEFAULT_KIT_ID = "1"
 
+_LOG_CONFIG_JSON5 = """
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "basic": {
+      "class": "logging.Formatter",
+      "format": "%(levelname)s %(message)s",
+    },
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "formatter": "basic",
+      "level": "INFO",
+      "stream": "ext://sys.stdout",
+    },
+  },
+  "root": {
+    "level": "INFO",
+    "handlers": ["console"],
+  },
+  "loggers": {},
+}
+"""
 
-@pytest.fixture
-def mock_network_client():
-    client = NetworkClient(max_attempts=2, sleep_time=0)
-    client.call = AsyncMock()  # type: ignore[method-assign]
-    return client
+_APP_CONFIG_JSON5 = '{"export_folder": "output",}'
+
+
+def expected_output_columns(
+    data_settings: Data, report_settings: ReportSettings
+) -> dict[str, list[str]]:
+    """Mirror ``TVMediaReport.set_output_columns`` (reports.py:282-296).
+
+    Used by lifecycle + services tests to build a result DataFrame whose
+    columns match what ``DefaultDataStrategy.prepare`` expects. Includes the
+    ``frequencyDistInterval`` branch (reports.py:293-294) that the old
+    ``_build_result_df`` / ``_compute_result_df`` helpers omitted.
+    """
+    output_columns = {
+        "slices": list(data_settings.slices),
+        "statistics": list(data_settings.statistics),
+    }
+    if report_settings.target_audiences:
+        output_columns["slices"].insert(0, "targetAudience")
+
+    if getattr(data_settings, "frequency_dist_conditions", None):
+        output_columns["statistics"].append("frequencyDistInterval")
+
+    return output_columns
 
 
 @pytest.fixture
@@ -52,3 +104,21 @@ def tv_json5_content() -> str:
         }
     ]
     return json.dumps(content)
+
+
+@pytest.fixture
+def hermetic_app_service(tmp_path: Path) -> AppService:
+    """Shared AppService backed by isolated temp config files.
+
+    Promoted from ``_build_hermetic_app_service`` (test_reports_lifecycle.py)
+    and ``local_app_service`` (test_services.py) — both were functionally
+    identical. Consumers across Block 7 and Block 8 (and services tests)
+    now share this single fixture.
+    """
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir()
+    (settings_dir / "log_config.json5").write_text(_LOG_CONFIG_JSON5, encoding="utf-8")
+    (settings_dir / "app_config.json5").write_text(_APP_CONFIG_JSON5, encoding="utf-8")
+    shutil.copytree(APP_PATHS.app_settings_dir / "defaults", settings_dir / "defaults")
+    app_paths = AppPaths(app_dir=tmp_path, app_name="test", user_dir=tmp_path)
+    return AppService(app_paths=app_paths, resolver=PathResolver(tmp_path))
