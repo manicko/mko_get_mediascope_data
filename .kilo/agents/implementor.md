@@ -25,8 +25,7 @@ permission:
     
   bash:
     "*": allow
-    "git*": ask
-
+    
     # === READ-ONLY GIT === 
     "git*ls-files*" : allow 
     "git*status*": allow
@@ -37,8 +36,8 @@ permission:
     # === COMMIT GIT ===       
     "git*add*": allow
     "git*commit*": allow
-    "git*stash*": ask
-    
+    "git*stash*list*": allow
+    "git*stash*show*": allow
     
     # === BUILD & TEST ===
     
@@ -111,7 +110,8 @@ permission:
     "git tag -d*": ask
     "gc --prune=now*": ask
     "git update-ref -d*": ask
-
+    "git*": ask
+    
     # === ASK: potentially destructive filesystem ===
     "pip*": ask
     "rm -rf *": ask
