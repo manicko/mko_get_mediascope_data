@@ -33,6 +33,7 @@ RETRIABLE_EXCEPTIONS = (
     ChunkedEncodingError,
     ConnectionResetError,
     socket.timeout,
+    TimeoutError,  # asyncio.wait_for cancellation raises TimeoutError (= asyncio.TimeoutError in 3.11+)
     ProtocolError,
     NameResolutionError,  # ← added: DNS resolution failed
     socket.gaierror,  # ← added: basic name resolution error
@@ -55,10 +56,19 @@ class NetworkClient:
         max_concurrent_requests: int = 5,
         sleep_time: int = 2,
         max_attempts: int = 10,
+        call_timeout: float | None = 300.0,
     ):
         self._semaphore = asyncio.Semaphore(max_concurrent_requests)
         self._sleep_time = sleep_time
         self._max_attempts = max_attempts
+        self._call_timeout = call_timeout
+
+    async def _invoke(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+        """Execute *func* in a worker thread, bounded by ``call_timeout``."""
+        coro = asyncio.to_thread(func, *args, **kwargs)
+        if self._call_timeout is not None:
+            return await asyncio.wait_for(coro, timeout=self._call_timeout)
+        return await coro
 
     async def call(
         self,
@@ -75,12 +85,12 @@ class NetworkClient:
 
         if not retryable:
             async with self._semaphore:
-                return await asyncio.to_thread(func, *args, **kwargs)
+                return await self._invoke(func, *args, **kwargs)
 
         for attempt in range(1, self._max_attempts + 1):
             try:
                 async with self._semaphore:
-                    return await asyncio.to_thread(func, *args, **kwargs)
+                    return await self._invoke(func, *args, **kwargs)
 
             except BadRequestError as err:
                 logger.error(f"Bad request. Check configuration. {err}")

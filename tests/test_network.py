@@ -188,3 +188,30 @@ async def test_send_task_not_retried_on_retryable_error(mocker):
     assert call_count[0] == 1, (
         f"Expected exactly 1 call (no retry), got {call_count[0]}"
     )
+
+
+@pytest.mark.asyncio
+async def test_call_raises_timeout_after_call_timeout(mocker):
+    """EXT-002: per-call call_timeout caps wall-clock via asyncio.wait_for.
+
+    With call_timeout=0.5 and max_attempts=1, a function that blocks for 2s
+    is terminated by the wait_for deadline at 0.5s. Because TimeoutError is
+    in RETRIABLE_EXCEPTIONS, the single-attempt loop exits and raises
+    MaxRetriesExceeded — the function is NOT invoked more than max_attempts.
+    """
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=1, sleep_time=0, call_timeout=0.5)
+    call_count = [0]
+
+    def blocking_func():
+        call_count[0] += 1
+        time.sleep(2)  # exceeds call_timeout; thread finishes shortly after test
+        return "ok"
+
+    start = time.monotonic()
+    with pytest.raises(MaxRetriesExceeded, match="Network retry limit exceeded"):
+        await client.call(blocking_func)
+    elapsed = time.monotonic() - start
+
+    assert call_count[0] == 1  # single attempt (max_attempts=1)
+    assert elapsed < 1.0  # bounded by call_timeout (0.5s), NOT the 2s blocking sleep
