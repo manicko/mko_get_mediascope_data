@@ -47,6 +47,7 @@ def test_report_settings_valid():
     assert settings.ad_filter is None
     assert settings.relative_path == Path("tv/test")
     assert settings.period.date_filter is None
+    assert settings.period.last_time is not None
     assert settings.period.last_time.unit_count == 1
 
 

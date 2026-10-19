@@ -1095,7 +1095,7 @@ def test_factory_selects_tvreg_task_strategy():
         media=MediaType.TV_REG,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv_reg/test",
+        relative_path="tv_reg/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     factory = ReportFactory(report_settings)
@@ -1108,7 +1108,7 @@ def test_factory_selects_dict_data_strategy():
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.DYNAMICS_BY_SPOTS_DICT,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     factory = ReportFactory(report_settings)
@@ -1121,7 +1121,7 @@ def test_factory_default_strategies():
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     factory = ReportFactory(report_settings)
@@ -1141,7 +1141,7 @@ def test_dict_data_strategy_missing_columns_returns_none():
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.DYNAMICS_BY_SPOTS_DICT,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     mock_service = MagicMock()
@@ -1151,8 +1151,8 @@ def test_dict_data_strategy_missing_columns_returns_none():
         export_path=Path("/tmp/dummy_export"),
         report_service=mock_service,
         network_client=MagicMock(),
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DictDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DictDataStrategy(),
         check_done=False,
     )
     df = pd.DataFrame({"other_col": [1]})
@@ -1168,7 +1168,7 @@ def test_dict_data_strategy_empty_slices_returns_none():
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.DYNAMICS_BY_SPOTS_DICT,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     mock_service = MagicMock()
@@ -1178,8 +1178,8 @@ def test_dict_data_strategy_empty_slices_returns_none():
         export_path=Path("/tmp/dummy_export"),
         report_service=mock_service,
         network_client=MagicMock(),
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DictDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DictDataStrategy(),
         check_done=False,
     )
     df = pd.DataFrame({"col_a": [1]})
@@ -1207,7 +1207,7 @@ async def test_wait_task_poll_deadline_exceeded(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     data_settings = hermetic_app_service.get_data_settings(report_settings)
@@ -1226,8 +1226,8 @@ async def test_wait_task_poll_deadline_exceeded(
         export_path=hermetic_app_service.export_folder / "test",
         report_service=mock_report_service,
         network_client=network_client,
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DefaultDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
         check_done=False,
     )
     mocker.patch("asyncio.sleep", new_callable=AsyncMock)
@@ -1263,7 +1263,7 @@ def test_send_task_false_key_marks_task_failed(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     data_settings = hermetic_app_service.get_data_settings(report_settings)
@@ -1282,8 +1282,8 @@ def test_send_task_false_key_marks_task_failed(
         export_path=hermetic_app_service.export_folder / "test",
         report_service=mock_report_service,
         network_client=mock_network_client,
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DefaultDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
         check_done=False,
     )
 
@@ -1309,7 +1309,7 @@ def test_extract_data_get_result_false_marks_failed(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     data_settings = hermetic_app_service.get_data_settings(report_settings)
@@ -1328,8 +1328,8 @@ def test_extract_data_get_result_false_marks_failed(
         export_path=hermetic_app_service.export_folder / "test",
         report_service=mock_report_service,
         network_client=mock_network_client,
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DefaultDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
         check_done=False,
     )
 
@@ -1352,7 +1352,7 @@ def test_extract_data_result2table_none_marks_failed(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     data_settings = hermetic_app_service.get_data_settings(report_settings)
@@ -1374,8 +1374,8 @@ def test_extract_data_result2table_none_marks_failed(
         export_path=hermetic_app_service.export_folder / "test",
         report_service=mock_report_service,
         network_client=mock_network_client,
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DefaultDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
         check_done=False,
     )
 
@@ -1402,7 +1402,7 @@ def test_extract_data_prepare_data_none_marks_failed(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     data_settings = hermetic_app_service.get_data_settings(report_settings)
@@ -1427,8 +1427,8 @@ def test_extract_data_prepare_data_none_marks_failed(
         export_path=hermetic_app_service.export_folder / "test",
         report_service=mock_report_service,
         network_client=mock_network_client,
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DefaultDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
         check_done=False,
     )
 
@@ -1450,16 +1450,16 @@ def test_output_columns_includes_frequency_dist_interval(
     hermetic_app_service: AppService,
 ):
     """set_output_columns appends 'frequencyDistInterval' when frequency_dist_conditions is set (reports.py:293-294)."""
-    data_settings = Data(
-        slices=["channel"],
-        statistics=["avg"],
-        frequency_dist_conditions={"start": 0, "end": 10, "step": 1},
-    )
+    data_settings = Data.model_validate({
+        "slices": ["channel"],
+        "statistics": ["avg"],
+        "frequency_dist_conditions": {"start": 0, "end": 10, "step": 1},
+    })
     report_settings = ReportSettings(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     mock_service = MagicMock()
@@ -1473,8 +1473,8 @@ def test_output_columns_includes_frequency_dist_interval(
         export_path=Path("/tmp/dummy"),
         report_service=mock_service,
         network_client=MagicMock(),
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DefaultDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
         check_done=False,
     )
     assert "frequencyDistInterval" in report.output_columns["statistics"]
@@ -1495,7 +1495,7 @@ async def test_get_period_multiple_files_false_returns_single_period(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         multiple_files=False,
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
@@ -1511,8 +1511,8 @@ async def test_get_period_multiple_files_false_returns_single_period(
         export_path=hermetic_app_service.export_folder / "test",
         report_service=mock_report_service,
         network_client=NetworkClient(sleep_time=0, max_attempts=1),
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DefaultDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
         check_done=False,
     )
 
@@ -1537,7 +1537,7 @@ async def test_get_period_last_time_calls_get_last_period(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"last_time": {"unit_count": 1}, "time_unit": "m"},  # type: ignore[arg-type]
     )
     data_settings = hermetic_app_service.get_data_settings(report_settings)
@@ -1552,8 +1552,8 @@ async def test_get_period_last_time_calls_get_last_period(
         export_path=hermetic_app_service.export_folder / "test",
         report_service=mock_report_service,
         network_client=NetworkClient(sleep_time=0, max_attempts=1),
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DefaultDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
         check_done=False,
     )
 
@@ -1581,7 +1581,7 @@ async def test_wait_task_status_false_marks_max_retries(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
     data_settings = hermetic_app_service.get_data_settings(report_settings)
@@ -1598,8 +1598,8 @@ async def test_wait_task_status_false_marks_max_retries(
         export_path=hermetic_app_service.export_folder / "test",
         report_service=mock_report_service,
         network_client=network_client,
-        task_strategy=DefaultTVTaskStrategy,
-        data_strategy=DefaultDataStrategy,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
         check_done=False,
     )
 

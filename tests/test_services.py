@@ -340,9 +340,9 @@ def test_merge_data_settings_applies_subtype_overlay() -> None:
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",
+        relative_path="tv/test",  # type: ignore[arg-type]
         data_lang="en",
-        period={"last_time": {"unit_count": 1}, "time_unit": "m"},
+        period={"last_time": {"unit_count": 1}, "time_unit": "m"},  # type: ignore[arg-type]
     )
 
     result = AppService.merge_data_settings(defaults, report_settings)
@@ -448,8 +448,8 @@ async def test_run_report_multi_entry_yields_multiple_paths(
     mock_report_service.get_result.return_value = {"result": "mock_data"}
 
     # Build result DataFrames for each entry
-    settings_1 = ReportSettings(**entries[0])
-    settings_2 = ReportSettings(**entries[1])
+    settings_1 = ReportSettings.model_validate(entries[0])
+    settings_2 = ReportSettings.model_validate(entries[1])
     result_df_1 = _compute_result_df(hermetic_app_service, settings_1)
     result_df_2 = _compute_result_df(hermetic_app_service, settings_2)
     mock_report_service.result2table.side_effect = [result_df_1, result_df_2]
