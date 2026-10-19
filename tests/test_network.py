@@ -489,3 +489,36 @@ async def test_cpu_local_calls_bypass_semaphore_and_jitter(mocker):
     assert mock_semaphore.acquire.call_count == 0, (
         "Semaphore acquire should not be called for api_call=False"
     )
+
+
+def test_vendor_json_error_no_file_dumped(tmp_path, monkeypatch, caplog):
+    """The patched _req_to_json suppresses the vendor's CWD json-error-*.txt files.
+
+    mediascope_api/core/net.py:481-496 originally writes a dump file to the
+    current working directory on JSON decode failures.  Our import-time patch
+    in network.py replaces it so that no file is created, the error is logged,
+    and ServerError(code=500) is raised — preserving the 5xx retry behaviour
+    in NetworkClient.call.
+    """
+    from mediascope_api.core.net import MediascopeApiNetwork
+
+    monkeypatch.chdir(tmp_path)
+
+    bad_req = MagicMock()
+    bad_req.json.side_effect = ValueError("Expecting value: line 1 column 1")
+    bad_req.status_code = 500
+    bad_req.text = '{"broken": json}'
+
+    with caplog.at_level(
+        logging.WARNING, logger="mko_get_mediascope_data.core.network"
+    ):
+        with pytest.raises(ServerError) as exc_info:
+            MediascopeApiNetwork._req_to_json(bad_req, "/some/endpoint", {"k": "v"})
+
+    # ServerError carries code=500 so NetworkClient.call retries as a 5xx.
+    assert exc_info.value.code == 500
+    # The error was logged, not silently swallowed.
+    assert "non-JSON response" in caplog.text
+    assert "/some/endpoint" in caplog.text
+    # No json-error-*.txt file was written to CWD.
+    assert not any(p.name.startswith("json-error-") for p in tmp_path.iterdir())

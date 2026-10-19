@@ -11,8 +11,10 @@ from mediascope_api.core.errors import (
     AuthorizationError,
     BadRequestError,
     MediascopeApiError,
+    ServerError,
     TooManyRequestsError,
 )
+from mediascope_api.core.net import MediascopeApiNetwork
 from requests.exceptions import (
     ChunkedEncodingError,
     ConnectionError,
@@ -43,6 +45,46 @@ RETRIABLE_EXCEPTIONS = (
     NameResolutionError,  # ← added: DNS resolution failed
     socket.gaierror,  # ← added: basic name resolution error
 )
+
+
+def _req_to_json_no_dump(req: Any, endpoint: str, data: Any) -> Any:
+    """Drop-in replacement for ``MediascopeApiNetwork._req_to_json``.
+
+    The vendor's original ``@staticmethod`` writes a ``json-error-<timestamp>.txt``
+    file to the *current working directory* on JSON decode failures.  That
+    pollutes the project root and is not thread-safe under
+    ``asyncio.to_thread`` (used by :meth:`NetworkClient._invoke`).
+
+    Instead we log the response detail and re-raise ``ServerError(code=500)``
+    so the existing 5xx-retry logic in :meth:`NetworkClient.call` continues to
+    behave identically — no files are written.
+    """
+    try:
+        return req.json()
+    except Exception as exc:
+        logger.warning(
+            "Mediascope API returned a non-JSON response on endpoint %s "
+            "(HTTP %s). Response body (truncated to 1000 chars): %s",
+            endpoint,
+            getattr(req, "status_code", None),
+            (req.text or "")[:1000],
+        )
+        raise ServerError(
+            f"JSON decode error on {endpoint}: {exc}", 500
+        ) from exc
+
+
+def _patch_vendor_json_error_dump() -> None:
+    """Suppress the vendor's CWD ``json-error-*.txt`` file writes.
+
+    Must wrap the replacement in ``staticmethod`` so it keeps the same calling
+    convention as the original (``self._req_to_json(req, endpoint, data)``).
+    """
+    MediascopeApiNetwork._req_to_json = staticmethod(_req_to_json_no_dump)
+
+
+# Apply once at import time so the patch is active for both CLI and library use.
+_patch_vendor_json_error_dump()
 
 
 class NetworkClient:
