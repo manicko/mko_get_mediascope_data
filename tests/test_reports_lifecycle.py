@@ -1706,3 +1706,148 @@ async def test_large_result_is_rejected(
 
     # Queue accounting: every enqueued task was task_done()'d — no join hang.
     assert report.task_queue.qsize() == 0
+
+
+# ---------------------------------------------------------------------------
+# PERF-003: per-task latency instrumentation (reports.py:137-159, 358-381, 383-440, 442-510)
+# ---------------------------------------------------------------------------
+
+
+async def test_worker_emits_per_task_duration(
+    tmp_path: Path,
+    mocker,
+    tv_json5_content: str,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+):
+    """PERF-003: the full pipeline emits structured per-task timing logs.
+
+    Mirrors ``test_create_report_writes_csv_and_marks_queue_done`` (success
+    path) and the spy pattern of ``test_worker_does_not_log_ready_on_failed``.
+    Asserts that ``reports_logger.info`` receives ``task_complete`` and
+    ``task_stage_complete`` records carrying float durations and str task
+    names, and that no timing format string contains "is ready" or
+    "will be skipped".
+    """
+
+    # ---- 1. Spy on reports logger.info (success path emits no warnings) --
+    reports_logger = logging.getLogger(_REPORTER_LOGGER)
+    mock_info = mocker.spy(reports_logger, "info")
+
+    # ---- 2. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
+
+    # ---- 3. Hermetic AppService + data settings -----------------------
+    app_service = hermetic_app_service
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 4. Compute result2table DataFrame columns --------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 5. Doubled MediaVortexTask (success path) --------------------
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 6. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 7. Mock asyncio.sleep (no real delays) ------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 8. Export path + strategies ----------------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    report_factory = ReportFactory(report_settings)
+
+    # ---- 9. Construct report directly ----------------------------------
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 10. Run real pipeline (bounded by outer wait_for for safety) --
+    await asyncio.wait_for(report.create_report(), timeout=10.0)
+
+    # ---- 11. Assertions ------------------------------------------------
+
+    # Queue drained — no hang (every task_done was called).
+    assert report.task_queue.qsize() == 0
+
+    # Collect every info call captured by the spy.
+    info_calls = mock_info.call_args_list
+
+    # At least one "task_complete" record (per-task total from _process_item).
+    total_calls = [c for c in info_calls if "task_complete" in str(c.args[0])]
+    assert len(total_calls) >= 1, (
+        f"Expected at least one 'task_complete' info call, got: {info_calls}"
+    )
+
+    # At least one "task_stage_complete" record (stage-level duration).
+    stage_calls = [
+        c for c in info_calls if "task_stage_complete" in str(c.args[0])
+    ]
+    assert len(stage_calls) >= 1, (
+        f"Expected at least one 'task_stage_complete' info call, "
+        f"got: {info_calls}"
+    )
+
+    timing_calls = total_calls + stage_calls
+
+    # Negative: no timing format string may contain "is ready" or
+    # "will be skipped" — these belong to worker's success / skip branches
+    # and must not collide with the structured instrumentation records.
+    for call in timing_calls:
+        fmt = str(call.args[0])
+        assert "is ready" not in fmt, (
+            f"Timing format string must not contain 'is ready': {fmt}"
+        )
+        assert "will be skipped" not in fmt, (
+            f"Timing format string must not contain 'will be skipped': {fmt}"
+        )
+
+    # Every timing call must carry a float duration and a non-empty str
+    # task name among its non-format arguments.
+    for call in timing_calls:
+        args = call.args[1:]
+        assert any(isinstance(a, float) for a in args), (
+            f"Timing call {call.args[0]!r} missing a float duration; args={args}"
+        )
+        assert any(isinstance(a, str) and a for a in args), (
+            f"Timing call {call.args[0]!r} missing a non-empty str task name; "
+            f"args={args}"
+        )
+
+    # Cross-reference: extract the task name from the worker's success-path
+    # ``logger.info(f"Task {item.name} is ready.")`` f-string call (args[0] is
+    # the fully rendered string) and assert that the same name appears among
+    # the str() values of at least one timing call's data arguments.
+    ready_calls = [c for c in info_calls if "is ready" in str(c.args[0])]
+    assert len(ready_calls) >= 1, (
+        f"Expected at least one 'is ready' info call from worker, got: {info_calls}"
+    )
+    ready_rendered = str(ready_calls[0].args[0])
+    ready_name = ready_rendered.removeprefix("Task ").removesuffix(" is ready.")
+
+    name_found = any(
+        ready_name in str(arg)
+        for call in timing_calls
+        for arg in call.args[1:]
+    )
+    assert name_found, (
+        f"Task name '{ready_name}' not found among timing-call arguments; "
+        f"timing calls: {timing_calls}"
+    )

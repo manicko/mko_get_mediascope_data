@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from datetime import date
@@ -140,11 +141,22 @@ class MediaReport(Report):
         Extracted from ``worker`` so the caller can wrap it with
         ``asyncio.wait_for`` and isolate per-task failures.
         """
-        await self.send_task(item)
-        if item.status is True:
-            await self.wait_task(item)
-        if item.status is True:
-            await self.extract_data(item)
+        start = time.perf_counter()
+        try:
+            await self.send_task(item)
+            if item.status is True:
+                await self.wait_task(item)
+            if item.status is True:
+                await self.extract_data(item)
+        finally:
+            elapsed = time.perf_counter() - start
+            logger.info(
+                "task_complete name=%s target=%s interval=%s total=%.4f",
+                item.name,
+                item.target,
+                item.interval,
+                elapsed,
+            )
 
     async def worker(self, timeout: float | None = None) -> None:
         """Manage task queue sequence: send, wait, extract, mark done.
@@ -348,6 +360,7 @@ class TVMediaReport(MediaReport):
         :param task: task object
         :return: Nothing
         """
+        stage_start = time.perf_counter()
         # print(f'debug task.settings = {task.settings}')
         task_json = await self.network_client.call(
             self.builder, task.report_type, **task.settings, api_call=False
@@ -356,7 +369,12 @@ class TVMediaReport(MediaReport):
             task.key = {}
             task.key = await self.network_client.call(self.sender, task_json, retryable=False)
 
-            logger.info("=")
+            logger.info(
+                "task_stage_complete stage=send name=%s target=%s duration=%.4f",
+                task.name,
+                task.target,
+                time.perf_counter() - stage_start,
+            )
         if not task.key:
             task.status = False
             task.log_error = True
@@ -374,6 +392,7 @@ class TVMediaReport(MediaReport):
         """
         loop = asyncio.get_running_loop()
         start = loop.time()
+        stage_start = time.perf_counter()
         polls = 0
         sleep_interval = 2.0
         while True:
@@ -413,11 +432,19 @@ class TVMediaReport(MediaReport):
 
             sleep_interval = min(sleep_interval * 2, 60.0)
 
+        logger.info(
+            "task_stage_complete stage=wait name=%s target=%s duration=%.4f",
+            task.name,
+            task.target,
+            time.perf_counter() - stage_start,
+        )
+
     async def extract_data(self, task):
         """Exports data to the CSV file
         :param task: Task object with task settings
         :return: Nothing
         """
+        stage_start = time.perf_counter()
         # retrieve result
         res_json = await self.network_client.call(
             self.report_service.get_result, task.key
@@ -440,6 +467,12 @@ class TVMediaReport(MediaReport):
                     f"Task '{task.name}' result size {len(result_body)} "
                     f"exceeds max_result_rows {self.max_result_rows} — "
                     "skipping extraction."
+                )
+                logger.info(
+                    "task_stage_complete stage=extract name=%s target=%s duration=%.4f",
+                    task.name,
+                    task.target,
+                    time.perf_counter() - stage_start,
                 )
                 return
             df: DataFrame | None = await self.network_client.call(
@@ -468,6 +501,13 @@ class TVMediaReport(MediaReport):
                         compression=self.report_settings.compression,
                     )
                     # print(f'\n saving {task.name} to file')
+
+        logger.info(
+            "task_stage_complete stage=extract name=%s target=%s duration=%.4f",
+            task.name,
+            task.target,
+            time.perf_counter() - stage_start,
+        )
 
     async def generate_tasks(self) -> AsyncGenerator[TVTask, None]:
         async for task in self.task_strategy.generate(self):
