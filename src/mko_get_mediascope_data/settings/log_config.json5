@@ -42,22 +42,7 @@
   },
   // Loggers use the handler names declared above
   "loggers": {
-    "__main__": { // if __name__ == "__main__"
-      // Use a list even if one handler is used
-      "handlers": [ "rotating_file" ],
-      "level": "INFO",
-      "propagate": false
-    },
-    "tests": {
-      "level": "INFO",
-      "handlers": [ "rotating_file" ],
-      "propagate": false
-    },
-    "app": {
-      "level": "INFO",
-      "handlers": [ "console", "rotating_file" ],
-      "propagate": false
-    }
+    // No custom named loggers; all logging is handled by the root logger below.
   },
   "root": {
     "level": "INFO",

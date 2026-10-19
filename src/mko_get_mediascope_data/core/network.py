@@ -168,4 +168,8 @@ class NetworkClient:
             jitter = uniform(0, 5)
             await asyncio.sleep(backoff + jitter)
 
+        logger.error(
+            f'Max retries exceeded for "{func.__name__}" '
+            f'with args="{self._redact_args(args)}" and kwargs="{self._redact_args(kwargs)}"'
+        )
         raise MaxRetriesExceeded("Network retry limit exceeded")

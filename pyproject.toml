@@ -4,7 +4,7 @@ requires = ["setuptools>=61.0", "wheel>=0.37.1"]
 
 [project]
 name = "mko_get_mediascope_data"
-version = "1.0.8"
+dynamic = ["version"]
 authors = [
     { name = "mko", email = "manicko@yandex.ru" },
 ]
@@ -53,6 +53,12 @@ where = ["src"]
 include = ["mko_get_mediascope_data", "mko_get_mediascope_data.*"]
 exclude = ["tests/.pytest_cache*"]
 namespaces = false
+
+[tool.setuptools.package-data]
+mko_get_mediascope_data = ["settings/**/*.json5", "settings/**/*.json"]
+
+[tool.setuptools.dynamic]
+version = {attr = "mko_get_mediascope_data.__version__"}
 
 # Black configuration
 [tool.black]
@@ -208,4 +214,6 @@ dev = [
     "types-python-dateutil>=2.9.0",
     "twine>=5.0.0",
     "types-requests>=2.33.0.20261006",
+    "build>=1.6.1",
+    "setuptools>=84.0.0",
 ]

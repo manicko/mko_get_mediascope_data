@@ -1,7 +1,6 @@
 include README.md
 include LICENSE.txt
-include requirements.txt
-recursive-include mko_get_mediascope_data *.json *.json5
+recursive-include src/mko_get_medioscope_data *.json *.json5
 
 exclude tests
 exclude *.git
