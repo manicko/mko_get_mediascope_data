@@ -139,8 +139,38 @@ class NetworkClient:
         sleep_time: int | float = 2,
         retryable: bool = True,
         api_call: bool = True,
+        retry_on: tuple[type[BaseException], ...] | None = None,
         **kwargs: Any,
     ) -> T:
+        """Execute *func* with retry logic and concurrency control.
+
+        Parameters
+        ----------
+        func
+            The callable to execute (typically a vendor API method).
+        sleep_time
+            Base backoff time in seconds; effective sleep is
+            ``max(sleep_time, self._sleep_time)``.
+        retryable
+            If ``False``, the function is called exactly once (no retry loop).
+            Equivalent to ``retry_on=()`` when ``retry_on`` is not given.
+        api_call
+            If ``False``, bypasses the initial jitter sleep, semaphore, and retry
+            loop entirely — used for CPU-bound calls (e.g. ``build_task``).
+        retry_on
+            When provided, only exception types in this tuple are retried.
+            All other exceptions are re-raised immediately.  This overrides
+            ``retryable=False`` for the specified exception types, allowing
+            selective retry on transport-level errors (SSL, timeout, connection
+            reset) even for POST calls where HTTP-level errors should not be
+            retried (to avoid duplicate task creation).  When ``None``, all
+            ``RETRIABLE_EXCEPTIONS`` and 429/5xx errors are retried.
+
+        Returns
+        -------
+        T
+            The return value of *func*.
+        """
         if not api_call:
             return await self._invoke(func, *args, **kwargs)
 
@@ -149,7 +179,8 @@ class NetworkClient:
         # Small initial delay to smooth peak loads
         await asyncio.sleep(uniform(_sleep_time * 0.5, _sleep_time * 2))
 
-        if not retryable:
+        if not retryable and retry_on is None:
+            # Legacy behavior: single attempt, no retry loop at all.
             async with self._semaphore:
                 return await self._invoke(func, *args, **kwargs)
 
@@ -178,6 +209,17 @@ class NetworkClient:
                 raise
 
             except RETRIABLE_EXCEPTIONS as err:
+                # When retry_on is specified, only retry the named exception types.
+                # Others (even if technically retryable) are re-raised immediately.
+                # This is used for POST calls (send_task) where HTTP-level errors
+                # indicate the request may have been committed and should not be
+                # retried to avoid duplicate task creation.
+                if retry_on is not None and not isinstance(err, retry_on):
+                    logger.error(
+                        f'Rejected error type "{type(err).__name__}" '
+                        f'for "{func.__name__}" (not in retry_on): {err}'
+                    )
+                    raise
                 logger.warning(
                     f"Network error ({type(err).__name__}) "
                     f"attempt {attempt}/{self._max_attempts}: {err}"
@@ -186,12 +228,30 @@ class NetworkClient:
             except TooManyRequestsError as err:
                 # 429 — vendor does not expose Retry-After header on the
                 # exception (verified); falls back to exponential backoff below.
+                # When retry_on is specified (e.g. send_task), 429 is an HTTP-level
+                # response that may have been committed — re-raise immediately.
+                if retry_on is not None:
+                    logger.error(
+                        f"HTTP 429 on retry_on-limited call to "
+                        f'"{func.__name__}" — re-raising (may have been committed)'
+                    )
+                    raise
                 logger.warning(
                     f"Rate limited (429) on attempt {attempt}/{self._max_attempts}: {err}"
                 )
 
             except MediascopeApiError as err:
                 # Unhandled HTTP status (403, 404, 204, 500, 502, etc.).
+                # When retry_on is specified (e.g. send_task), ALL HTTP-level errors
+                # are re-raised immediately because the POST may have been committed
+                # and retrying risks duplicate task creation.
+                if retry_on is not None:
+                    code = getattr(err, "code", None)
+                    logger.error(
+                        f"HTTP error ({code}) on retry_on-limited call to "
+                        f'"{func.__name__}" — re-raising (may have been committed)'
+                    )
+                    raise
                 # 5xx is retried when retry_5xx=True; all others re-raise.
                 code = getattr(err, "code", None)
                 if self._retry_5xx and code is not None and 500 <= code < 600:

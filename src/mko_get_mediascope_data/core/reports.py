@@ -18,11 +18,12 @@ from mko_get_mediascope_data.core.errors import NoReportFoundError
 from mko_get_mediascope_data.core.models import (
     Data,
     MediaType,
+    PollSettings,
     ReportSettings,
     ReportSubtype,
     ReportType,
 )
-from mko_get_mediascope_data.core.network import NetworkClient
+from mko_get_mediascope_data.core.network import NetworkClient, RETRIABLE_EXCEPTIONS
 from mko_get_mediascope_data.core.tasks import TVTask
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ class MediaReport(Report):
         report_service: MediaVortexTask,
         network_client: NetworkClient,
         max_tasks: int = 100,
+        poll: PollSettings | None = None,
         check_done: bool | None = True,
     ):
         super().__init__(
@@ -114,6 +116,7 @@ class MediaReport(Report):
 
         # limits maximum tasks sent to Mediascope API
         self.max_tasks = max_tasks
+        self.poll = poll or PollSettings()
         self.task_queue: asyncio.Queue[TVTask] = asyncio.Queue(maxsize=self.max_tasks)
 
         self.period: list[tuple[str, str]] | list[tuple[date, date]] | None = None
@@ -253,6 +256,7 @@ class TVMediaReport(MediaReport):
         task_strategy: TaskGenerationStrategy | None = None,
         data_strategy: DataPreparationStrategy | None = None,
         max_tasks: int = 100,
+        poll: PollSettings | None = None,
         check_done: bool | None = True,
     ):
         super().__init__(
@@ -262,6 +266,7 @@ class TVMediaReport(MediaReport):
             report_service=report_service,
             network_client=network_client,
             max_tasks=max_tasks,
+            poll=poll,
             check_done=check_done,
         )
 
@@ -368,7 +373,13 @@ class TVMediaReport(MediaReport):
         )
         if task_json is not False:
             task.key = {}
-            task.key = await self.network_client.call(self.sender, task_json, retryable=False)
+            # Selective retry: retry only on connection-level errors (SSL,
+            # timeout, connection reset) that occur BEFORE the POST is committed.
+            # HTTP-level errors (429, 5xx, MediascopeApiError) are re-raised
+            # immediately to avoid duplicate task creation.
+            task.key = await self.network_client.call(
+                self.sender, task_json, retry_on=RETRIABLE_EXCEPTIONS
+            )
 
             logger.info(
                 "task_stage_complete stage=send name=%s target=%s duration=%.4f",
@@ -390,20 +401,31 @@ class TVMediaReport(MediaReport):
             task.error = "Task could not be built — period or target may be outside available range."
 
     async def wait_task(
-        self, task, *, max_polls: int = 60, poll_deadline: float = 3600.0
+        self, task, *, max_polls: int | None = None, poll_deadline: float | None = None
     ):
         """
         Requesting status of the task using Mediascope API
+
+        Uses config values from ``self.poll`` (PollSettings) when the
+        parameters are not explicitly provided.
+
         :param task: Task object keeping params for the request
         :param max_polls: Maximum number of poll iterations before giving up.
+            Defaults to ``self.poll.max_polls``.
         :param poll_deadline: Maximum wall-clock seconds before giving up.
+            Defaults to ``self.poll.deadline``.
         :return: Nothing
         """
+        if max_polls is None:
+            max_polls = self.poll.max_polls
+        if poll_deadline is None:
+            poll_deadline = self.poll.deadline
+
         loop = asyncio.get_running_loop()
         start = loop.time()
         stage_start = time.perf_counter()
         polls = 0
-        sleep_interval = 30.0  # Start at 30s; API needs ~40s to process after submit
+        sleep_interval = self.poll.initial_interval  # Start at 30s; API needs ~40s to process after submit
         while True:
             polls += 1
             if polls >= max_polls:
@@ -420,7 +442,7 @@ class TVMediaReport(MediaReport):
             await asyncio.sleep(sleep_interval)
 
             status = await self.network_client.call(
-                self.report_service.get_status, task.key, sleep_time=30
+                self.report_service.get_status, task.key, sleep_time=self.poll.sleep_time
             )
             if status is False:
                 task.status = False
@@ -439,12 +461,12 @@ class TVMediaReport(MediaReport):
                         task.error = f"Task {terminal}"
                     break
 
-            # Gradual poll-interval ramp: 30 → 50 → 60 (capped at 60).
+            # Gradual poll-interval ramp: initial_interval → 50 → max_interval (capped).
             # Avoids both initial over-polling and excessive wait for completion.
             if sleep_interval < 50.0:
                 sleep_interval = 50.0
-            elif sleep_interval < 60.0:
-                sleep_interval = 60.0
+            elif sleep_interval < self.poll.max_interval:
+                sleep_interval = self.poll.max_interval
 
         logger.info(
             "task_stage_complete stage=wait name=%s target=%s duration=%.4f",

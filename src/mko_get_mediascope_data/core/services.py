@@ -183,7 +183,12 @@ class AppService:
             data_settings: Data = self.get_data_settings(report_settings)
 
             network_client: NetworkClient = NetworkClient(
-                max_concurrent_requests=self.app_config.app_settings.max_concurrent_requests
+                max_concurrent_requests=self.app_config.app_settings.max_concurrent_requests,
+                sleep_time=self.app_config.app_settings.sleep_time,
+                max_attempts=self.app_config.app_settings.max_attempts,
+                call_timeout=self.app_config.app_settings.call_timeout,
+                retry_5xx=self.app_config.app_settings.retry_5xx,
+                log_errors_detail=self.app_config.app_settings.log_errors_detail,
             )
             report_service: MediaVortexTask = await network_client.call(
                 self.get_connection,
@@ -201,6 +206,8 @@ class AppService:
                 network_client=network_client,
                 task_strategy=report_strategies.task_strategy(),
                 data_strategy=report_strategies.data_strategy(),
+                max_tasks=self.app_config.app_settings.max_tasks,
+                poll=self.app_config.app_settings.poll,
                 check_done=report_settings.check_done,
             )
 

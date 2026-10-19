@@ -119,9 +119,17 @@ async def test_call_preserves_return_type(mocker):
     assert all(isinstance(k, str) and isinstance(v, str) for k, v in result.items())
 
 
-async def test_send_task_not_retried_on_retryable_error(mocker):
-    """EXT-001: non-retryable call does not retry on a retryable exception."""
-    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+async def test_send_task_retries_on_connection_error(mocker):
+    """send_task now uses retry_on=RETRIABLE_EXCEPTIONS — retries on
+    connection-level errors (ConnectTimeout, SSLError, etc.) that occur
+    BEFORE the POST is committed, but does NOT retry HTTP-level errors.
+
+    Previously send_task used retryable=False (EXT-001) which skipped all
+    app-level retries. Now with selective retry, ConnectTimeout (which is
+    a RETRIABLE_EXCEPTION and indicates no response was received) IS
+    retried up to max_attempts.
+    """
+    mock_sleep = mocker.patch("asyncio.sleep", new_callable=AsyncMock)
     client = NetworkClient(max_attempts=3, sleep_time=0)
     call_count = [0]
 
@@ -129,12 +137,65 @@ async def test_send_task_not_retried_on_retryable_error(mocker):
         call_count[0] += 1
         raise ConnectTimeout("connection timed out")
 
-    with pytest.raises(ConnectTimeout, match="connection timed out"):
-        await client.call(send_task_func, {"task": "json"}, retryable=False)
+    with pytest.raises(MaxRetriesExceeded, match="Network retry limit exceeded"):
+        await client.call(
+            send_task_func,
+            {"task": "json"},
+            retry_on=(ConnectTimeout,),
+        )
 
-    assert call_count[0] == 1, (
-        f"Expected exactly 1 call (no retry), got {call_count[0]}"
-    )
+    assert call_count[0] == 3  # retried up to max_attempts
+    assert mock_sleep.call_count >= 2  # backoff sleeps between retries
+
+
+async def test_send_task_does_not_retry_http_errors(mocker):
+    """send_task's retry_on=RETRIABLE_EXCEPTIONS re-raises HTTP-level errors
+    immediately (no retry) to prevent duplicate task creation.
+
+    A ServerError (5xx) is a MediascopeApiError — the POST may have been
+    committed, so it is NOT retried even though retry_on is set.
+    """
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+    call_count = [0]
+
+    def send_task_func(_task_json):
+        call_count[0] += 1
+        raise ServerError("Internal server error", 500)
+
+    with pytest.raises(ServerError):
+        await client.call(
+            send_task_func,
+            {"task": "json"},
+            retry_on=(ConnectTimeout,),
+        )
+
+    assert call_count[0] == 1  # single attempt, no retry on HTTP errors
+
+
+async def test_send_task_does_not_retry_429(mocker):
+    """send_task's retry_on re-raises 429 (TooManyRequestsError) immediately.
+
+    Even though TooManyRequestsError is normally retried, when retry_on is
+    specified, HTTP-level errors are NOT retried because the POST may have
+    been processed by the server.
+    """
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+    call_count = [0]
+
+    def send_task_func(_task_json):
+        call_count[0] += 1
+        raise TooManyRequestsError("Too many requests", 429)
+
+    with pytest.raises(TooManyRequestsError):
+        await client.call(
+            send_task_func,
+            {"task": "json"},
+            retry_on=(ConnectTimeout,),
+        )
+
+    assert call_count[0] == 1  # single attempt, no retry
 
 
 async def test_call_retries_on_incomplete_read(mocker):

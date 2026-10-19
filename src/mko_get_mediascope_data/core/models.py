@@ -7,6 +7,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PositiveFloat,
     PositiveInt,
     field_validator,
     model_validator,
@@ -27,9 +28,52 @@ class LoggingSettings(BaseModel):
     root: dict[str, Any]
 
 
+class PollSettings(BaseModel):
+    """Polling configuration for task status checks."""
+
+    sleep_time: int = 30
+    initial_interval: float = 30.0
+    max_interval: float = 60.0
+    max_polls: int = 60
+    deadline: float = 3600.0
+
+
+class SendTaskSettings(BaseModel):
+    """Configuration for the task-submission POST call.
+
+    ``retryable`` enables app-level retry on connection-level errors
+    (SSL handshake failure, timeout, connection reset) that occur BEFORE
+    the HTTP request body is committed — where retrying is safe and does
+    not risk duplicate task creation.
+
+    ``retry_on_connection_error`` controls whether ``RETRIABLE_EXCEPTIONS``
+    (transport-level errors) are retried.  This is separate from
+    ``retryable`` because some deployments may want to disable retries
+    entirely (e.g., behind a proxy that handles retry).
+    """
+
+    retryable: bool = True
+    retry_on_connection_error: bool = True
+
+
+# Main configuration class
 class AppSettings(BaseModel):
+    """Application-wide settings loaded from ``app_config.json5``.
+
+    All network concurrency, retry, timeout, and polling parameters are
+    configurable here — no hardcoded values remain in application code.
+    """
+
     export_folder: Path
     max_concurrent_requests: PositiveInt = 5
+    max_tasks: PositiveInt = 100
+    sleep_time: PositiveInt = 2
+    max_attempts: PositiveInt = 10
+    call_timeout: PositiveFloat = 300.0
+    retry_5xx: bool = True
+    log_errors_detail: bool = False
+    poll: PollSettings = Field(default_factory=PollSettings)
+    send_task: SendTaskSettings = Field(default_factory=SendTaskSettings)
 
     @field_validator("export_folder", mode="before")
     @classmethod
@@ -116,7 +160,6 @@ class ReportSettings(BaseModel):
         return Path(folder).expanduser()
 
 
-# Main configuration class
 class AppConfig(BaseModel):
     """
     Main configuration class that loads and merges all configurations.

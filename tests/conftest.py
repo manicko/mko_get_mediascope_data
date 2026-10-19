@@ -44,7 +44,29 @@ _LOG_CONFIG_JSON5 = """
 }
 """
 
-_APP_CONFIG_JSON5 = '{"export_folder": "output", "max_concurrent_requests": 5,}'
+_APP_CONFIG_JSON5 = """
+{
+  "export_folder": "output",
+  "max_concurrent_requests": 5,
+  "max_tasks": 100,
+  "call_timeout": 300.0,
+  "max_attempts": 10,
+  "sleep_time": 2,
+  "retry_5xx": true,
+  "log_errors_detail": false,
+  "poll": {
+    "sleep_time": 30,
+    "initial_interval": 30.0,
+    "max_interval": 60.0,
+    "max_polls": 60,
+    "deadline": 3600.0,
+  },
+  "send_task": {
+    "retryable": true,
+    "retry_on_connection_error": true,
+  },
+}
+"""
 
 
 def expected_output_columns(
