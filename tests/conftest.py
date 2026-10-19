@@ -44,7 +44,7 @@ _LOG_CONFIG_JSON5 = """
 }
 """
 
-_APP_CONFIG_JSON5 = '{"export_folder": "output",}'
+_APP_CONFIG_JSON5 = '{"export_folder": "output", "max_concurrent_requests": 5,}'
 
 
 def expected_output_columns(

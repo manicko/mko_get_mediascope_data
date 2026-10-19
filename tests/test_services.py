@@ -149,6 +149,15 @@ def test_app_config_is_cached(hermetic_app_service: AppService) -> None:
     assert first is second
     # Content assertion — verify the cached config has expected values
     assert first.app_settings.export_folder == Path("output")
+    assert first.app_settings.max_concurrent_requests == 5
+
+
+def test_app_config_max_concurrent_requests_default(tmp_path: Path) -> None:
+    """AppSettings.max_concurrent_requests defaults to 5 when omitted from config."""
+    from mko_get_mediascope_data.core.models import AppSettings
+
+    settings = AppSettings.model_validate({"export_folder": "output"})
+    assert settings.max_concurrent_requests == 5
 
 
 def test_reload_config_invalidates_cache(hermetic_app_service: AppService) -> None:

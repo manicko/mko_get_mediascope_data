@@ -288,6 +288,10 @@ class TVMediaReport(MediaReport):
         raw_periods: list[list[str]] = df.loc[df["id"] == str(self.base_id)][
             ["periodFrom", "periodTo"]
         ].values.tolist()
+        if not raw_periods:
+            raise NoReportFoundError(
+                f"Base id {self.base_id} not found in the availability catalog."
+            )
         available_period: list[date] = [utils.str_to_date(d) for d in raw_periods[0]]
         return available_period
 
@@ -372,10 +376,18 @@ class TVMediaReport(MediaReport):
                 task.target,
                 time.perf_counter() - stage_start,
             )
-        if not task.key:
+            if not task.key:
+                task.status = False
+                task.log_error = True
+                task.error = "Task.key is not received from API."
+        else:
+            # build_task returned False — the API rejected the task definition.
+            # This typically means the period or target is outside the available
+            # data range.  Treat as "no data" (log_error=False) so the worker
+            # skips without creating an error artifact.
             task.status = False
-            task.log_error = True
-            task.error = "Task.key is not received from API."
+            task.log_error = False
+            task.error = "Task could not be built — period or target may be outside available range."
 
     async def wait_task(
         self, task, *, max_polls: int = 60, poll_deadline: float = 3600.0
@@ -391,7 +403,7 @@ class TVMediaReport(MediaReport):
         start = loop.time()
         stage_start = time.perf_counter()
         polls = 0
-        sleep_interval = 2.0
+        sleep_interval = 30.0  # Start at 30s; API needs ~40s to process after submit
         while True:
             polls += 1
             if polls >= max_polls:
@@ -408,7 +420,7 @@ class TVMediaReport(MediaReport):
             await asyncio.sleep(sleep_interval)
 
             status = await self.network_client.call(
-                self.report_service.get_status, task.key, sleep_time=2
+                self.report_service.get_status, task.key, sleep_time=30
             )
             if status is False:
                 task.status = False
@@ -427,7 +439,12 @@ class TVMediaReport(MediaReport):
                         task.error = f"Task {terminal}"
                     break
 
-            sleep_interval = min(sleep_interval * 2, 60.0)
+            # Gradual poll-interval ramp: 30 → 50 → 60 (capped at 60).
+            # Avoids both initial over-polling and excessive wait for completion.
+            if sleep_interval < 50.0:
+                sleep_interval = 50.0
+            elif sleep_interval < 60.0:
+                sleep_interval = 60.0
 
         logger.info(
             "task_stage_complete stage=wait name=%s target=%s duration=%.4f",

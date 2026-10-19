@@ -21,8 +21,8 @@ from mko_get_mediascope_data.core.paths import APP_PATHS
 from mko_get_mediascope_data.core.services import AppService
 from mko_get_mediascope_data.core.utils import en_to_ru
 
-# Number of report entries expected across the 16 bundled JSON5 report templates.
-EXPECTED_TEMPLATE_ENTRIES = 32
+# Number of report entries expected across the 17 bundled JSON5 report templates.
+EXPECTED_TEMPLATE_ENTRIES = 34
 
 # Valid Media-Scope kitId legend values (dataset IDs).
 VALID_KIT_IDS: set[int] = {1, 2, 3, 4, 5, 6, 7, 9, 10}
@@ -85,7 +85,7 @@ def test_merge_data_settings_en_does_not_translate():
 
 
 def test_bundled_templates_validate():
-    """All 32 entries across 16 bundled JSON5 report templates must pass
+    """All 34 entries across 17 bundled JSON5 report templates must pass
     ReportSettings validation.
 
     Reads from the package's bundled templates via APP_PATHS.app_settings_dir
@@ -99,7 +99,7 @@ def test_bundled_templates_validate():
     failures: list[str] = []
 
     for json5_file in json5_files:
-        data = json5.loads(json5_file.read_text())
+        data = json5.loads(json5_file.read_text(encoding="utf-8"))
         entries = data if isinstance(data, list) else [data]
         for idx, entry in enumerate(entries):
             total_entries += 1
@@ -128,7 +128,7 @@ def test_data_defaults_covers_all_subtypes():
     mechanism (TypeError for ru, ValidationError for en) is eliminated.
     """
     defaults_path = APP_PATHS.app_settings_dir / "defaults" / "tv" / "crosstab.json5"
-    data = json5.loads(defaults_path.read_text())
+    data = json5.loads(defaults_path.read_text(encoding="utf-8"))
     defaults = DataDefaults(**data)
 
     for subtype in ReportSubtype:
@@ -186,7 +186,7 @@ def test_bundled_templates_kitId_conformance() -> None:
 
     all_json5 = list(reports_dir.rglob("*.json5")) + list(defaults_dir.rglob("*.json5"))
     for f in all_json5:
-        data = json5.loads(f.read_text())
+        data = json5.loads(f.read_text(encoding="utf-8"))
         kit_ids = _collect_kit_ids(data)
         for kid in kit_ids:
             assert kid in VALID_KIT_IDS, (
@@ -195,7 +195,7 @@ def test_bundled_templates_kitId_conformance() -> None:
 
     # Verify TOP_NAT_TV_ADVERTISERS has kitId=1 in defaults
     tv_crosstab = defaults_dir / "tv" / "crosstab.json5"
-    data = json5.loads(tv_crosstab.read_text())
+    data = json5.loads(tv_crosstab.read_text(encoding="utf-8"))
     assert data["TOP_NAT_TV_ADVERTISERS"]["options"]["kitId"] == 1, (
         "TOP_NAT_TV_ADVERTISERS default must define kitId"
     )
@@ -206,7 +206,7 @@ def test_tv_report_template_entry0_has_options() -> None:
     must have an explicit options block (no longer relying on silent default).
     """
     report_path = APP_PATHS.app_settings_dir / "reports" / "nat_tv_tvreport.json5"
-    data = json5.loads(report_path.read_text())
+    data = json5.loads(report_path.read_text(encoding="utf-8"))
     entry0 = data[0]
     assert "options" in entry0, (
         "Entry[0] TOP_NAT_TV_ADVERTISERS must have options block"

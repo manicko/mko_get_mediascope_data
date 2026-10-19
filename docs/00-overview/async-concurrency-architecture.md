@@ -84,10 +84,14 @@ a permit only for the brief HTTP status call and sleeps outside the semaphore th
 rest of the cycle. Combined with `asyncio.sleep(sleep_interval)` between polls
 (reports.py:411), this produces a staggered polling cadence.
 
-Poll calls pass `sleep_time=2` (reports.py:413-414), yielding a uniform 1–4 s
-smoothing delay — the same as regular calls, which use the default `sleep_time=2`
-(network.py:96), yielding 1–4 s smoothing. Level 2 thus bounds both HTTP
-concurrency and per-call smoothing at a 1–4 s granularity.
+| Call-site | `sleep_time` param | Effective pre-call smoothing |
+|---|---|---|
+| `get_status` (poll) | 30 (reports.py:413-414) | uniform 15–60 s |
+| Default (other API calls) | 2 (network.py:96) | uniform 1–4 s |
+
+Level 2 thus bounds both HTTP concurrency and per-call smoothing. The poll cadence
+in `wait_task` follows an increasing schedule: 30 → 50 → 60 s (capped at 60),
+avoiding both initial over-polling and excessive wait for completion.
 
 ### Why the two levels are independent
 
@@ -116,7 +120,7 @@ worker loop (reports.py:161)
       │   └── sender call            (reports.py:370, retryable=False)
       │   [task_stage_complete stage=send, reports.py:372-377]
       ├── wait_task (poll loop)      (reports.py:148)
-      │   ├── get_status poll call   (reports.py:413-414, sleep_time=2)
+       │   ├── get_status poll call   (reports.py:413-414, sleep_time=30)
       │   └── asyncio.sleep backoff  (reports.py:411)
       │   [task_stage_complete stage=wait, reports.py:435-440]
       └── extract_data               (reports.py:150)
@@ -133,7 +137,7 @@ worker loop (reports.py:161)
 |---|---|---|---|---|
 | `builder` | reports.py:362-364 | default (2) | **False** | bypassed (no jitter, no semaphore) |
 | `sender` | reports.py:367 | default (2), `retryable=False` | default (True) | uniform 1–4 s |
-| `get_status` (poll) | reports.py:410-412 | 2 | default (True) | uniform 1–4 s |
+| `get_status` (poll) | reports.py:410-412 | 30 | default (True) | uniform 15–60 s |
 | `get_result` | reports.py:446-448 | default (2) | default (True) | uniform 1–4 s |
 | `result2table` | reports.py:454-457 | default (2) | **False** | bypassed (no jitter, no semaphore) |
 | `get_connection` | services.py:186-190 | — | **False** | bypassed (no jitter, no semaphore) |
@@ -173,7 +177,9 @@ Client errors raise immediately without retry:
 - `BadRequestError` — HTTP 400, configuration is wrong
 - `AuthorizationError` — HTTP 401, token invalid/expired
 - `FileNotFoundError` — local file missing (credentials)
-- Other `MediascopeApiError` — HTTP 4xx (except 429) and 5xx when `retry_5xx=False` (default)
+- Other `MediascopeApiError` — HTTP 4xx (except 429) and 5xx when `retry_5xx=False`.
+  5xx (`ServerError`, HTTP 500/502/503/504) is retried by default (`retry_5xx=True`)
+  and can be disabled by setting `retry_5xx=False`.
 
 When `retry_5xx=True`, 5xx responses (`MediascopeApiError` with `code >= 500`) are
 retried instead of raised immediately (network.py:150–160). HTTP 429 is always
@@ -201,7 +207,7 @@ The previous `except HTTPError` handler was removed — the vendor client never 
 |---|---|
 | Increase remote calculation concurrency | Raise `max_tasks` in `MediaReport.__init__` (reports.py:94). No change to Level 2 required. |
 | Reduce client HTTP load | Lower `max_concurrent_requests` in `NetworkClient.__init__` (network.py:58). No change to Level 1 required. |
-| Adjust polling cadence | Change `sleep_time=2` on the `get_status` poll (reports.py:413-414) for polls; the default `sleep_time=2` applies to all other calls. |
+| Adjust polling cadence | Change `sleep_time=30` on the `get_status` poll (reports.py:413-414) for smoothing; the poll-interval ramp in `wait_task` (reports.py:406) follows 30 → 50 → 60 s. |
 | **Never do** | Do **not** derive `max_tasks = max_concurrent_requests`. Coupling the two levels collapses throughput (~20× slower for 100-task reports). |
 
 ## Related Docs

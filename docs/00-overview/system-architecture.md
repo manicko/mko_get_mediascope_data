@@ -211,13 +211,14 @@ Error path worth understanding, with the failure classes separated `[code]`:
 
 Runtime knobs that shape behavior, all hard-coded defaults (no config file
 maps to them): `max_tasks = 100` (`reports.py:95`), `NetworkClient`
-(`max_concurrent_requests=5`, `sleep_time=2`, `max_attempts=10`,
-`call_timeout=300.0`, `retry_5xx=False`, `log_errors_detail=False`,
+(`max_concurrent_requests=5`, configurable via `app_config.json5`, `sleep_time=2`, `max_attempts=10`,
+`call_timeout=300.0`, `retry_5xx=True`, `log_errors_detail=False`,
 `network.py:58-66`), `api_call=False` discriminator on `builder`/`result2table`/
 `get_connection` short-circuits `NetworkClient.call` to direct `_invoke`
 (network.py:101-102), task-submission POST passes `retryable=False`
-(reports.py:367), poll cadence `asyncio.sleep(2)` +
-`get_status(sleep_time=2)` (`reports.py:410-412`). **No row-count limit
+(reports.py:367), poll cadence starts at 30 s and ramps to 60 s (increasing:
+30 → 50 → 60) (`reports.py:406, 411`), with `get_status(sleep_time=30)`
+(`reports.py:410-412`). **No row-count limit
 is enforced** — `resultBody` of any size is always passed through to
 `result2table`/`DataFrame` materialization (`max_result_rows` was removed in
 W-13). Per-task latency is

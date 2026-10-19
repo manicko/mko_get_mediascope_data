@@ -166,8 +166,7 @@ Entry: `run <report.json5>` → `asyncio.run(get_app_service().run_report(path))
     `retryable=False` (`reports.py:370`), keeping the semaphore + jitter but no retry.
     Structured `task_stage_complete stage=send` timing log replaces the prior
     `logger.info("=")` placeholder (`reports.py:372-377`). `wait_task`
-    (`reports.py:383-440`): polls `get_status` every ~2 s with exponential backoff
-    up to 60 s, until `DONE` / `FAILED` / `CANCELLED`, a poll deadline
+    (`reports.py:383-440`): polls `get_status` every ~30 s (first poll), ramping to 50 s then 60 s (capped), with exponential backoff up to 60 s, until `DONE` / `FAILED` / `CANCELLED`, a poll deadline
     (`max_polls=60`, `poll_deadline=3600s`, `reports.py:384`), or retries exhausted
     (`reports.py:411-414`); `FAILED` / `CANCELLED` now marks the task as failed
     rather than proceeding to extraction (`reports.py:430-431`). Structured
@@ -332,7 +331,7 @@ the happy path.
 `NetworkClient.call` behavior and the report lifecycle:
 - `retryable=False` on the task-submission POST (EXT-001)
 - `call_timeout` capping wall-clock via `asyncio.wait_for` (EXT-002)
-- `sleep_time=2` on `get_status` polling (EXT-004)
+- `sleep_time=30` on `get_status` polling (EXT-004 fixed: restored from 2 to 30)
 - HTTP 429 retry (`TooManyRequestsError`, EXT-005); the `retry_5xx` toggle for 5xx
   classification (EXT-005)
 - PII redaction of args/kwargs via `log_errors_detail` (EXT-008)

@@ -562,7 +562,7 @@ wheels = [
 
 [[package]]
 name = "mediascope-api-lib"
-version = "1.6.3"
+version = "1.8.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pandas" },
@@ -570,9 +570,9 @@ dependencies = [
     { name = "requests" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8c/4c/b6a28b6a6a34918a81833b242fc52596c439964f8e5a6520b939f860d776/mediascope_api_lib-1.6.3.tar.gz", hash = "sha256:b195df1bee39e8bd628016d8301125ac060524d5fea7d318290bc9f15a59f5a2", size = 86018, upload-time = "2025-12-15T13:40:41.443Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/82/680a6f7f3ae80d48a64adc7474d768a6693763690135d8676d37d285f248/mediascope_api_lib-1.8.3.tar.gz", hash = "sha256:2a9220c6e74c4c57e9f0684396b6dba31307cc4ec93d5ee78eece55307d1cf2a", size = 90710, upload-time = "2026-09-10T10:46:34.704Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/05/d6008147780ec18dfd5e637f0243e3e95d3c869dbabb74bfbc998c14f0ce/mediascope_api_lib-1.6.3-py3-none-any.whl", hash = "sha256:eb33f770b883045296d05178ffd75645fa28227573bff060f9d2cdd4effde40f", size = 97939, upload-time = "2025-12-15T13:40:39.648Z" },
+    { url = "https://files.pythonhosted.org/packages/07/17/fe852893ae74561ae5bf18d757ffbf09c8dfeabb0104b9bfe086fa67a4e0/mediascope_api_lib-1.8.3-py3-none-any.whl", hash = "sha256:3c9158bca2dc0f3cd49c494a1483f0a3faa1b01f52858c3b889cb38ea768bccf", size = 102469, upload-time = "2026-09-10T10:46:33.307Z" },
 ]
 
 [[package]]

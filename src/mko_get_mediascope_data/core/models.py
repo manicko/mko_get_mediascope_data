@@ -29,6 +29,7 @@ class LoggingSettings(BaseModel):
 
 class AppSettings(BaseModel):
     export_folder: Path
+    max_concurrent_requests: PositiveInt = 5
 
     @field_validator("export_folder", mode="before")
     @classmethod

@@ -146,7 +146,7 @@ sequenceDiagram
     V-->>N: task JSON
     N->>V: send_task(task JSON) [retryable=False, semaphore 5]
     V-->>N: task key
-    loop poll every ~2 s
+    loop poll every ~30 s
         R->>N: get_status(key)
         N->>V: HTTP
         V-->>R: status (DONE / FAILED / CANCELLED)

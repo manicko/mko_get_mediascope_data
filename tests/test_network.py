@@ -137,7 +137,25 @@ async def test_send_task_not_retried_on_retryable_error(mocker):
     )
 
 
-async def test_call_raises_timeout_after_call_timeout(mocker):
+async def test_call_retries_on_incomplete_read(mocker):
+    """IncompleteRead (connection reset mid-stream under throttling) is retried.
+
+    network.py:42 — IncompleteRead is in RETRIABLE_EXCEPTIONS.
+    """
+    from urllib3.exceptions import IncompleteRead
+
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+    call_count = [0]
+
+    def incomplete_read_func():
+        call_count[0] += 1
+        raise IncompleteRead(512, 1024)  # partial=512, expected=1024
+
+    with pytest.raises(MaxRetriesExceeded, match="Network retry limit exceeded"):
+        await client.call(incomplete_read_func)
+
+    assert call_count[0] == 3  # retried up to max_attempts
     """EXT-002: a TimeoutError from _invoke is retried and exhausts max_attempts.
 
     Mocks ``_invoke`` (instead of delegating to ``asyncio.to_thread`` with a
@@ -182,26 +200,10 @@ async def test_call_retries_on_429(mocker):
     assert mock_sleep.call_count >= 2  # 3 attempts → 2 backoff sleeps + 1 initial
 
 
-async def test_call_5xx_not_retried_by_default(mocker):
-    """EXT-005: 5xx (ServerError 500) raises immediately when retry_5xx=False (default)."""
-    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
-    client = NetworkClient(max_attempts=3, sleep_time=0)  # retry_5xx defaults to False
-    call_count = [0]
-
-    def server_error_func():
-        call_count[0] += 1
-        raise ServerError("Server error", 500)
-
-    with pytest.raises(ServerError):
-        await client.call(server_error_func)
-
-    assert call_count[0] == 1  # single attempt, no retry
-
-
-async def test_call_5xx_retried_when_enabled(mocker):
-    """EXT-005: 5xx (ServerError 500) is retried when retry_5xx=True."""
+async def test_call_5xx_retried_by_default(mocker):
+    """5xx (ServerError 500) is retried by default since retry_5xx=True."""
     mock_sleep = mocker.patch("asyncio.sleep", new_callable=AsyncMock)
-    client = NetworkClient(max_attempts=3, sleep_time=0, retry_5xx=True)
+    client = NetworkClient(max_attempts=3, sleep_time=0)  # retry_5xx defaults to True
     call_count = [0]
 
     def server_error_func():
@@ -213,6 +215,22 @@ async def test_call_5xx_retried_when_enabled(mocker):
 
     assert call_count[0] == 3  # retried up to max_attempts
     assert mock_sleep.call_count >= 2  # 3 attempts → 2 backoff sleeps + 1 initial
+
+
+async def test_call_5xx_not_retried_when_disabled(mocker):
+    """5xx (ServerError 500) raises immediately when retry_5xx=False (opt-out)."""
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0, retry_5xx=False)
+    call_count = [0]
+
+    def server_error_func():
+        call_count[0] += 1
+        raise ServerError("Server error", 500)
+
+    with pytest.raises(ServerError):
+        await client.call(server_error_func)
+
+    assert call_count[0] == 1  # single attempt, no retry
 
 
 async def test_call_redacts_pii_in_error_logs(mocker, caplog):

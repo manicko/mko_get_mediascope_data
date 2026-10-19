@@ -182,7 +182,9 @@ class AppService:
 
             data_settings: Data = self.get_data_settings(report_settings)
 
-            network_client: NetworkClient = NetworkClient()
+            network_client: NetworkClient = NetworkClient(
+                max_concurrent_requests=self.app_config.app_settings.max_concurrent_requests
+            )
             report_service: MediaVortexTask = await network_client.call(
                 self.get_connection,
                 report_settings.media,

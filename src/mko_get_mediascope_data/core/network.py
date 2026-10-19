@@ -20,7 +20,7 @@ from requests.exceptions import (
     RetryError,
     Timeout,
 )
-from urllib3.exceptions import NameResolutionError, ProtocolError
+from urllib3.exceptions import NameResolutionError, ProtocolError, IncompleteRead
 
 from mko_get_mediascope_data.core.errors import MaxRetriesExceeded
 
@@ -39,6 +39,7 @@ RETRIABLE_EXCEPTIONS = (
     socket.timeout,
     TimeoutError,  # asyncio.wait_for cancellation raises TimeoutError (= asyncio.TimeoutError in 3.11+)
     ProtocolError,
+    IncompleteRead,  # connection reset mid-stream under server throttling
     NameResolutionError,  # ← added: DNS resolution failed
     socket.gaierror,  # ← added: basic name resolution error
 )
@@ -61,7 +62,7 @@ class NetworkClient:
         sleep_time: int = 2,
         max_attempts: int = 10,
         call_timeout: float | None = 300.0,
-        retry_5xx: bool = False,
+        retry_5xx: bool = True,
         log_errors_detail: bool = False,
     ):
         self._semaphore = asyncio.Semaphore(max_concurrent_requests)

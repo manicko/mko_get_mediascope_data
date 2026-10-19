@@ -1189,6 +1189,65 @@ def test_dict_data_strategy_empty_slices_returns_none():
 
 
 # ---------------------------------------------------------------------------
+# Poll cadence (reports.py:406, 422-423)
+# ---------------------------------------------------------------------------
+
+
+async def test_wait_task_poll_cadence_starts_at_30(
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+):
+    """wait_task's first poll interval is 30s (EXT-004 fix), not 2s.
+
+    reports.py:406 — ``sleep_interval = 30.0`` (was 2.0 in the regression).
+    The first ``asyncio.sleep`` call in the poll loop must receive 30.0,
+    not 2.0.  ``asyncio.sleep`` is mocked so no real delay occurs.
+    """
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",  # type: ignore[arg-type]
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.get_status.return_value = {"taskStatus": "IN_PROGRESS"}
+
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
+        check_done=False,
+    )
+
+    mock_sleep = mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    # get_status returns IN_PROGRESS — we exit via max_polls guard (not sleep cadence)
+    # but we need at least one asyncio.sleep call to assert the cadence.
+
+    task = TVTask("test_cadence", {"options": {"kitId": 1}}, "crosstab", "TV")
+    task.key = {"taskJson": "mock_key"}
+
+    await report.wait_task(task, max_polls=5)
+
+    # The first asyncio.sleep call (outer poll cadence, not NetworkClient smoothing)
+    # must be 30.0 — the EXT-004 regression lowered it to 2.0.
+    first_sleep_arg = mock_sleep.call_args_list[0].args[0]
+    assert first_sleep_arg == 30.0, (
+        f"Expected first poll interval 30.0s, got {first_sleep_arg}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # poll_deadline guard (reports.py:383-387)
 # ---------------------------------------------------------------------------
 
@@ -1249,15 +1308,16 @@ async def test_wait_task_poll_deadline_exceeded(
 # ---------------------------------------------------------------------------
 
 
-def test_send_task_false_key_marks_task_failed(
+def test_send_task_false_key_marks_no_data(
     hermetic_app_service: AppService,
     dummy_df: pd.DataFrame,
 ):
-    """send_task: builder returns False → task.key is empty → status=False, log_error=True.
+    """send_task: builder returns False → status=False, log_error=False.
 
-    reports.py:349-360 — when ``task_json is False`` (builder returns False),
-    ``send_task`` skips key assignment; ``not task.key`` guard sets
-    ``task.error = "Task.key is not received from API."``.
+    reports.py:369-390 — when ``task_json is False`` (builder returns False,
+    e.g. period outside available DB range), ``send_task`` sets
+    ``task.status=False, task.log_error=False`` so the worker skips without
+    creating an error artifact.
     """
     report_settings = ReportSettings(
         media=MediaType.TV,
@@ -1291,8 +1351,8 @@ def test_send_task_false_key_marks_task_failed(
     asyncio.run(report.send_task(task))
 
     assert task.status is False
-    assert task.log_error is True
-    assert task.error == "Task.key is not received from API."
+    assert task.log_error is False
+    assert task.error == "Task could not be built — period or target may be outside available range."
 
 
 # ---------------------------------------------------------------------------
