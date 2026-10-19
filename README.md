@@ -18,8 +18,9 @@ pip install git+https://github.com/manicko/mko_get_mediascope_data.git
 # 2. Initialize user settings (creates everything in your home folder)
 uv run -m mko_get_mediascope_data init
 
-# 3. Run a report
-uv run -m mko_get_mediascope_data run reports/nat_tv_brands_last.json5
+# 3. List available reports and run a report
+uv run -m mko_get_mediascope_data list-reports
+uv run -m mko_get_mediascope_data run ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5
 ```
 
 ### For developers (editable installation)
@@ -30,7 +31,7 @@ cd mko_get_mediascope_data
 
 uv pip install -e .
 uv run -m mko_get_mediascope_data init
-uv run -m mko_get_mediascope_data run reports/nat_tv_brands_last.json5
+uv run -m mko_get_medioscope_data run ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5
 ```
 
 ## 📁 Configuration
@@ -71,13 +72,13 @@ uv run -m mko_get_mediascope_data --help
 
 **Available commands:**
 - `init`          — Initialize user settings and templates
-- `run`           — Run one or more reports from JSON5 file(s)
+- `run`           — Run a report from a JSON5 file
 - `list-reports`  — List all available report files
 
 **Examples:**
 ```bash
 # Run single report
-uv run -m mko_get_mediascope_data run reports/nat_tv_tvreport.json5
+uv run -m mko_get_mediascope_data run ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_tvreport.json5
 ```
 
 ## 🔌 Public API (Jupyter, Airflow, scripts)
@@ -89,7 +90,7 @@ from mko_get_mediascope_data import run_report, initialize_settings
 initialize_settings(force=True)
 
 # Run report
-run_report("settings/reports/nat_tv_brands_last.json5")
+run_report("~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5")
 ```
 
 ## 🛠️ Requirements
