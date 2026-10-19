@@ -1,6 +1,6 @@
 [build-system]
 build-backend = "setuptools.build_meta"
-requires = ["setuptools>=61.0", "wheel>=0.37.1"]
+requires = ["setuptools>=80", "setuptools-scm[simple]>=9.2"]
 
 [project]
 name = "mko_get_mediascope_data"
@@ -57,8 +57,10 @@ namespaces = false
 [tool.setuptools.package-data]
 mko_get_mediascope_data = ["settings/**/*.json5", "settings/**/*.json"]
 
-[tool.setuptools.dynamic]
-version = {attr = "mko_get_mediascope_data.__version__"}
+[tool.setuptools_scm]
+tag.prefix = "v"
+tag.strict = true
+fallback_version = "0.0.0"
 
 # Black configuration
 [tool.black]

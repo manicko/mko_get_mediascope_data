@@ -1,6 +1,11 @@
 """mko_get_mediascope_data — tools for loading data from the Mediascope API."""
 
-__version__ = "1.0.8"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("mko_get_mediascope_data")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"
 
 # pyright: reportUnsupportedDunderAll=false
 from typing import Any
