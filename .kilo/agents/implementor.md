@@ -38,7 +38,7 @@ permission:
     "git*commit*": allow
     "git*stash*list*": allow
     "git*stash*show*": allow
-    
+    "git*restore*": ask 
     # === BUILD & TEST ===
     
     "uv *": allow

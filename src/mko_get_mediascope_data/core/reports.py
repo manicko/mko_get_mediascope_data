@@ -254,7 +254,6 @@ class TVMediaReport(MediaReport):
         data_strategy: DataPreparationStrategy | None = None,
         max_tasks: int = 100,
         check_done: bool | None = True,
-        max_result_rows: int = 10000,
     ):
         super().__init__(
             report_settings=report_settings,
@@ -265,8 +264,6 @@ class TVMediaReport(MediaReport):
             max_tasks=max_tasks,
             check_done=check_done,
         )
-
-        self.max_result_rows = max_result_rows
 
         self.task_strategy = task_strategy or DefaultTVTaskStrategy()
         self.data_strategy = data_strategy or DefaultDataStrategy()
@@ -454,27 +451,6 @@ class TVMediaReport(MediaReport):
             task.log_error = True
             task.error = "Task json is not returned"
         if task.status:
-            # PERF-002: guard against oversized result bodies before materialization
-            result_body = res_json.get("resultBody", [])
-            if len(result_body) > self.max_result_rows:
-                task.status = False
-                task.log_error = True
-                task.error = (
-                    f"Result size {len(result_body)} exceeds maximum "
-                    f"of {self.max_result_rows} rows"
-                )
-                logger.error(
-                    f"Task '{task.name}' result size {len(result_body)} "
-                    f"exceeds max_result_rows {self.max_result_rows} — "
-                    "skipping extraction."
-                )
-                logger.info(
-                    "task_stage_complete stage=extract name=%s target=%s duration=%.4f",
-                    task.name,
-                    task.target,
-                    time.perf_counter() - stage_start,
-                )
-                return
             df: DataFrame | None = await self.network_client.call(
                 self.report_service.result2table, res_json, project_name=task.target,
                 api_call=False,

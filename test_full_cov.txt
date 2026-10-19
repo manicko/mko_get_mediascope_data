@@ -1,0 +1,35 @@
+============================= test session starts =============================
+collected 69 items
+
+tests\test_app.py .......
+tests\test_init_credentials.py .
+tests\test_models.py ..........
+tests\test_network.py ................
+tests\test_reports.py ....
+tests\test_reports_lifecycle.py ............
+tests\test_services.py .........
+tests\test_tasks.py ..
+tests\test_utils.py ........
+
+=============================== tests coverage ================================
+_______________ coverage: platform win32, python 3.14.0-final-0 _______________
+
+Name                                               Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------------------
+src\mko_get_mediascope_data\__init__.py               11      0   100%
+src\mko_get_mediascope_data\__main__.py                3      3     0%   1-4
+src\mko_get_mediascope_data\app.py                    49     26    47%   36-37, 51-62, 68-76, 84-87, 98, 103, 107
+src\mko_get_mediascope_data\core\__init__.py           0      0   100%
+src\mko_get_mediascope_data\core\errors.py             3      0   100%
+src\mko_get_mediascope_data\core\init_service.py      49     13    73%   29-34, 54, 75-86, 110
+src\mko_get_mediascope_data\core\models.py            71      1    99%   82
+src\mko_get_mediascope_data\core\network.py           67      3    96%   79, 127-131
+src\mko_get_mediascope_data\core\paths.py             54      5    91%   31-32, 74-79, 85
+src\mko_get_mediascope_data\core\reports.py          333     48    86%   41, 48, 121, 125, 129, 132, 135, 174-180, 230, 294, 312-313, 331, 338, 384-387, 395-399, 423-425, 431-433, 440-441, 470, 495, 523, 538, 542, 545, 577, 593, 598, 614, 617, 622-623
+src\mko_get_mediascope_data\core\services.py         120     16    87%   43, 51, 62-64, 93, 97-99, 118, 153-154, 161, 223-228
+src\mko_get_mediascope_data\core\tasks.py             32      0   100%
+src\mko_get_mediascope_data\core\utils.py            179    101    44%   26-28, 41, 47, 52-55, 85, 122-157, 173, 180-191, 208, 237-239, 243-280, 309-311, 324-332, 352-368, 390-395, 412-419
+--------------------------------------------------------------------------------
+TOTAL                                                971    216    78%
+Required test coverage of 70% reached. Total coverage: 77.75%
+============================= 69 passed in 22.79s =============================

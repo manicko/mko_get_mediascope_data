@@ -158,16 +158,28 @@ Entry: `run <report.json5>` → `asyncio.run(get_app_service().run_report(path))
     a failed task with an error JSON5 written via `json5.dump` (W-02,
     `tasks.py:7, 52`). The branching on `log_error` distinguishes "no data"
     warnings from "processing failure" error files (W-02, `reports.py:164-169`).
-    `send_task` (`reports.py:344-361`):
-    builds the API request; if no task key comes back, the task is marked failed
-    (`reports.py:358-361`). `wait_task` (`reports.py:363-411`): polls `get_status`
-    every ~2 s with exponential backoff up to 60 s, until `DONE` / `FAILED` /
-    `CANCELLED`, a poll deadline (`max_polls=60`, `poll_deadline=3600s`,
-    `reports.py:363`), or retries exhausted (`reports.py:388-393`); `FAILED` /
-    `CANCELLED` now marks the task as failed rather than proceeding to extraction
-    (`reports.py:399-408`). `extract_data` (`reports.py:412-449`): fetches the
-    result JSON, converts to a DataFrame, applies the data strategy, and writes
-    the CSV via `csv_to_file` with `mode="w"` (`reports.py:442-449`).
+    `send_task` (`reports.py:358-382`):
+    builds the API request via `network_client.call(builder, api_call=False)`
+    (`reports.py:365-367`) — bypassing the semaphore/jitter/retry path since
+    `build_task` is a pure CPU call; if no task key comes back, the task is marked
+    failed (`reports.py:378-381`). The task-submission POST (`sender`) passes
+    `retryable=False` (`reports.py:370`), keeping the semaphore + jitter but no retry.
+    Structured `task_stage_complete stage=send` timing log replaces the prior
+    `logger.info("=")` placeholder (`reports.py:372-377`). `wait_task`
+    (`reports.py:383-440`): polls `get_status` every ~2 s with exponential backoff
+    up to 60 s, until `DONE` / `FAILED` / `CANCELLED`, a poll deadline
+    (`max_polls=60`, `poll_deadline=3600s`, `reports.py:384`), or retries exhausted
+    (`reports.py:411-414`); `FAILED` / `CANCELLED` now marks the task as failed
+    rather than proceeding to extraction (`reports.py:430-431`). Structured
+    `task_stage_complete stage=wait` timing log at exit (`reports.py:435-440`).
+    `extract_data` (`reports.py:439-486`): fetches the result JSON via
+    `network_client.call(get_result)` (`reports.py:446-448`). There is **no
+    row-count limit** — `resultBody` of any size is passed straight through to
+    `result2table`. Converts to a DataFrame via
+    `network_client.call(result2table, api_call=False)`
+    (`reports.py:454-457`), applies the data strategy, and writes the CSV via
+    `csv_to_file` with `mode="w"` (`reports.py:471-478`). Structured
+    `task_stage_complete stage=extract` timing log at exit (`reports.py:481-486`).
 6. **Result:** `run_report` returns the list of export directories
     (`services.py:204`); the CLI prints a success line and exits 0
    (`app.py:58`).
@@ -248,7 +260,7 @@ the table below is resolved — see G-01.
 | Requested period partially overlaps the API window | Period is clipped to the intersection; a `logger.warning()` names the uncovered remainder; the overlapping part is exported. **Resolved by W-02 (G-01)**. | `reports.py:331-336` (lead: audit PIPE-003, PIPE-004) |
 | Zero tasks generated (e.g. `target_audiences: {}` after repair) | `processing_tasks` raises `NoReportFoundError` when `enqueued == 0`; CLI prints the error, exits 1. **Resolved by W-02 (G-01)** — the run is now visible, not a silent empty exit. | `reports.py:213-218` (lead: audit PIPE-004) |
 | Output file already exists | `csv_to_file` uses `mode="w"` (overwrites). In the report pipeline, `check_done=True` pre-filters tasks by name match against existing files *before* submission (`reports.py:75-76`, `:507-509`, `:563-567`), so already-exported tasks are skipped with a warning. `check_done=False` re-runs bypass the pre-filter and overwrite. **Updated 2026-10-16 (W-02): `mode` changed from `"x"` to `"w"`; the old `FileExistsError`-swallow path is gone (`utils.py:214`).** | `utils.py:192-220`; `reports.py:75-76, 507-509, 563-567` (lead: audit PIPE-001 / OUT-003) |
-| Task fails logically (no key, empty result, missing columns) | `task.status = False` → worker checks `log_error`: if `True` (processing failure), writes error JSON5 via `json5.dump` and logs a warning; if `False` (no data), logs a warning only, no error JSON5 (D-15). Run continues. **Updated 2026-10-16 (W-02): worker branching on `log_error` (`reports.py:164-169`).** | `reports.py:164-169`, `tasks.py:27-57` |
+| Task fails logically (no key, empty result, missing columns) | `task.status = False` → worker checks `log_error`: if `True` (processing failure), writes error JSON5 via `json5.dump` and logs a warning; if `False` (no data), logs a warning only, no error JSON5 (D-15). Run continues. **Updated 2026-10-16 (W-02): worker branching on `log_error` (`reports.py:164-169`).** Updated 2026-10-19 (W-13): oversized `resultBody` (formerly guarded by `max_result_rows`, 10 000) is **no longer rejected** — there is no row-count cap; the full result is always passed to `result2table` (`reports.py:454-457`). | `reports.py:164-169`, `tasks.py:27-57` |
 | Vendor rejects a request (HTTP 4xx / auth / bad request) | Raised immediately by `NetworkClient`, no retry | `network.py:76-118` |
 | Transient network failure | Retried up to 10 attempts with backoff + jitter inside `NetworkClient.call`; then `RuntimeError("Network retry limit exceeded")` | `network.py:59-126`; covered by `tests/test_network.py` (run: passed) |
 | Exception raised inside a worker | **Resolved by W-02 (G-02).** The worker now wraps `_process_item` in `try/except/finally`: `TimeoutError` and `Exception` are caught, the task is marked failed, an error JSON5 is written via `json5.dump`, and `task_done()` is always called in `finally` — so `queue.join()` cannot hang. The pre-W-02 behavior (worker death → silent hang, no traceback) is documented as historical context below. | `reports.py:149-188`; `tasks.py:7, 52` (lead: audit PIPE-002 / ASY-001) |
@@ -281,6 +293,7 @@ a swallowed `FileExistsError`. All of these have been **resolved by W-02**.
 | `data_lang` | `ru` → slice fields `*EName` are requested as `*Name` (`utils.en_to_ru`, `services.py:130-131`) |
 | `multiple_files` + `time_unit` | Export granularity — the interval length used to split the period |
 | `max_tasks` (100) and `NetworkClient` limits (5 concurrent HTTP calls, 10 attempts, 2 s base sleep) | Concurrency and retry behavior; see [Async Concurrency Architecture](async-concurrency-architecture.md) for the intentional two-level design |
+| Row-count limit on results | **None.** `resultBody` of any size is always passed through to `result2table`/`DataFrame` materialization; there is no configurable or hardcoded cap (`max_result_rows` was removed in W-13). |
 
 ### Tests
 
@@ -301,9 +314,9 @@ reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-mis
 | `tests/test_app.py` | CLI `init --help`; lazy re-export of `run_report`, `run_report_async`, `initialize_settings` via PEP 562 `__getattr__`; package import does not bootstrap `AppService`; re-exported functions are identical objects to those in `app.py` |
 | `tests/test_init_credentials.py` | After `init_project()`, `connections/mediascope.json` exists and is resolvable via `AppPaths.connection_config` (verifies the legacy-rename migration, W-06) |
 | `tests/test_models.py` | `ReportSettings` validation with the current field names; `PeriodModel` exclusivity rules; `merge_data_settings` does not call `en_to_ru` when `data_lang="en"`; all 32 bundled entries pass `ReportSettings` validation; all 6 `ReportSubtype` values have matching DEFAULT keys |
-| `tests/test_network.py` | Retry exhaustion raises `MaxRetriesExceeded("Network retry limit exceeded")` (subclasses `RuntimeError`); `mock_network_client` fixture retries on retryable errors; success returns the function result; `BadRequestError` (4xx) and `AuthorizationError` (401) are re-raised without retry; HTTP 429 (`TooManyRequestsError`) is retried with backoff; `TimeoutError` from `asyncio.wait_for` (`call_timeout` ceiling) is retryable; `retryable=False` makes the task-submission POST non-retried (EXT-001); `call_timeout` caps wall-clock via `asyncio.wait_for` (EXT-002); `retry_5xx` toggle controls 5xx retry (EXT-005); `log_errors_detail` redacts PII (args/kwargs) from error logs (EXT-008); semaphore limits concurrent in-flight calls; default `max_attempts=10` |
+| `tests/test_network.py` | Retry exhaustion raises `MaxRetriesExceeded("Network retry limit exceeded")` (subclasses `RuntimeError`); `mock_network_client` fixture retries on retryable errors; success returns the function result; `BadRequestError` (4xx) and `AuthorizationError` (401) are re-raised without retry; HTTP 429 (`TooManyRequestsError`) is retried with backoff; `TimeoutError` from `asyncio.wait_for` (`call_timeout` ceiling) is retryable; `retryable=False` makes the task-submission POST non-retried (EXT-001); `call_timeout` caps wall-clock via `asyncio.wait_for` (EXT-002); `retry_5xx` toggle controls 5xx retry (EXT-005); `log_errors_detail` redacts PII (args/kwargs) from error logs (EXT-008); semaphore limits concurrent in-flight calls; default `max_attempts=10`; PERF-001: `api_call=False` short-circuits `NetworkClient.call` to direct `_invoke` (no jitter, no semaphore, no retry, timeout-bounded) — verified by `test_cpu_local_calls_bypass_semaphore_and_jitter` |
 | `tests/test_reports.py` | `DefaultTVTaskStrategy` task naming; `DictDataStrategy` output columns |
-| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5 |
+| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5; `test_large_result_is_processed` verifies there is **no** row-count cap — an oversized `resultBody` (> 10 000 rows) is processed through `result2table` and produces a CSV with no error artifact; PERF-003: `test_worker_emits_per_task_duration` verifies structured `task_stage_complete`/`task_complete` timing logs |
 | `tests/test_services.py` | Full `run_report` pipeline end-to-end (slow; doubled `MediaVortexTask`, real `AppService`); `app_config` caching; `reload_config()` invalidates cache, is safe before first access, reapplies logging, and re-resolves `export_folder`; missing credentials raise `FileNotFoundError` |
 | `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; gzip CSV writing; suffix mapping; `csv_to_file` writes into the report directory (`tmp_report_dir` fixture) |
 
@@ -329,6 +342,15 @@ the happy path.
   not logged as "is ready"
 
 See the `tests/test_network.py` and `tests/test_reports_lifecycle.py` rows above.
+
+**Updated 2026-10-19:** Phase 13 (Performance) added tests covering PERF-001 and
+PERF-003:
+- PERF-001: `test_cpu_local_calls_bypass_semaphore_and_jitter` — verifies `api_call=False`
+  short-circuits to direct `_invoke` (no jitter sleep, no semaphore, no retry, but
+  timeout-bounded via `asyncio.wait_for`)
+- PERF-003: `test_worker_emits_per_task_duration` — verifies structured
+  `task_stage_complete`/`task_complete` timing logs are emitted at the expected stages
+  (send, wait, extract, and end-to-end)
 
 Behaviors with **no test coverage** — these code paths were therefore never
 executed during this investigation: `TVRegTaskStrategy` (tests use `media=TV`

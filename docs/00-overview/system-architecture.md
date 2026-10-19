@@ -72,7 +72,7 @@ dependency is the Mediascope HTTP API, reached through the vendor library
 | Orchestrator | `core/services.py` | `AppService`: config loading and caching, settings merge, connection creation, per-report loop; process-wide lazy singleton | no (`get_app_service` is the internal accessor) |
 | Report engine | `core/reports.py` | `ReportFactory` + strategies; `TVMediaReport` lifecycle: period resolution, task generation, submit/poll/extract, worker pool | no |
 | Task model | `core/tasks.py` | `TVTask`: name, settings, status, error; error-JSON5 serialization | no |
-| Network layer | `core/network.py` | `NetworkClient.call`: semaphore-bounded, thread-offloaded, retrying wrapper around every vendor call — the one exception is the direct `cats.get_tv_region()` catalog read in `TVRegTaskStrategy` | no |
+| Network layer | `core/network.py` | `NetworkClient.call`: semaphore-bounded, thread-offloaded, retrying wrapper around most vendor calls; the `api_call=False` discriminator short-circuits CPU/local calls (`builder`, `result2table`, `get_connection`) to direct `_invoke` (bypassing jitter, semaphore, and retry); the direct `cats.get_tv_region()` catalog read in `TVRegTaskStrategy` bypasses `NetworkClient` entirely | no |
 | Utilities | `core/utils.py` | Date/period math, JSON5/CSV I/O, suffix mapping, slice localization, frequency pivot, file listing | no |
 | Errors | `core/errors.py` | `NoReportFoundError`, `WrongDataSettings` — `NoReportFoundError` is raised by `get_period` for out-of-range periods (`reports.py:327-330`) and by `processing_tasks` for zero enqueued tasks (`reports.py:213-218`); `WrongDataSettings` is declared but unused (reserved for future subtype-default validation) | no |
 
@@ -97,22 +97,21 @@ flowchart TD
 
 Verified call directions (not inferred from names) `[code]`:
 
-- `app.run` → `get_app_service().run_report` (`app.py:57`, `services.py:156`).
+- `app.run` → `get_app_service().run_report` (`app.py:57`, `services.py:166`).
 - `AppService.run_report` → `get_report_settings` → `ReportSettings`
   (`services.py:85-98`); → `get_data_settings` → `get_default_data_settings` +
   `merge_data_settings` → `Data` (`services.py:135-138`); → `NetworkClient.call(
-  self.get_connection, media)` (`services.py:175-179`); → `ReportFactory(...)` →
-  `TVMediaReport(...)` → `create_report()` (`services.py:181-194`).
+  self.get_connection, media, api_call=False)` (`services.py:186-190`); → `ReportFactory(...)` →
+  `TVMediaReport(...)` → `create_report()` (`services.py:194`).
 - `TVMediaReport.create_report` → `get_period()` → `get_available_period()` →
-  `network_client.call(catalogs.get_availability_period)` (`reports.py:220-223`,
-  `:265-277`); → `processing_tasks()` → `generate_tasks()` →
-   `task_strategy.generate(self)` (`reports.py:189-216`, `:452-454`).
-- `worker` → `send_task` → `network_client.call(builder)` then
-  `network_client.call(sender)`; → `wait_task` → `network_client.call(
+  `network_client.call(catalogs.get_availability_period)` (`reports.py:236-295`,
+  `:283-289`); → `processing_tasks()` → `generate_tasks()` →
+   `task_strategy.generate(self)` (`reports.py:202-219`, `:512-514`).
+- `worker` → `send_task` → `network_client.call(builder, api_call=False)` then
+  `network_client.call(sender, retryable=False)`; → `wait_task` → `network_client.call(
   get_status)`; → `extract_data` → `network_client.call(get_result)` and
-  `network_client.call(result2table)` → `prepare_data` → `data_strategy.prepare`
-   → `asyncio.to_thread(utils.csv_to_file, …)` (`reports.py:149-188`, `:344-449`,
-  `:452-455`).
+  `network_client.call(result2table, api_call=False)` → `prepare_data` → `data_strategy.prepare`
+  → `asyncio.to_thread(utils.csv_to_file, …)` (`reports.py:161-200`, `:358-510`).
 
 ### Data-flow overview
 
@@ -152,7 +151,7 @@ sequenceDiagram
     SVC->>SVC: validate entries (ReportSettings)
     loop for each report entry
         SVC->>SVC: merge defaults + entry → Data
-        SVC->>NET: get_connection(media)
+        SVC->>NET: get_connection(media) [api_call=False]
         NET->>API: auth / session (vendor lib)
         SVC->>REP: create_report()
         REP->>NET: get_availability_period(kitId)
@@ -161,7 +160,7 @@ sequenceDiagram
         REP->>REP: resolve + slice period
         REP->>REP: generate tasks (interval × audience)
         loop worker pool (≤100 concurrent tasks)
-            REP->>NET: build_task + send_task
+            REP->>NET: build_task [api_call=False] + send_task [retryable=False]
             NET->>API: HTTP
             API-->>REP: task key
             loop poll
@@ -169,7 +168,7 @@ sequenceDiagram
                 NET->>API: HTTP
                 API-->>REP: DONE / FAILED / CANCELLED
             end
-            REP->>NET: get_result + result2table
+            REP->>NET: get_result + result2table [api_call=False]
             NET->>API: HTTP
             API-->>REP: DataFrame
             REP->>REP: data strategy
@@ -211,12 +210,20 @@ Error path worth understanding, with the failure classes separated `[code]`:
 | `python-dateutil` | Calendar arithmetic for periods | `utils.get_last_period`, `iter_period_slices` |
 
 Runtime knobs that shape behavior, all hard-coded defaults (no config file
-maps to them): `max_tasks = 100` (`reports.py:94`), `NetworkClient`
+maps to them): `max_tasks = 100` (`reports.py:95`), `NetworkClient`
 (`max_concurrent_requests=5`, `sleep_time=2`, `max_attempts=10`,
 `call_timeout=300.0`, `retry_5xx=False`, `log_errors_detail=False`,
-`network.py:58-66`), task-submission POST passes `retryable=False`
-(reports.py:354), poll cadence `asyncio.sleep(2)` + `get_status(
-sleep_time=2)` (`reports.py:389, 391-393`).
+`network.py:58-66`), `api_call=False` discriminator on `builder`/`result2table`/
+`get_connection` short-circuits `NetworkClient.call` to direct `_invoke`
+(network.py:101-102), task-submission POST passes `retryable=False`
+(reports.py:367), poll cadence `asyncio.sleep(2)` +
+`get_status(sleep_time=2)` (`reports.py:410-412`). **No row-count limit
+is enforced** — `resultBody` of any size is always passed through to
+`result2table`/`DataFrame` materialization (`max_result_rows` was removed in
+W-13). Per-task latency is
+logged via structured `task_stage_complete`/`task_complete` records
+(`reports.py:152-158, 369-374, 432-437, 481-486`) replacing the prior
+`logger.info("=")` placeholder in `send_task`.
 
 ### Design decisions and trade-offs
 

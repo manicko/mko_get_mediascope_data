@@ -141,10 +141,10 @@ sequenceDiagram
     participant N as NetworkClient
     participant V as Mediascope API (vendor lib)
     participant FS as File system
-    R->>N: build_task(report_type, **settings)
-    N->>V: HTTP (semaphore 5, retry ≤10)
+    R->>N: build_task(report_type, **settings) [api_call=False]
+    N->>V: HTTP (via _invoke, thread-offloaded + timeout-bounded; no semaphore/retry)
     V-->>N: task JSON
-    N->>V: send_task(task JSON)
+    N->>V: send_task(task JSON) [retryable=False, semaphore 5]
     V-->>N: task key
     loop poll every ~2 s
         R->>N: get_status(key)
@@ -153,19 +153,22 @@ sequenceDiagram
     end
     R->>N: get_result(key)
     V-->>R: result JSON
-    R->>N: result2table(json)
+    R->>N: result2table(json) [api_call=False]
     V-->>R: DataFrame
     R->>R: data_strategy.prepare(df)
     R->>FS: csv_to_file(df, file_prefix=task.name)
 ```
 
-Every vendor call goes through `NetworkClient.call`, which serializes blocking
+Most vendor calls go through `NetworkClient.call`, which serializes blocking
 vendor calls into worker threads under an `asyncio.Semaphore(5)` and retries
 transient errors (`network.py:59-126`; full contract in
-[async-concurrency-architecture.md](async-concurrency-architecture.md)). One
-call bypasses it: `TVRegTaskStrategy` calls `catalogs.get_tv_region()`
-directly (`reports.py:516`), so that catalog read gets no retry, no semaphore,
-and no thread offloading `[code]`.
+[async-concurrency-architecture.md](async-concurrency-architecture.md)). Two calls
+short-circuit this path via `api_call=False` (`build_task` at `reports.py:365-367`,
+`result2table` at `reports.py:478-481`): they still go through `_invoke` (thread
+offloaded + timeout-bounded) but skip the jitter sleep, semaphore, and retry loop
+(`network.py:101-102`). Additionally, `TVRegTaskStrategy` calls
+`catalogs.get_tv_region()` directly (`reports.py:578-580`), so that catalog read
+gets no retry, no semaphore, and no thread offloading `[code]`.
 
 ### DataFrame preparation rules
 

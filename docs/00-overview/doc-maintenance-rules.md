@@ -29,6 +29,8 @@ Update docs for:
 - API changes (request/response format, status codes)
 - Schema changes (new Pydantic model fields, enum values)
 - Security changes (auth flow, credential handling, error exposure)
+- Package, versioning, and release changes (build backend, version source, release
+  workflow, dependency declaration, tag format)
 
 Do NOT update for:
 - Minor refactoring
@@ -168,3 +170,23 @@ logic block into a shared utility, or splits an oversized module into a package:
       old location (verify with `grep`)
 - [ ] Verified frontmatter is valid on all modified docs
 - [ ] Checked for broken relative links in modified sections
+
+### Packaging / Versioning / Release
+
+Used when the build backend, version source, release workflow, or dependency
+declaration changes (e.g. adopting `setuptools-scm` VCS versioning):
+
+- [ ] Updated `pyproject.toml` build-system requires and `[tool.setuptools*]`
+      configuration in the relevant architecture doc
+- [ ] Documented whether the version is static, dynamic via `setuptools-scm`/VCS,
+      or resolved at runtime (`importlib.metadata` in `__init__.py`)
+- [ ] If a release workflow was added or changed, documented its trigger (`on:`),
+      the tag format it expects (e.g. `v*` with `tag.prefix = "v"`), and what it
+      produces (GitHub Release, wheel/sdist, tag↔version verification)
+- [ ] Updated or removed any doc that cited a specific version number or a
+      `pyproject.toml` line number that no longer holds (e.g. the old
+      `version = "1.0.x"` or `project.dynamic` line)
+- [ ] Updated "releases are manual" or similar claims in product/architecture
+      docs to match the actual release mechanism
+- [ ] Verified CI checkout uses `fetch-depth: 0` when `setuptools-scm` is in use
+      (it needs full git history to derive a version from tags)
