@@ -7,9 +7,17 @@ alwaysApply: false
 
 # Test Quality Audit
 
-## Step 0 — Ensure Docker Environment is Running
+## Step 0 — Test Environment
 
-Start Docker services in **both development and test modes** (never production) before executing any test commands. Follow the setup instructions in `docs/11-guides/docker.md`. Confirm all required containers are in `running` or `healthy` state before proceeding. If the environment cannot be started, document why and skip dependent steps.
+This project runs tests directly via `uv run pytest` — no Docker or database
+is required. Confirm the environment works before executing any test commands:
+
+```powershell
+uv run ruff check src tests
+uv run mypy src tests
+uv run pytest            # runs all tests
+uv run pytest -m "not slow"   # fast feedback (skips slow tests)
+```
 
 ## Objective
 
@@ -35,24 +43,23 @@ Label every finding:
 
 Use `websearch` to verify current best practices for:
 - pytest async testing patterns (pytest-asyncio)
-- FastAPI test client patterns (httpx AsyncClient vs TestClient)
-- SQLAlchemy async test fixtures and session management
+- Mocking strategies for external API clients
 - Meaningful test coverage metrics vs coverage for its own sake
 
 ## Anti-Patterns (subject to deletion or complete rewrite)
 
 ### 1. Architecture / Contract Mismatch
-- Sync/async mismatch 
+- Sync/async mismatch
 - Use of deprecated methods, DTOs, data types, or contracts
 - Testing removed or renamed functionality
 - Forces keeping legacy code just to pass tests
-- Tests against old response shapes (e.g., pre-`TokenWithUser` login response)
+- Tests against old response shapes (e.g., changed API field names)
 
 ### 2. Overmocking
 - Mock completely replaces business logic
 - Assertions check mock values, not real results
 - Excessive `patch`/`mock` without verifying side effects
-- Mocking Redis when `fakeredis` or real Redis would be more valuable
+- Mocking the `NetworkClient` when real API fixtures would be more valuable
 
 ### 3. Tautological / Useless Tests
 - `assert True`, missing `assert`, or trivial checks
@@ -60,7 +67,7 @@ Use `websearch` to verify current best practices for:
 - Repeat implementation instead of verifying business contract
 
 ### 4. Wrong Abstraction Level
-- Test private methods, internal details, specific SQL queries
+- Test private methods, internal details, specific HTTP request construction
 - Verify call order instead of final result and business rules
 
 ### 5. Fragile Tests
@@ -71,97 +78,41 @@ Use `websearch` to verify current best practices for:
 ### 6. Poor Business Coverage
 - Ignore negative scenarios and boundary conditions
 - Use primitive data instead of realistic data
-- Don't verify DB state, logs, and side effects
+- Don't verify error handling and side effects
 
 ## Additional Checks
 
-- **Test Pyramid**: balance between unit, integration, and e2e tests (avoid over-reliance on mocked unit tests)
 - Duplication, copy-paste tests and fixtures
 - Giant fixtures, hidden dependencies, shared mutable state
 - **Mutation resistance** — test must fail when business logic is broken
 
-## 9.1 pytest Standards
+## pytest Standards
 
 - All tests use **pytest** (not `unittest.TestCase`)
 - Fixtures extracted to `conftest.py`
 - Mocking only via `unittest.mock` or `pytest-mock`
-- Async tests use `pytest.mark.asyncio`
+- Async tests use `pytest.mark.asyncio` (auto-mode enabled via config)
 - Test file naming: `test_*.py`
 - Test function naming: `test_*`
 
-## 9.2 System Coverage
+## System Coverage
 
 Verify tests exist for all key system parts:
 
 ### Required Coverage Areas
 
-- **Authentication & Authorization**
-  - Login (returns `TokenWithUser` with `display_name`)
-  - Registration request (creates `registration_requests` record)
-  - Token refresh
-  - Password change
-  - Role-based access control (admin/editor/viewer)
-  - Admin bypass for dashboard access
-  - 403/404 dual-signal for dashboard access
-
-- **API Layer** — all public endpoints (success cases + all error cases)
-  - Auth endpoints (login, register-request, refresh, me, change-password)
-  - Dashboard CRUD endpoints
-  - Graph CRUD endpoints
-  - Filter CRUD endpoints
-  - Layout CRUD endpoints
-  - Upload + processing endpoints
-  - Data retrieval endpoints
-  - Admin endpoints (users, registration-requests, logs)
-  - Health endpoints (`/health`, `/health/detailed`, `/`)
-
-- **Business Logic / Services**
-  - AuthService (login, password verification, JWT creation)
-  - DashboardService (access checks, admin bypass)
-  - DataService (upload pipeline, processing trigger)
-  - Registration approval flow (temp password via `secrets.token_urlsafe(16)`)
-  - Processing log lifecycle (`started` → `uploaded` → `processing` → `success`/`failed`)
-
-- **Data Processing**
-  - CSV/CSV.gz loading (Polars, not pandas)
-  - Data validation (schema, encoding, MIME-type)
-  - Transformations (per processing_configs)
-  - Aggregations (groupby, YoY, shares, custom metrics)
-  - Custom metrics formula parser (valid and invalid formulas)
-  - JSONB normalization (dims key recursive sorting)
-  - Temp file cleanup (success and failure paths)
-
-- **Repositories / Data Access**
-  - CRUD operations for all entities
-  - Dashboard access queries
-  - JSONB containment queries (GIN index usage)
-  - UPSERT operations on `aggregated_data`
-
-- **Configuration & Startup**
-  - Multi-source config loading (env, Docker secrets, .env, app.yaml)
-  - Production credential enforcement
-  - CORS origin validation
-  - Startup lifecycle (DB check, migrations, admin user creation, stale file cleanup)
-
-- **Task Queue**
-  - Task enqueue/status/result/error tracking
-  - Background worker execution
-  - Processing log updates during pipeline execution
-
-- **Pydantic Models**
-  - All request/response models
-  - StrEnum serialization
-  - Custom validators (CORS origins, admin credentials)
-  - `TokenWithUser` model (token + user with `display_name`)
-  - `UserRead` model (computed `display_name` from email prefix)
+- **Network layer** — `NetworkClient` (retries, backoff, timeout, semaphore concurrency)
+- **Core models** — `MediaType`, `ReportType`, `ReportSubtype` enums, Pydantic settings models
+- **Report pipeline** — `TVMediaReport.create_report()` (task generation, polling, data fetching, CSV export)
+- **Settings management** — `init_service` (template copying), `paths` (config dir resolution), Pydantic validation
+- **CLI layer** — `app.py` commands (`init`, `run`, `list-reports`)
+- **Utilities** — date/period parsing, JSON5/CSV I/O helpers
 
 ### Special Attention
 - Negative scenario and boundary condition coverage
-- Integration tests with real test database (`bidb_test`)
-- Critical path coverage (upload → process → display)
-- Test database isolation (SAVEPOINT rollback, NullPool)
-- Fixture structure matches `docs/06-backend/testing.md` specification
-
+- Error handling paths (network failures, expired reports, invalid settings)
+- Async concurrency behavior (semaphore limiting, concurrent task polling)
+- Config validation edge cases (missing fields, invalid values)
 
 ## Audit Result Format
 
@@ -179,11 +130,8 @@ Create file: `.ai/audit/tests/audit_report_<number>.md` (next available number)
 
 | File | Test | Type | Category | Problem | Action | Priority |
 |------|------|------|----------|---------|--------|----------|
-| tests/test_auth.py | test_login_old_response | [TEST-REWRITE] | Contract | Checks only `{access_token}`, not `TokenWithUser` | Rewrite | HIGH |
-| tests/test_processing.py | test_process_uses_pandas | [TEST-DELETE] | Architecture | Imports pandas instead of polars | Delete | HIGH |
-| tests/test_upload.py | test_no_assert | [TEST-DELETE] | Quality | No assert statement | Delete | MEDIUM |
-| tests/test_dashboards.py | — | [BEST-PRACTICE] | Coverage | No tests for 403/404 dual-signal | Add tests | HIGH |
-| tests/test_upload.py | test_upload_cleanup | [DOC-UPDATE] | Contract | Expects old cleanup behavior | Update test + spec | LOW |
+| tests/test_network.py | test_no_retry_on_4xx | [TEST-DELETE] | Architecture | Tests implementation detail, not contract | Delete | HIGH |
+| tests/test_models.py | test_invalid_enum | [TEST-REWRITE] | Contract | Uses old enum value, not current | Rewrite | MEDIUM |
 
 3. **Coverage Assessment** — which important areas/scenarios are uncovered or weakly covered
 
@@ -200,7 +148,6 @@ Create file: `.ai/audit/tests/audit_report_<number>.md` (next available number)
 ## Acceptance Criteria
 
 - Clear separation: what to delete / rewrite / improve
-- For each `ARCHITECTURE_CONFLICT` — link to production code
 - Prioritization of problems
 - Recommendations for improving test culture
 - Critical coverage gaps identified

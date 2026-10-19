@@ -21,7 +21,7 @@ verifies:
   - task_YYY_implementation_task
 
 verification_steps:
-  - build: <command to build, e.g. "docker compose build">
+  - build: <command to build, e.g. "uv run -m mko_get_mediascope_data">
   - test: <test command, e.g. "pytest tests/test_user_creation.py -v">
   - smoke_check: <minimal check, e.g. "curl /health or lint">
 

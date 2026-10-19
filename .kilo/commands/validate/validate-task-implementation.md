@@ -7,9 +7,18 @@ alwaysApply: false
 
 # Implementation Audit Workflow
 
-## Step 0 — Ensure Docker Environment is Running
+## Step 0 — Ensure Test Environment is Ready
 
-Start Docker services in **both development and test modes** (never production) before executing any test or verification commands. Follow the setup instructions in `docs/11-guides/docker.md`. Confirm all required containers are in `running` or `healthy` state before proceeding. If the environment cannot be started, document why and skip dependent steps.
+Run the test suite, lint, and type checks locally before executing any verification commands:
+
+```powershell
+uv run ruff check src tests
+uv run mypy src tests
+uv run pytest
+```
+
+No Docker or database is required — this project runs tests directly via `uv`.
+Skip slow tests with `uv run pytest -m "not slow"`.
 
 ## Objective
 
