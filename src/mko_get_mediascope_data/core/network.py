@@ -95,8 +95,12 @@ class NetworkClient:
         *args: Any,
         sleep_time: int | float = 2,
         retryable: bool = True,
+        api_call: bool = True,
         **kwargs: Any,
     ) -> T:
+        if not api_call:
+            return await self._invoke(func, *args, **kwargs)
+
         _sleep_time = max(sleep_time, self._sleep_time)
 
         # Small initial delay to smooth peak loads

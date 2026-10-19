@@ -1611,3 +1611,98 @@ async def test_wait_task_status_false_marks_max_retries(
     assert task.status is False
     assert task.log_error is True
     assert task.error == "Max retries exceeded"
+
+
+# ---------------------------------------------------------------------------
+# PERF-002: result-size guard in extract_data (reports.py:429-444)
+# ---------------------------------------------------------------------------
+
+
+async def test_large_result_is_rejected(
+    tmp_path: Path,
+    mocker,
+    tv_json5_content: str,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+):
+    """PERF-002: ``extract_data`` rejects oversized ``resultBody`` before
+    ``result2table``.
+
+    When ``get_result`` returns a dict whose ``resultBody`` exceeds
+    ``max_result_rows`` (default 10 000), ``extract_data`` sets
+    ``task.status=False`` / ``task.log_error=True`` and returns early
+    **without** calling ``result2table``.  The ``worker``'s existing error
+    path then writes an error JSON5 artifact with ``log_error is True``.
+    """
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = hermetic_app_service
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns --------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask — oversized resultBody -----------
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    # 10 001 entries — exceeds the default max_result_rows of 10 000
+    mock_report_service.get_result.return_value = {
+        "resultBody": [{"dummy": i} for i in range(10001)]
+    }
+    # Set up result2table but assert it is NEVER called — the size guard
+    # short-circuits extract_data before result2table is reached.
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) ------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 7. Export path ------------------------------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    # ---- 8. Construct report -------------------------------------------
+    report_factory = ReportFactory(report_settings)
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 9. Run real pipeline (bounded by outer wait_for for safety) --
+    await asyncio.wait_for(report.create_report(), timeout=10.0)
+
+    # ---- 10. Assertions ------------------------------------------------
+    # result2table must never be called — the size guard short-circuits
+    # extract_data before the result2table call.
+    mock_report_service.result2table.assert_not_called()
+
+    # Error JSON5 written for the rejected task.
+    error_files = list(export_path.glob("errors/*.json5"))
+    assert len(error_files) == 1, (
+        f"Expected 1 error JSON5 in {export_path / 'errors'}, "
+        f"found {len(error_files)}"
+    )
+
+    error_payload = json5.loads(error_files[0].read_text(encoding="utf-8"))
+    assert error_payload["log_error"] is True
+    assert "exceeds" in error_payload["error"], (
+        f"Expected 'exceeds' in error message, got: {error_payload['error']}"
+    )
+
+    # Queue accounting: every enqueued task was task_done()'d — no join hang.
+    assert report.task_queue.qsize() == 0

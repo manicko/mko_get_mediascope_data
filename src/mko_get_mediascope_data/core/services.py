@@ -186,6 +186,7 @@ class AppService:
             report_service: MediaVortexTask = await network_client.call(
                 self.get_connection,
                 report_settings.media,
+                api_call=False,
             )
 
             report_strategies = ReportFactory(report_settings)

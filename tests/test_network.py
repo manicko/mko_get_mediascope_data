@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mediascope_api.core.errors import (
@@ -433,3 +433,41 @@ async def test_success_after_transient_retry(mocker):
     result = await client.call(flaky_func)
     assert result == {"status": "ok"}
     assert call_count[0] == 3
+
+
+async def test_cpu_local_calls_bypass_semaphore_and_jitter(mocker):
+    """PERF-001: when ``api_call=False``, ``NetworkClient.call`` skips the initial
+    jitter, bypasses the ``Semaphore``, runs the wrapped function exactly once
+    (no retry loop), and forwards the return value.
+
+    network.py:101-102 — the fast path returns directly via ``_invoke``
+    before any ``asyncio.sleep`` / ``Semaphore`` / retry-loop logic.
+    """
+    client = NetworkClient(max_concurrent_requests=2, max_attempts=3, sleep_time=2)
+
+    # asyncio.sleep should never be called (initial jitter is skipped)
+    mock_sleep = mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # _invoke should be called exactly once (no retry loop)
+    sentinel = "cpu_result"
+    mock_invoke = mocker.patch.object(
+        client, "_invoke", new_callable=AsyncMock, return_value=sentinel
+    )
+
+    # Replace the Semaphore with a mock to verify it is never acquired.
+    mock_semaphore = MagicMock()
+    mock_semaphore.acquire = AsyncMock()
+    client._semaphore = mock_semaphore
+
+    result = await client.call(lambda: None, api_call=False)
+
+    assert result == sentinel
+    assert mock_sleep.call_count == 0, (
+        "Initial jitter should be skipped for api_call=False"
+    )
+    assert mock_invoke.call_count == 1, (
+        "Wrapped function should execute exactly once (no retry)"
+    )
+    assert mock_semaphore.acquire.call_count == 0, (
+        "Semaphore acquire should not be called for api_call=False"
+    )
