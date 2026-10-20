@@ -4,29 +4,55 @@ Verifies that ``TVMediaReport.send_task`` and ``TVMediaReport.extract_data``
 invoke ``reporter.task_status_changed`` with the correct old/new ``TaskStatus``
 values at the QUEUED→SENT and SENT→COMPLETED transitions.
 
+Also verifies (R-05) that ``task_stage_complete`` INFO logs are suppressed
+in VERBOSE mode (``_verbose_mode()`` returns True when root logger is at DEBUG).
+
 The test drives ``send_task`` and ``extract_data`` directly (no full
 ``create_report`` pipeline) with a recording spy reporter.
 """
 
+import logging
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pandas as pd
+import pytest
 
+from mko_get_mediascope_data.app import configure_logging_level
 from mko_get_mediascope_data.core.models import (
     MediaType,
     ReportSettings,
     ReportSubtype,
     ReportType,
     TaskStatus,
+    VerbosityMode,
 )
 from mko_get_mediascope_data.core.reports import (
     ReportFactory,
     TVMediaReport,
+    _verbose_mode,
 )
 from mko_get_mediascope_data.core.services import AppService
 from mko_get_mediascope_data.core.tasks import TVTask
+
+
+# ---------------------------------------------------------------------------
+# Shared fixture: save/restore root logger level + handler levels
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def restore_root_logger() -> Iterator[logging.Logger]:
+    """Capture and restore root logger level and handler levels across a test."""
+    root = logging.getLogger()
+    saved_level = root.level
+    saved_handlers = [(h, h.level) for h in root.handlers]
+    yield root
+    root.setLevel(saved_level)
+    for handler, level in saved_handlers:
+        handler.setLevel(level)
 
 
 # ---------------------------------------------------------------------------
@@ -287,3 +313,104 @@ async def test_null_reporter_used_when_no_reporter_passed(
     )
 
     assert isinstance(report.reporter, NullProgressReporter)
+
+
+# ---------------------------------------------------------------------------
+# VERBOSE suppression (R-05): task_stage_complete INFO logs gated by _verbose_mode
+# ---------------------------------------------------------------------------
+
+
+async def test_stage_complete_logs_suppressed_in_verbose_mode(
+    tmp_path: Path,
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+    restore_root_logger: logging.Logger,
+) -> None:
+    """task_stage_complete INFO logs are suppressed when VERBOSE (DEBUG) mode is active.
+
+    R-05: In VERBOSE mode the progress bars are the single source of truth,
+    so ``send_task``, ``wait_task``, and ``extract_data`` must NOT emit
+    ``task_stage_complete`` INFO records.
+
+    This test sets the root logger to DEBUG via ``configure_logging_level``,
+    spies on ``reports_logger.info``, then drives ``send_task`` and
+    ``extract_data`` directly and asserts zero ``task_stage_complete`` calls.
+    """
+    # Enable VERBOSE mode — root at DEBUG, all handlers at DEBUG
+    configure_logging_level(VerbosityMode.VERBOSE)
+    assert _verbose_mode() is True
+
+    reports_logger = logging.getLogger("mko_get_mediascope_data.core.reports")
+    spy = mocker.spy(reports_logger, "info")
+
+    # ---- Report setup (matches existing test patterns) ----------------------
+    report_settings = _make_report_settings()
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = _make_mock_report_service(dummy_df)
+    result_df = pd.DataFrame({"value": [1]})
+    mock_report_service.result2table.return_value = result_df
+
+    mock_network_client = MagicMock()
+
+    async def _mock_call(func: Any, *args: Any, **kwargs: Any) -> Any:
+        if func is mock_report_service.build_task:
+            return {"task_json": "mock"}
+        if func is mock_report_service.send_task:
+            return "mock_task_key_123"
+        if func is mock_report_service.get_result:
+            return {"result": "mock_data"}
+        if func is mock_report_service.result2table:
+            return result_df
+        return None
+
+    mock_network_client.call = AsyncMock(side_effect=_mock_call)
+
+    export_path = tmp_path / "output"
+    export_path.mkdir(parents=True)
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=mock_network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+    mocker.patch.object(report, "prepare_data", AsyncMock(return_value=result_df))
+
+    task = TVTask(
+        "test_verbose_suppression", {"options": {"kitId": 1}}, "crosstab", "TV"
+    )
+
+    # ---- Drive the pipeline ------------------------------------------------
+    await report.send_task(task)
+    await report.extract_data(task)
+
+    # ---- Assert: no stage_complete INFO calls -------------------------------
+    stage_calls = [
+        c
+        for c in spy.call_args_list
+        if "task_stage_complete" in str(c.args[0])
+    ]
+    assert len(stage_calls) == 0, (
+        f"Expected no task_stage_complete calls in VERBOSE mode, got: {stage_calls}"
+    )
+
+
+def test_verbose_mode_helper_reflects_root_level(
+    restore_root_logger: logging.Logger,
+) -> None:
+    """``_verbose_mode()`` returns True at DEBUG and False at INFO.
+
+    This directly tests the helper used to gate stage-complete INFO logs.
+    """
+    configure_logging_level(VerbosityMode.DEFAULT)
+    assert _verbose_mode() is False
+
+    configure_logging_level(VerbosityMode.VERBOSE)
+    assert _verbose_mode() is True

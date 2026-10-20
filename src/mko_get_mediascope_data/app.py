@@ -191,19 +191,35 @@ def run(
         ),
     ],
     verbosity: Annotated[
-        VerbosityMode,
-        typer.Option("--verbosity", "-v", help="Output verbosity level"),
-    ] = VerbosityMode.DEFAULT,
+        VerbosityMode | None,
+        typer.Option(
+            "--verbosity",
+            "-v",
+            help="Output verbosity level (default: from config)",
+        ),
+    ] = None,
 ):
     """Run report export"""
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
-    configure_logging_level(verbosity)
-    if verbosity != VerbosityMode.QUIET:
+
+    # get_app_service() must be called BEFORE configure_logging_level so that
+    # dictConfig (run inside AppService.prepare_app via __init__) is applied first.
+    # configure_logging_level then overrides the root logger and handler levels.
+    # Spec §7: the override must happen after dictConfig.
+    app_service = get_app_service()
+    mode = (
+        verbosity
+        if verbosity is not None
+        else app_service.app_config.app_settings.verbosity_mode
+    )
+    configure_logging_level(mode)
+
+    if mode != VerbosityMode.QUIET:
         console.print(f"[blue]▶ Running report:[/blue] {report.name}")
 
     try:
-        if verbosity != VerbosityMode.QUIET:
+        if mode != VerbosityMode.QUIET:
             reporter = RichProgressReporter()
             with reporter:
                 asyncio.run(run_report_async(report, progress=reporter))

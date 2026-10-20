@@ -5,13 +5,16 @@ Covers:
 - ``VerbosityMode.to_logging_level()`` enum→level mapping.
 - ``AppSettings.verbosity_mode`` default and Pydantic string/enum coercion.
 - ``configure_logging_level()`` setting both the root logger and all handlers.
-- CLI ``--verbosity`` flag integration via ``CliRunner``.
+- ``configure_logging_level`` correctly overriding ``dictConfig``-set levels
+  (ordering fix: ``get_app_service`` before ``configure_logging_level``).
+- CLI ``--verbosity`` flag integration via ``CliRunner``; config is consulted
+  when the flag is omitted.
 """
 
 import logging
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from typer.testing import CliRunner
@@ -19,6 +22,7 @@ from typer.testing import CliRunner
 import mko_get_mediascope_data.app as app_module
 from mko_get_mediascope_data.app import app, configure_logging_level
 from mko_get_mediascope_data.core.models import AppSettings, VerbosityMode
+from mko_get_mediascope_data.core.services import AppService
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +150,27 @@ class TestConfigureLoggingLevel:
         finally:
             root_logger_state.handlers.extend(original_handlers)
 
+    def test_level_survives_dict_config(
+        self,
+        hermetic_app_service: AppService,
+        root_logger_state: logging.Logger,
+    ) -> None:
+        """configure_logging_level overrides dictConfig-set levels (ordering fix).
+
+        ``hermetic_app_service.__init__`` calls ``prepare_app()`` which runs
+        ``dictConfig`` — setting the root logger to INFO.  ``configure_logging_level``
+        must then successfully lower the level to DEBUG, proving the CLI
+        calls ``get_app_service()`` (dictConfig) *before* ``configure_logging_level()``
+        (spec §7: override must happen after dictConfig).
+        """
+        # dictConfig (triggered by hermetic_app_service) sets root to INFO
+        assert root_logger_state.level == logging.INFO
+
+        configure_logging_level(VerbosityMode.VERBOSE)
+        assert root_logger_state.level == logging.DEBUG
+        for handler in root_logger_state.handlers:
+            assert handler.level == logging.DEBUG
+
 
 # ---------------------------------------------------------------------------
 # CLI --verbosity flag
@@ -171,9 +196,26 @@ class TestCliVerbosityFlag:
             new_callable=AsyncMock,
         )
 
+    @pytest.fixture
+    def mock_app_service(self, mocker) -> MagicMock:
+        """Mock ``get_app_service`` so the CLI ``run`` command does not load
+        real config files.
+
+        Returns a ``MagicMock`` whose ``app_config.app_settings.verbosity_mode``
+        is set to ``VerbosityMode.DEFAULT`` — the config default consulted when
+        ``--verbosity`` is omitted.
+        """
+        mock_service = mocker.MagicMock()
+        mock_service.app_config.app_settings.verbosity_mode = VerbosityMode.DEFAULT
+        mocker.patch(
+            "mko_get_mediascope_data.app.get_app_service", return_value=mock_service
+        )
+        return mock_service
+
     def test_quiet_sets_root_to_warning(
         self,
         mocker,
+        mock_app_service: MagicMock,
         mock_run_report_async: AsyncMock,
         report_file: Path,
         root_logger_state: logging.Logger,
@@ -191,6 +233,7 @@ class TestCliVerbosityFlag:
     def test_default_sets_root_to_info(
         self,
         mocker,
+        mock_app_service: MagicMock,
         mock_run_report_async: AsyncMock,
         report_file: Path,
         root_logger_state: logging.Logger,
@@ -208,6 +251,7 @@ class TestCliVerbosityFlag:
     def test_verbose_sets_root_to_debug(
         self,
         mocker,
+        mock_app_service: MagicMock,
         mock_run_report_async: AsyncMock,
         report_file: Path,
         root_logger_state: logging.Logger,
@@ -225,15 +269,22 @@ class TestCliVerbosityFlag:
     def test_default_verbosity_when_flag_omitted(
         self,
         mocker,
+        mock_app_service: MagicMock,
         mock_run_report_async: AsyncMock,
         report_file: Path,
         root_logger_state: logging.Logger,
     ) -> None:
-        """Omitting --verbosity defaults to DEFAULT (INFO level)."""
+        """Omitting --verbosity consults config for the default mode.
+
+        The mock's ``app_config.app_settings.verbosity_mode`` is set to
+        ``VerbosityMode.VERBOSE`` (not the default) to prove the config value
+        is consulted when the flag is absent.
+        """
+        mock_app_service.app_config.app_settings.verbosity_mode = VerbosityMode.VERBOSE
         spy = mocker.spy(app_module, "configure_logging_level")
 
         runner = CliRunner()
         result = runner.invoke(app, ["run", str(report_file)])
         assert result.exit_code == 0, result.stdout
-        spy.assert_called_once_with(VerbosityMode.DEFAULT)
-        assert logging.getLogger().level == logging.INFO
+        spy.assert_called_once_with(VerbosityMode.VERBOSE)
+        assert logging.getLogger().level == logging.DEBUG

@@ -42,6 +42,7 @@ def test_cli_run_invokes_report(mocker, tmp_path):
     report_file.write_text("{}", encoding="utf-8")
     mock_service = mocker.MagicMock()
     mock_service.run_report = AsyncMock(return_value=[tmp_path / "output.csv"])
+    mock_service.app_config.app_settings.verbosity_mode = VerbosityMode.DEFAULT
     mocker.patch("mko_get_mediascope_data.app.get_app_service", return_value=mock_service)
     runner = CliRunner()
     result = runner.invoke(app, ["run", str(report_file)])

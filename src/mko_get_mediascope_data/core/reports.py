@@ -34,6 +34,15 @@ from mko_get_mediascope_data.core.tasks import TVTask
 logger = logging.getLogger(__name__)
 
 
+def _verbose_mode() -> bool:
+    """Return True when VERBOSE (DEBUG) mode is active.
+
+    In VERBOSE mode, per-task stage-complete INFO logs are suppressed —
+    the progress bars are the single source of truth (R-05).
+    """
+    return logging.getLogger().getEffectiveLevel() <= logging.DEBUG
+
+
 class ReportFactory:
     def __init__(self, report_settings: ReportSettings):
         self.report_media: MediaType = report_settings.media
@@ -411,12 +420,13 @@ class TVMediaReport(MediaReport):
                 self.sender, task_json, retry_on=RETRIABLE_EXCEPTIONS
             )
 
-            logger.info(
-                "task_stage_complete stage=send name=%s target=%s duration=%.4f",
-                task.name,
-                task.target,
-                time.perf_counter() - stage_start,
-            )
+            if not _verbose_mode():
+                logger.info(
+                    "task_stage_complete stage=send name=%s target=%s duration=%.4f",
+                    task.name,
+                    task.target,
+                    time.perf_counter() - stage_start,
+                )
             old_status = task.task_status
             task.task_status = TaskStatus.SENT
             self.reporter.task_status_changed(task, old_status, TaskStatus.SENT)
@@ -501,12 +511,13 @@ class TVMediaReport(MediaReport):
             elif sleep_interval < self.poll.max_interval:
                 sleep_interval = self.poll.max_interval
 
-        logger.info(
-            "task_stage_complete stage=wait name=%s target=%s duration=%.4f",
-            task.name,
-            task.target,
-            time.perf_counter() - stage_start,
-        )
+        if not _verbose_mode():
+            logger.info(
+                "task_stage_complete stage=wait name=%s target=%s duration=%.4f",
+                task.name,
+                task.target,
+                time.perf_counter() - stage_start,
+            )
 
     async def extract_data(self, task):
         """Exports data to the CSV file
@@ -555,12 +566,13 @@ class TVMediaReport(MediaReport):
                     )
                     # print(f'\n saving {task.name} to file')
 
-        logger.info(
-            "task_stage_complete stage=extract name=%s target=%s duration=%.4f",
-            task.name,
-            task.target,
-            time.perf_counter() - stage_start,
-        )
+        if not _verbose_mode():
+            logger.info(
+                "task_stage_complete stage=extract name=%s target=%s duration=%.4f",
+                task.name,
+                task.target,
+                time.perf_counter() - stage_start,
+            )
 
     async def generate_tasks(self) -> AsyncGenerator[TVTask, None]:
         async for task in self.task_strategy.generate(self):
