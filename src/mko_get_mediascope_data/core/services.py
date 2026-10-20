@@ -20,6 +20,7 @@ from mko_get_mediascope_data.core.models import (
 from mko_get_mediascope_data.core.errors import WrongDataSettings
 from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
+from mko_get_mediascope_data.core.progress import NullProgressReporter, ProgressReporter
 from mko_get_mediascope_data.core.reports import ReportFactory, TVMediaReport
 
 logger = logging.getLogger(__name__)
@@ -163,7 +164,12 @@ class AppService:
             check_version=False,
         )
 
-    async def run_report(self, report_settings_path: Path) -> list[Path]:
+    async def run_report(
+        self,
+        report_settings_path: Path,
+        progress: ProgressReporter | None = None,
+    ) -> list[Path]:
+        reporter = progress if progress is not None else NullProgressReporter()
         report_settings_sequence: Generator[ReportSettings] = self.get_report_settings(
             report_settings_path
         )
@@ -211,7 +217,9 @@ class AppService:
                 check_done=report_settings.check_done,
             )
 
+            reporter.report_started(str(report_settings_path), 0)
             await rep.create_report()
+            reporter.report_completed(str(report_settings_path))
             export_paths.append(export_path)
             idx += 1
 

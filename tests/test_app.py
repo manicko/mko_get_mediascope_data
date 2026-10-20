@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 from unittest.mock import AsyncMock
 
 from mko_get_mediascope_data.app import app
+from mko_get_mediascope_data.core.models import VerbosityMode
 
 
 def test_cli_init_help():
@@ -102,7 +103,7 @@ def test_run_report_sync_wrapper(mocker, tmp_path):
     mock_async = mocker.patch("mko_get_mediascope_data.app.run_report_async")
     mock_run = mocker.patch("asyncio.run")
     run_report(str(report_file))
-    mock_async.assert_called_once_with(str(report_file))
+    mock_async.assert_called_once_with(str(report_file), progress=None)
     mock_run.assert_called_once()
 
 
@@ -135,7 +136,7 @@ def test_sys_stdout_reconfigure_on_run(mocker, tmp_path):
     mock_stdout.reconfigure = mocker.MagicMock()
     mocker.patch("sys.stdout", mock_stdout)
 
-    run(report_file, verbose=True)
+    run(report_file, verbosity=VerbosityMode.DEFAULT)
 
     mock_stdout.reconfigure.assert_called_once_with(
         line_buffering=True, encoding="utf-8"
