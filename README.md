@@ -77,8 +77,14 @@ uv run -m mko_get_mediascope_data --help
 
 **Examples:**
 ```bash
-# Run single report
+# Run single report (default verbosity with progress bars)
 uv run -m mko_get_mediascope_data run ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_tvreport.json5
+
+# Run with verbose logging and progress bars
+uv run -m mko_get_mediascope_data run --verbosity VERBOSE ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5
+
+# Run quietly (no progress bars, warnings only)
+uv run -m mko_get_mediascope_data run --verbosity QUIET ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5
 ```
 
 ## 🔌 Public API (Jupyter, Airflow, scripts)

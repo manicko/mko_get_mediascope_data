@@ -149,6 +149,19 @@ The `Data` model declares only 3 fields — `options`, `statistics`, `slices`
 `sortings`, `targetdemo_filter`, `weekday_filter`) flow through as `extra="allow"`
 extras.
 
+### App-level configuration (`app_config.json5`)
+
+The `app_config.json5` template (`settings/app_config.json5`) carries top-level
+application settings that are **outside** the DEFAULT/CLIENT data layers. They
+are loaded into `AppSettings` (`core/models.py:86-109`) and govern non-data
+behavior such as concurrency limits, retry parameters, and console verbosity.
+These fields are **not** part of the two-layer merge described above and are
+never forwarded into the API parameter dict.
+
+| Setting | Effect |
+|---|---|
+| `verbosity_mode` | Console verbosity and log level: `QUIET`→WARNING (progress bars suppressed), `DEFAULT`→INFO (progress bars shown), `VERBOSE`→DEBUG (progress bars shown). Mapped via `VerbosityMode.to_logging_level()` (`core/models.py:60-73`). Injected at the CLI layer by `configure_logging_level()` (`app.py:46-57`); does not affect pipeline behavior. See [Console verbosity and progress bars](current-behavior.md#console-verbosity-and-progress-bars) for the full model. |
+
 ### Template Conformance Rules
 
 Architecture-first: when a template or default lags behind the architecture or

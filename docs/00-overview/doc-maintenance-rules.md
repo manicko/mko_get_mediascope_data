@@ -104,7 +104,7 @@ Required fields: `id`, `domain`, `tags`, `related`.
 
 - Use `logger = logging.getLogger(__name__)` for all service layer output in `core/`
 - Use `console.print()` (Rich) for CLI user-facing output in `app.py`
-- Use `rich.progress.track()` for terminal progress bars — never use `print()` with `\r` manipulation
+- Use `rich.progress.Progress` + `rich.live.Live` for multi-bar terminal progress (e.g. the 4-status-bar view in `app.py`); `rich.progress.track()` remains acceptable for simpler single-bar cases — never use `print()` with `\r` manipulation
 - Progress bars and user interaction belong to the CLI layer, not business logic
 
 ## Agent Enforcement

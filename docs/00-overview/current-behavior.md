@@ -50,9 +50,9 @@ code.
 |---|---|---|
 | Console script | `mko-get-mediascope <command>` | `pyproject.toml:44` → `mko_get_mediascope_data.app:app` |
 | Python module | `uv run -m mko_get_mediascope_data <command>` (or `python -m …`) | `__main__.py:1-4` imports `app` from `app.py` |
-| Library (sync) | `from mko_get_mediascope_data import run_report; run_report("report.json5")` | `app.py:90-98`, re-exported lazily via PEP 562 `__getattr__` in `__init__.py:17-30` |
-| Library (async) | `from mko_get_mediascope_data import run_report_async` | `app.py:80-87` |
-| Library (setup) | `initialize_settings(force=False)` | `app.py:101-103` → `init_project` |
+| Library (sync) | `from mko_get_mediascope_data import run_report; run_report("report.json5", progress=None)` | `app.py:251-265` (accepts optional `progress`, delegates to `run_report_async`), re-exported lazily via PEP 562 `__getattr__` in `__init__.py:24-37` |
+| Library (async) | `from mko_get_mediascope_data import run_report_async` | `app.py:234-248` (accepts optional `progress: ProgressReporter \| None`) |
+| Library (setup) | `initialize_settings(force=False)` | `app.py:268-270` → `init_service.py:93` |
 
 Both library functions delegate to `AppService.run_report`
 (`services.py:156`), the same method the CLI uses.
@@ -62,7 +62,7 @@ Both library functions delegate to `AppService.run_report`
 | Command | Arguments / options | Behavior |
 |---|---|---|
 | `init` | `--force / -f` | Copies the package's bundled `settings/` tree into the user settings folder via `_copy_templates` (`init_service.py:37-57`, force skip at `:53-54`); also runs the legacy credential rename `_migrate_old_credential_name` (`init_service.py:60-90`); without `--force`, existing files are kept |
-| `run` | `REPORT` (required, must exist, must be a file), `--verbose / -v` (default true) | Runs the report(s) in the JSON5 file (`app.py:40-62`) |
+| `run` | `REPORT` (required, must exist, must be a file), `--verbosity [QUIET|DEFAULT|VERBOSE] / -v` (default `DEFAULT`) | Runs the report(s) in the JSON5 file (`app.py:185-216`) |
 | `list-reports` | — | Lists `*.json5` files (recursive) under the user settings `reports/` folder (`app.py:66-77`) |
 
 Discrepancies between the README and the actual CLI, verified by invoking the
@@ -70,8 +70,46 @@ app with `typer.testing.CliRunner`:
 
 - The command is `list-reports`; `list_reports` fails with exit code 2
   (Typer hyphenates command names).
-- `--no-verbose` is not a valid option; `run report.json5 --no-verbose` fails
-  with exit code 2, although the README documents it.
+
+### Console verbosity and progress bars
+
+The `run` CLI command accepts a `--verbosity` (`-v`) flag that controls both log
+output volume and whether progress bars are rendered:
+
+| Mode | Logging level | Progress bars |
+|---|---|---|
+| `QUIET` | `WARNING` — only warnings and errors are shown | Suppressed (`NullProgressReporter`) |
+| `DEFAULT` | `INFO` — task start, completion, and duration logs | Live 4-bar display (see below) |
+| `VERBOSE` | `DEBUG` — all internal state, API timing, and poll logs | Live 4-bar display (see below) |
+
+`configure_logging_level` (`app.py:46-57`) sets the root logger level **and**
+every handler level to the mapped value, so previously-capped handler levels
+(e.g. `INFO` from `log_config.json5`) are lowered when `VERBOSE` is selected.
+The flag does not affect the JSON5 file contents or pipeline logic — it is
+purely a presentation concern. The mapping is defined by
+`VerbosityMode.to_logging_level()` in `core/models.py:60-73`.
+
+**Progress bars.** When verbosity is `DEFAULT` or `VERBOSE`, the CLI creates a
+`RichProgressReporter` (`app.py:60-182`) that renders four fixed-position bars
+— one per task lifecycle status (`QUEUED`, `SENT`, `COMPLETED`, `FAILED`).
+Each bar is labeled `STATUS [██░░░░░] XX% (N/total)` and updates as tasks
+transition between statuses. `report_started` / `report_completed` are called
+in `MediaReport.processing_tasks` (`reports.py:227-265`) at the point the real
+task count becomes known; `task_status_changed` is invoked at every status
+transition in the worker loop (`reports.py:149-225`) and at the send
+(`reports.py:422`) and extract (`reports.py:553`) boundaries. The Rich `Live`
+region is started lazily on `report_started` and stopped in
+`report_completed`, with `redirect_stdout`/`redirect_stderr` ensuring log
+output flows above the bars. In `QUIET` mode no `Live` region is created and a
+`NullProgressReporter` (a no-op `Protocol` implementation in
+`core/progress.py:51-70`) is used instead, so the business-logic layer never
+imports Rich.
+
+**Library mode.** `run_report()` and `run_report_async()` accept an optional
+`progress: ProgressReporter | None` parameter; when omitted,
+`NullProgressReporter` is used, producing no terminal output. This keeps the
+`core/` package free of any presentation dependency (`core/progress.py` defines
+the `ProgressReporter` protocol without importing Rich).
 
 ### Configuration and where it lives
 
@@ -102,8 +140,11 @@ at `services.py:210`). If the user has not run `init`, the first command raises
 
 ### Scenario: `run` — step by step
 
-Entry: `run <report.json5>` → `asyncio.run(get_app_service().run_report(path))`
-(`app.py:57`).
+Entry: `run <report.json5>` → `configure_logging_level(verbosity)` then
+`asyncio.run(run_report_async(report, progress=reporter))` (`app.py:185-216`),
+where `reporter` is a `RichProgressReporter` in DEFAULT/VERBOSE modes and
+omitted (→ `NullProgressReporter`) in QUIET mode. `run_report_async` delegates
+to `AppService.run_report` (`services.py:167-231`).
 
 1. **Parse and validate.** `get_report_settings` iterates the JSON5 list and
    constructs `ReportSettings(**entry)` per entry (`services.py:86-98`). A
@@ -291,12 +332,13 @@ a swallowed `FileExistsError`. All of these have been **resolved by W-02**.
 | `compression` | File extension and on-disk compression |
 | `data_lang` | `ru` → slice fields `*EName` are requested as `*Name` (`utils.en_to_ru`, `services.py:130-131`) |
 | `multiple_files` + `time_unit` | Export granularity — the interval length used to split the period |
+| `verbosity_mode` | Sets the log level (`QUIET`→WARNING, `DEFAULT`→INFO, `VERBOSE`→DEBUG) and whether Rich progress bars render (QUIET suppresses them; DEFAULT/VERBOSE show 4 bars per report). See [Console verbosity and progress bars](#console-verbosity-and-progress-bars) |
 | `max_tasks` (100) and `NetworkClient` limits (5 concurrent HTTP calls, 10 attempts, 2 s base sleep) | Concurrency and retry behavior; see [Async Concurrency Architecture](async-concurrency-architecture.md) for the intentional two-level design |
 | Row-count limit on results | **None.** `resultBody` of any size is always passed through to `result2table`/`DataFrame` materialization; there is no configurable or hardcoded cap (`max_result_rows` was removed in W-13). |
 
 ### Tests
 
-The suite was executed: **42 passed** (`uv run pytest`, all mocked
+The suite was executed: **146 passed** (`uv run pytest`, all mocked
 — no network, no Mediascope credentials). All tests pass at HEAD,
 including `test_create_report_skips_done_files` — the W-02 change that
 raises `NoReportFoundError` when zero tasks are enqueued is now accounted
@@ -304,7 +346,7 @@ for in the test (which sets up existing files and verifies the
 `check_done` warning path at `reports.py:204-208` rather than expecting a
 silent pass). One test, `test_run_report_with_real_models`, carries the
 `@pytest.mark.slow` marker and can be excluded with
-`uv run pytest -m "not slow"` (68 passed, 1 deselected). Coverage is
+`uv run pytest -m "not slow"` (145 passed, 1 deselected). Coverage is
 reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-missing`
 (configured in `pyproject.toml`).
 
@@ -318,6 +360,9 @@ reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-mis
 | `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5; `test_large_result_is_processed` verifies there is **no** row-count cap — an oversized `resultBody` (> 10 000 rows) is processed through `result2table` and produces a CSV with no error artifact; PERF-003: `test_worker_emits_per_task_duration` verifies structured `task_stage_complete`/`task_complete` timing logs |
 | `tests/test_services.py` | Full `run_report` pipeline end-to-end (slow; doubled `MediaVortexTask`, real `AppService`); `app_config` caching; `reload_config()` invalidates cache, is safe before first access, reapplies logging, and re-resolves `export_folder`; missing credentials raise `FileNotFoundError` |
 | `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; gzip CSV writing; suffix mapping; `csv_to_file` writes into the report directory (`tmp_report_dir` fixture) |
+| `tests/test_progress.py` | `NullProgressReporter` no-op semantics (all methods complete without raising); `ProgressReporter` protocol `isinstance` check (runtime_checkable); `TVTask.task_status` default is `QUEUED` |
+| `tests/test_verbosity.py` | `VerbosityMode.to_logging_level()` mapping (QUIET→WARNING, DEFAULT→INFO, VERBOSE→DEBUG); `AppSettings.verbosity_mode` default and Pydantic string/enum coercion; `configure_logging_level()` sets root logger and all handlers; CLI `--verbosity` flag integration via `CliRunner` |
+| `tests/test_reports_progress.py` | `ProgressReporter` interaction at send→extract boundaries — `send_task` emits QUEUED→SENT, `extract_data` emits SENT→COMPLETED; failure path emits SENT→FAILED; `TVMediaReport` defaults to `NullProgressReporter` when no reporter is passed |
 
 **Updated 2026-10-16:** W-02 added `test_create_report_timeout_does_not_hang`
 (verifies the worker does not hang on a non-terminal poll and writes an error
@@ -351,11 +396,22 @@ PERF-003:
   `task_stage_complete`/`task_complete` timing logs are emitted at the expected stages
   (send, wait, extract, and end-to-end)
 
+**Updated 2026-10-20:** Console verbosity and progress bars (Blocks 4–5) added
+`tests/test_progress.py`, `tests/test_verbosity.py`, and
+`tests/test_reports_progress.py` (27 new tests) covering `VerbosityMode` and
+`TaskStatus` enums, `configure_logging_level()`, the CLI `--verbosity` flag, the
+`ProgressReporter` protocol and `NullProgressReporter`, `TVTask.task_status`
+defaults, and progress-reporter interactions at the send/extract task-status
+boundaries.
+
 Behaviors with **no test coverage** — these code paths were therefore never
 executed during this investigation: `TVRegTaskStrategy` (tests use `media=TV`
-only), the `run` and `list-reports` CLI happy paths, and any end-to-end run
-against the real API. The following behaviors are **now exercised** by the
-lifecycle and hermetic pipeline tests: `get_period` (including the period-clipping
+only), the `run` CLI happy path (actual report execution against the API — the
+`--verbosity` flag itself is now unit-tested, but the full `run` command path
+is not), `list-reports`, and any end-to-end run against the real API.
+
+The following behaviors are **now exercised** by the lifecycle and hermetic
+pipeline tests: `get_period` (including the period-clipping
 logic, `NoReportFoundError` for out-of-range, and `logger.warning` for partial
 overlap), `wait_task` (poll deadline), `en_to_ru` (indirectly, via the
 `data_lang="ru"` path in `test_run_report_with_real_models`), queue completion
@@ -418,7 +474,7 @@ Read-only probes executed for this document (scripts kept for reproduction in
 | Script | What it established |
 |---|---|
 | `.ai/tmp/doc_probe_current_state.py` | (Re-run after W-01/W-02) all 32 bundled report entries validate; all 6 DEFAULT templates parse; `tv/simple`, `tv_reg/timeband`, `tv_reg/simple` now ship |
-| `.ai/tmp/doc_probe_cli_surface.py` | `run --help` shows `--verbose` only (no `--no-verbose`); `run … --no-verbose` exits 2 |
+| `.ai/tmp/doc_probe_cli_surface.py` | `run --help` shows `--verbosity [QUIET|DEFAULT|VERBOSE] / -v` (replaces the former `--verbose` flag); no `--verbose` or `--no-verbose` flag exists |
 | `.ai/tmp/doc_probe_cmdname.py` | `list_reports` exits 2; `list-reports` exits 0 |
 | `.ai/tmp/doc_probe_paths.py` | Resolved user settings folder, connection config path, default export folder; instantiating the service with a missing user config raises `FileNotFoundError` |
 | `.ai/tmp/doc_probe_git_defaults.py` | `tv/crosstab.json5` parses at `3408747` and fails from `b04d177` onward |
@@ -427,7 +483,7 @@ Read-only probes executed for this document (scripts kept for reproduction in
 | `.ai/tmp/doc_probe_options_none.py` | A subtype with no defaults block leaves `slices`/`statistics`/`options` as `None`; `Data(**merged)` then raises a Pydantic `ValidationError` for `data_lang: en` (the `data_lang: ru` path crashes earlier in `en_to_ru`) |
 | `.ai/tmp/doc_probe_vendor_build_task.py` + reading `.venv/Lib/site-packages/mediascope_api/` | Vendor `build_task` has no `**kwargs` (unknown key → `TypeError`); one `requests.Session` per `MediaVortexTask` (`core/net.py:73`) |
 | `.ai/tmp/doc_probe_links.py` | All relative links and heading anchors in the documentation resolve |
-| `uv run pytest` | **42 passed** (full suite, mocked — no network, no Mediascope credentials; coverage reported via `--cov`) |
+| `uv run pytest` | **146 passed** (full suite, mocked — no network, no Mediascope credentials; coverage reported via `--cov`) |
 | `uv run mypy` | **0 errors** (`uv run mypy src tests` passes with zero errors; mypy checks both `src` and `tests` per `pyproject.toml` `files = ["src", "tests"]`) |
 | Inspection of the machine's `output/` folder | Confirms the file naming convention `<start>_<end>_<audience>.csv.gz` and that real report runs happened historically; the files predate the current column-selection code |
 
