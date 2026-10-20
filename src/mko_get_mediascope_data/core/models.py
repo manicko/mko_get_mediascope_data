@@ -1,5 +1,6 @@
+import logging
 from datetime import date
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
@@ -56,6 +57,31 @@ class SendTaskSettings(BaseModel):
     retry_on_connection_error: bool = True
 
 
+class VerbosityMode(StrEnum):
+    """Console verbosity modes that map to stdlib logging levels."""
+
+    QUIET = "QUIET"
+    DEFAULT = "DEFAULT"
+    VERBOSE = "VERBOSE"
+
+    def to_logging_level(self) -> int:
+        """Return the stdlib logging level corresponding to this verbosity."""
+        return {
+            VerbosityMode.QUIET: logging.WARNING,
+            VerbosityMode.DEFAULT: logging.INFO,
+            VerbosityMode.VERBOSE: logging.DEBUG,
+        }[self]
+
+
+class TaskStatus(StrEnum):
+    """Lifecycle status of a media-scope task."""
+
+    QUEUED = "QUEUED"
+    SENT = "SENT"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
 # Main configuration class
 class AppSettings(BaseModel):
     """Application-wide settings loaded from ``app_config.json5``.
@@ -72,6 +98,7 @@ class AppSettings(BaseModel):
     call_timeout: PositiveFloat = 300.0
     retry_5xx: bool = True
     log_errors_detail: bool = False
+    verbosity_mode: VerbosityMode = VerbosityMode.DEFAULT
     poll: PollSettings = Field(default_factory=PollSettings)
     send_task: SendTaskSettings = Field(default_factory=SendTaskSettings)
 

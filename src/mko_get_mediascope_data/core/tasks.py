@@ -6,6 +6,8 @@ from typing import Any, cast
 
 import json5
 
+from mko_get_mediascope_data.core.models import TaskStatus
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,6 +19,7 @@ class TVTask:
         self.settings = settings
         self.key: dict[str, Any] | None = None
         self.status = True
+        self.task_status: TaskStatus = TaskStatus.QUEUED
         self.log_error = False
         self.error = ""
         self.interval: tuple[str, str] | tuple[date, date] | None = None

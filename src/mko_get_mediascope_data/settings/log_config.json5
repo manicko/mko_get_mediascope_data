@@ -23,16 +23,16 @@
       // logger class-specific keyword arguments (kwargs) are passed in here.
       "class": "logging.StreamHandler",
       // This is the formatter name declared above
-      "formatter": "basic",
-      "level": "INFO",
+       "formatter": "basic",
+       "level": "NOTSET",
       // The default is stderr
       "stream": "ext://sys.stdout"
     },
     // Same as the StreamHandler example above, but with different
     // handler-specific kwargs.
     "rotating_file": {
-      "class": "logging.handlers.RotatingFileHandler",
-      "level": "INFO",
+       "class": "logging.handlers.RotatingFileHandler",
+       "level": "NOTSET",
       "formatter": "basic",
       "filename": "log.log",
       "maxBytes": 2000000,
