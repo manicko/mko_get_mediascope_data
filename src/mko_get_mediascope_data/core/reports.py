@@ -254,10 +254,15 @@ class MediaReport(Report):
                 "interval — the requested period may be empty or outside "
                 "the available data range."
             )
-        await self.task_queue.join()
-        for t in task_group:
-            t.cancel()
-        await asyncio.gather(*task_group, return_exceptions=True)
+        report_id = str(self.report_settings.relative_path)
+        self.reporter.report_started(report_id, enqueued)
+        try:
+            await self.task_queue.join()
+        finally:
+            for t in task_group:
+                t.cancel()
+            await asyncio.gather(*task_group, return_exceptions=True)
+            self.reporter.report_completed(report_id)
 
     async def create_report(self, timeout: float | None = None) -> None:
         """sync function to run async part"""

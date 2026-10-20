@@ -218,9 +218,7 @@ class AppService:
                 reporter=reporter,
             )
 
-            reporter.report_started(str(report_settings_path), 0)
             await rep.create_report()
-            reporter.report_completed(str(report_settings_path))
             export_paths.append(export_path)
             idx += 1
 

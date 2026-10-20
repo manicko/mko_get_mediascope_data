@@ -11,11 +11,14 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.live import Live
+from rich.progress import BarColumn, Progress, TaskID, TextColumn
 
 from .core.init_service import init_project
-from .core.models import VerbosityMode
+from .core.models import TaskStatus, VerbosityMode
 from .core.progress import NullProgressReporter, ProgressReporter
 from .core.services import get_app_service
+from .core.tasks import TVTask
 from .core.utils import list_files_in_directory
 
 console = Console()
@@ -54,6 +57,131 @@ def configure_logging_level(mode: VerbosityMode) -> None:
         handler.setLevel(level)
 
 
+class RichProgressReporter(ProgressReporter):
+    """Rich-based progress reporter with 4 fixed-position bars per status.
+
+    Implements the :class:`ProgressReporter` protocol using
+    ``rich.progress.Progress`` and ``rich.live.Live``.  A ``Live`` region
+    with ``redirect_stdout=True`` is started lazily on the first
+    :meth:`report_started` call and stopped in :meth:`report_completed`,
+    so that startup logging from ``services.py`` remains visible above
+    the bars.
+
+    The class also supports use as a context manager from the ``run``
+    CLI command to guarantee cleanup even when an exception propagates
+    from ``asyncio.run``.
+    """
+
+    def __init__(self) -> None:
+        self._live: Live | None = None
+        self._progress: Progress | None = None
+        self._bars: dict[TaskStatus, TaskID] = {}
+        self._counts: dict[TaskStatus, int] = {s: 0 for s in TaskStatus}
+        self._total: int = 0
+
+    # -- Context-manager hooks ----------------------------------------------
+
+    def __enter__(self) -> "RichProgressReporter":
+        """Enter context — returns self.  ``Live`` is started lazily."""
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        """Ensure the ``Live`` region is stopped even on exception."""
+        self._stop_live()
+
+    # -- ProgressReporter protocol ------------------------------------------
+
+    def report_started(self, report_id: str, total_tasks: int) -> None:
+        """Create 4 status bars (QUEUED / SENT / COMPLETED / FAILED) and
+        start the ``Live`` region.
+
+        Each bar is displayed as ``STATUS [██░░░░░] XX% (N/total)``
+        using :class:`TextColumn` + :class:`BarColumn`.
+        """
+        self._total = total_tasks
+        self._counts = {s: 0 for s in TaskStatus}
+        self._progress = Progress(
+            TextColumn("{task.description}", style="bold"),
+            BarColumn(bar_width=12, style="bright_blue",
+                      complete_style="bright_green",
+                      finished_style="bright_green"),
+            TextColumn("{task.percentage:>3.0f}% ({task.completed}/{task.total})"),
+        )
+        self._bars = {
+            status: self._progress.add_task(status.value, total=total_tasks)
+            for status in TaskStatus
+        }
+        self._start_live()
+
+    def task_status_changed(
+        self, task: TVTask, old_status: TaskStatus, new_status: TaskStatus
+    ) -> None:
+        """Move one task from *old_status* to *new_status* and re-render.
+
+        ``QUEUED`` is not reported via ``task_status_changed`` (tasks
+        start in the QUEUED state at construction / enqueue).  It is
+        therefore derived as ``total - SENT - COMPLETED - FAILED`` in
+        :meth:`_refresh_bars`.
+        """
+        if self._progress is None:
+            return
+        if old_status != new_status:
+            if old_status != TaskStatus.QUEUED:
+                self._counts[old_status] -= 1
+            if new_status != TaskStatus.QUEUED:
+                self._counts[new_status] += 1
+            self._refresh_bars()
+
+    def report_completed(self, report_id: str) -> None:
+        """Clear the bar set and stop the ``Live`` region."""
+        self._progress = None
+        self._bars = {}
+        self._stop_live()
+
+    # -- Internals ----------------------------------------------------------
+
+    def _start_live(self) -> None:
+        """Start the ``Live`` region, plugging in the current ``Progress``."""
+        if self._live is not None:
+            if self._progress is not None:
+                self._live.update(self._progress)
+            return
+        if self._progress is not None:
+            self._live = Live(
+                self._progress,
+                refresh_per_second=10,
+                redirect_stdout=True,
+                redirect_stderr=True,
+                transient=True,
+            )
+            self._live.__enter__()
+
+    def _stop_live(self) -> None:
+        """Stop the ``Live`` region if it is currently running."""
+        if self._live is not None:
+            self._live.__exit__(None, None, None)
+            self._live = None
+
+    def _refresh_bars(self) -> None:
+        """Refresh all four bars after a status transition."""
+        tracked = (
+            self._counts[TaskStatus.SENT]
+            + self._counts[TaskStatus.COMPLETED]
+            + self._counts[TaskStatus.FAILED]
+        )
+        self._counts[TaskStatus.QUEUED] = max(0, self._total - tracked)
+        if self._progress is None:
+            return
+        for status in TaskStatus:
+            bar_id = self._bars.get(status)
+            if bar_id is not None:
+                self._progress.update(
+                    bar_id,
+                    completed=self._counts[status],
+                    total=self._total,
+                )
+
+
 @app.command()
 def run(
     report: Annotated[
@@ -75,7 +203,12 @@ def run(
         console.print(f"[blue]▶ Running report:[/blue] {report.name}")
 
     try:
-        asyncio.run(get_app_service().run_report(report))
+        if verbosity != VerbosityMode.QUIET:
+            reporter = RichProgressReporter()
+            with reporter:
+                asyncio.run(run_report_async(report, progress=reporter))
+        else:
+            asyncio.run(run_report_async(report))
         console.print("[green]✅ Report completed successfully[/green]")
 
     except Exception as e:
