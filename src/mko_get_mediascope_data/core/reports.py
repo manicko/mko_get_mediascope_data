@@ -22,8 +22,13 @@ from mko_get_mediascope_data.core.models import (
     ReportSettings,
     ReportSubtype,
     ReportType,
+    TaskStatus,
 )
 from mko_get_mediascope_data.core.network import NetworkClient, RETRIABLE_EXCEPTIONS
+from mko_get_mediascope_data.core.progress import (
+    NullProgressReporter,
+    ProgressReporter,
+)
 from mko_get_mediascope_data.core.tasks import TVTask
 
 logger = logging.getLogger(__name__)
@@ -96,6 +101,7 @@ class MediaReport(Report):
         max_tasks: int = 100,
         poll: PollSettings | None = None,
         check_done: bool | None = True,
+        reporter: ProgressReporter | None = None,
     ):
         super().__init__(
             report_settings=report_settings,
@@ -120,6 +126,7 @@ class MediaReport(Report):
         self.task_queue: asyncio.Queue[TVTask] = asyncio.Queue(maxsize=self.max_tasks)
 
         self.period: list[tuple[str, str]] | list[tuple[date, date]] | None = None
+        self.reporter = reporter or NullProgressReporter()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
@@ -178,6 +185,11 @@ class MediaReport(Report):
                 else:
                     await coro
                 if item.status is False:
+                    old_status = item.task_status
+                    item.task_status = TaskStatus.FAILED
+                    self.reporter.task_status_changed(
+                        item, old_status, TaskStatus.FAILED
+                    )
                     if item.log_error:
                         logger.warning(f"Calculation: '{item.name}' will be skipped.")
                         await asyncio.to_thread(item.to_file, self.export_path)
@@ -192,12 +204,22 @@ class MediaReport(Report):
                 item.status = False
                 item.log_error = True
                 item.error = f"Timeout after {timeout}s"
+                old_status = item.task_status
+                item.task_status = TaskStatus.FAILED
+                self.reporter.task_status_changed(
+                    item, old_status, TaskStatus.FAILED
+                )
                 await asyncio.to_thread(item.to_file, self.export_path)
             except Exception as exc:
                 logger.error(f"Task '{item.name}' failed: {exc} — skipping.")
                 item.status = False
                 item.log_error = True
                 item.error = str(exc)
+                old_status = item.task_status
+                item.task_status = TaskStatus.FAILED
+                self.reporter.task_status_changed(
+                    item, old_status, TaskStatus.FAILED
+                )
                 await asyncio.to_thread(item.to_file, self.export_path)
             finally:
                 self.task_queue.task_done()
@@ -212,6 +234,7 @@ class MediaReport(Report):
         ]
         enqueued = 0
         async for task in self.generate_tasks():
+            task.task_status = TaskStatus.QUEUED
             await self.task_queue.put(task)
             logger.debug(f"Queue depth after put: {self.task_queue.qsize()}")
             enqueued += 1
@@ -258,6 +281,7 @@ class TVMediaReport(MediaReport):
         max_tasks: int = 100,
         poll: PollSettings | None = None,
         check_done: bool | None = True,
+        reporter: ProgressReporter | None = None,
     ):
         super().__init__(
             report_settings=report_settings,
@@ -268,6 +292,7 @@ class TVMediaReport(MediaReport):
             max_tasks=max_tasks,
             poll=poll,
             check_done=check_done,
+            reporter=reporter,
         )
 
         self.task_strategy = task_strategy or DefaultTVTaskStrategy()
@@ -387,6 +412,9 @@ class TVMediaReport(MediaReport):
                 task.target,
                 time.perf_counter() - stage_start,
             )
+            old_status = task.task_status
+            task.task_status = TaskStatus.SENT
+            self.reporter.task_status_changed(task, old_status, TaskStatus.SENT)
             if not task.key:
                 task.status = False
                 task.log_error = True
@@ -514,6 +542,11 @@ class TVMediaReport(MediaReport):
                         add_time=False,
                         csv_path_out=self.export_path,
                         compression=self.report_settings.compression,
+                    )
+                    old_status = task.task_status
+                    task.task_status = TaskStatus.COMPLETED
+                    self.reporter.task_status_changed(
+                        task, old_status, TaskStatus.COMPLETED
                     )
                     # print(f'\n saving {task.name} to file')
 

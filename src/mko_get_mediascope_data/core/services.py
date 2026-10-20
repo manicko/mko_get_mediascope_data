@@ -215,6 +215,7 @@ class AppService:
                 max_tasks=self.app_config.app_settings.max_tasks,
                 poll=self.app_config.app_settings.poll,
                 check_done=report_settings.check_done,
+                reporter=reporter,
             )
 
             reporter.report_started(str(report_settings_path), 0)
