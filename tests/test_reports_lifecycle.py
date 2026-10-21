@@ -26,6 +26,7 @@ from mko_get_mediascope_data.core.models import (
     ReportSettings,
     ReportSubtype,
     ReportType,
+    SendTaskSettings,
 )
 from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.reports import (
@@ -463,13 +464,13 @@ async def test_wait_task_max_polls_limit(
     return a non-terminal ``IN_PROGRESS`` status so the poll loop would spin
     forever without the guard.
 
-    The guard is ``if polls >= max_polls`` and is checked at the *top* of each
-    iteration, before the status poll.  Therefore ``max_polls=2`` is the smallest
-    value that lets exactly one real poll run (so ``get_status`` is called once,
+    The guard is ``if polls > max_polls`` and is checked at the *top* of each
+    iteration, after the poll counter is incremented.  With ``max_polls=N``
+    the loop performs exactly N ``get_status`` calls (the old ``>=``
+    off-by-one performed only N-1).  ``max_polls=1`` is the smallest value
+    that lets exactly one real poll run (so ``get_status`` is called once,
     receiving the non-terminal status) and then trips the counter on the next
     iteration — terminating via the inner guard rather than any outer timeout.
-    (``max_polls=1`` would trip the guard before any poll, calling ``get_status``
-    zero times, which would not exercise the poll path.)
     """
 
     # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
@@ -524,7 +525,7 @@ async def test_wait_task_max_polls_limit(
     task = TVTask("test_wait_task", {}, "DYNAMICS_BY_SPOTS", "crosstab")
     task.key = {"taskJson": "mock_key"}
 
-    await report.wait_task(task, max_polls=2)
+    await report.wait_task(task, max_polls=1)
 
     # ---- 9. Assertions -------------------------------------------------
     # The inner max_polls guard terminated the loop -> task marked failed.
@@ -1353,6 +1354,108 @@ def test_send_task_false_key_marks_no_data(
     assert task.status is False
     assert task.log_error is False
     assert task.error == "Task could not be built — period or target may be outside available range."
+
+
+# ---------------------------------------------------------------------------
+# send_task config wiring (EXT-001: SendTaskSettings drives retryable/retry_on)
+# ---------------------------------------------------------------------------
+
+
+async def test_send_task_config_wiring(
+    hermetic_app_service: AppService,
+    dummy_df: pd.DataFrame,
+):
+    """SendTaskSettings config is wired into NetworkClient.call kwargs.
+
+    EXT-001: ``send_task`` previously hardcoded ``retry_on=RETRIABLE_EXCEPTIONS``
+    with ``retryable`` defaulting to ``True``.  Now ``SendTaskSettings`` drives
+    both parameters through ``self.send_task_settings``.
+
+    Two cases:
+    1. ``retryable=False`` → ``call(retryable=False, retry_on=None)`` — triggers
+       the single-attempt early-return path at network.py:182.
+    2. ``retryable=True, retry_on_connection_error=False`` → ``call(
+       retryable=True, retry_on=None)`` — selective retry scope disabled.
+    """
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",  # type: ignore[arg-type]
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    # ---- Case 1: retryable=False → retryable=False, retry_on=None ----------
+    mock_report_service_1 = MagicMock()
+    mock_report_service_1.cats = MagicMock()
+    mock_report_service_1.cats.get_availability_period.return_value = dummy_df
+    mock_report_service_1.build_task.return_value = {"task_json": "mock"}
+
+    mock_network_client_1 = MagicMock()
+    mock_network_client_1.call = AsyncMock(
+        side_effect=[{"task_json": "mock"}, "mock_task_key_123"]
+    )
+
+    report_1 = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test1",
+        report_service=mock_report_service_1,
+        network_client=mock_network_client_1,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
+        check_done=False,
+        send_task_settings=SendTaskSettings(retryable=False),
+    )
+
+    task_1 = TVTask(
+        "test_retryable_false", {"options": {"kitId": 1}}, "crosstab", "TV"
+    )
+    await report_1.send_task(task_1)
+
+    # The second call (self.sender POST) must carry retryable=False, retry_on=None
+    send_call_1 = mock_network_client_1.call.call_args_list[1]
+    assert send_call_1.kwargs["retryable"] is False
+    assert send_call_1.kwargs["retry_on"] is None
+    assert task_1.key == "mock_task_key_123"
+
+    # ---- Case 2: retryable=True, retry_on_connection_error=False → retry_on=None
+    mock_report_service_2 = MagicMock()
+    mock_report_service_2.cats = MagicMock()
+    mock_report_service_2.cats.get_availability_period.return_value = dummy_df
+    mock_report_service_2.build_task.return_value = {"task_json": "mock"}
+
+    mock_network_client_2 = MagicMock()
+    mock_network_client_2.call = AsyncMock(
+        side_effect=[{"task_json": "mock"}, "mock_task_key_123"]
+    )
+
+    report_2 = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test2",
+        report_service=mock_report_service_2,
+        network_client=mock_network_client_2,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
+        check_done=False,
+        send_task_settings=SendTaskSettings(
+            retryable=True, retry_on_connection_error=False
+        ),
+    )
+
+    task_2 = TVTask(
+        "test_no_conn_retry", {"options": {"kitId": 1}}, "crosstab", "TV"
+    )
+    await report_2.send_task(task_2)
+
+    # When retryable=True but retry_on_connection_error=False, retry_on must be
+    # None (not RETRIABLE_EXCEPTIONS).
+    send_call_2 = mock_network_client_2.call.call_args_list[1]
+    assert send_call_2.kwargs["retryable"] is True
+    assert send_call_2.kwargs["retry_on"] is None
+    assert task_2.key == "mock_task_key_123"
 
 
 # ---------------------------------------------------------------------------

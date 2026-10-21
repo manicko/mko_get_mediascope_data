@@ -214,6 +214,7 @@ class AppService:
                 data_strategy=report_strategies.data_strategy(),
                 max_tasks=self.app_config.app_settings.max_tasks,
                 poll=self.app_config.app_settings.poll,
+                send_task_settings=self.app_config.app_settings.send_task,
                 check_done=report_settings.check_done,
                 reporter=reporter,
             )
