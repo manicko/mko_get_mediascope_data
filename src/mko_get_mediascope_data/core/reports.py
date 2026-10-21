@@ -205,7 +205,10 @@ class MediaReport(Report):
                         item, old_status, TaskStatus.FAILED
                     )
                     if item.log_error:
-                        logger.warning(f"Calculation: '{item.name}' will be skipped.")
+                        logger.warning(
+                            f"Calculation: '{item.name}' will be skipped. "
+                            f"Reason: {item.error}"
+                        )
                         await asyncio.to_thread(item.to_file, self.export_path)
                     else:
                         logger.warning(f"No data for task '{item.name}' — skipping.")
@@ -445,7 +448,8 @@ class TVMediaReport(MediaReport):
         stage_start = time.perf_counter()
         # print(f'debug task.settings = {task.settings}')
         task_json = await self.network_client.call(
-            self.builder, task.report_type, **task.settings, api_call=False
+            self.builder, task.report_type, **task.settings, api_call=False,
+            task_name=task.name,
         )
         if task_json is not False:
             task.key = {}
@@ -463,7 +467,8 @@ class TVMediaReport(MediaReport):
             ) if cfg.retryable else None
 
             task.key = await self.network_client.call(
-                self.sender, task_json, retryable=retryable, retry_on=retry_on
+                self.sender, task_json, retryable=retryable, retry_on=retry_on,
+                task_name=task.name,
             )
 
             if not _verbose_mode():
@@ -531,7 +536,8 @@ class TVMediaReport(MediaReport):
             await asyncio.sleep(sleep_interval)
 
             status = await self.network_client.call(
-                self.report_service.get_status, task.key, sleep_time=self.poll.sleep_time
+                self.report_service.get_status, task.key,
+                sleep_time=self.poll.sleep_time, task_name=task.name,
             )
             if status is False:
                 task.status = False
@@ -573,7 +579,7 @@ class TVMediaReport(MediaReport):
         stage_start = time.perf_counter()
         # retrieve result
         res_json = await self.network_client.call(
-            self.report_service.get_result, task.key
+            self.report_service.get_result, task.key, task_name=task.name
         )
         if res_json is False:
             task.status = False
@@ -582,7 +588,7 @@ class TVMediaReport(MediaReport):
         if task.status:
             df: DataFrame | None = await self.network_client.call(
                 self.report_service.result2table, res_json, project_name=task.target,
-                api_call=False,
+                api_call=False, task_name=task.name,
             )
             if df is None:
                 task.status = False

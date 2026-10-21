@@ -140,6 +140,7 @@ class NetworkClient:
         retryable: bool = True,
         api_call: bool = True,
         retry_on: tuple[type[BaseException], ...] | None = None,
+        task_name: str | None = None,
         **kwargs: Any,
     ) -> T:
         """Execute *func* with retry logic and concurrency control.
@@ -165,6 +166,10 @@ class NetworkClient:
             reset) even for POST calls where HTTP-level errors should not be
             retried (to avoid duplicate task creation).  When ``None``, all
             ``RETRIABLE_EXCEPTIONS`` and 429/5xx errors are retried.
+        task_name
+            Optional task name appended to log messages (``task=<name>``)
+            for correlation when hundreds of concurrent tasks are running.
+            When ``None`` (default), log messages remain unchanged.
 
         Returns
         -------
@@ -175,6 +180,7 @@ class NetworkClient:
             return await self._invoke(func, *args, **kwargs)
 
         _sleep_time = max(sleep_time, self._sleep_time)
+        _task_ctx = f" task={task_name}" if task_name is not None else ""
 
         # Small initial delay to smooth peak loads
         await asyncio.sleep(uniform(_sleep_time * 0.5, _sleep_time * 2))
@@ -190,21 +196,23 @@ class NetworkClient:
                     return await self._invoke(func, *args, **kwargs)
 
             except BadRequestError as err:
-                logger.error(f"Bad request. Check configuration. {err}")
+                logger.error(f"Bad request. Check configuration. {err}{_task_ctx}")
                 raise
 
             except AuthorizationError as err:
                 # 401 — is a known client error, not "Unexpected"
                 logger.error(
                     f'Authorization error (token invalid/expired) in "{func.__name__}" '
-                    f'with args="{self._redact_args(args)}" and kwargs="{self._redact_args(kwargs)}": {err}'
+                    f'with args="{self._redact_args(args)}" and kwargs='
+                    f'"{self._redact_args(kwargs)}": {err}{_task_ctx}'
                 )
                 raise
 
             except FileNotFoundError as err:
                 logger.error(
                     f'File not found: "{err}" in function "{func.__name__}" '
-                    f'with args="{self._redact_args(args)}" and kwargs="{self._redact_args(kwargs)}"'
+                    f'with args="{self._redact_args(args)}" and kwargs='
+                    f'"{self._redact_args(kwargs)}"{_task_ctx}'
                 )
                 raise
 
@@ -217,12 +225,12 @@ class NetworkClient:
                 if retry_on is not None and not isinstance(err, retry_on):
                     logger.error(
                         f'Rejected error type "{type(err).__name__}" '
-                        f'for "{func.__name__}" (not in retry_on): {err}'
+                        f'for "{func.__name__}" (not in retry_on): {err}{_task_ctx}'
                     )
                     raise
                 logger.warning(
                     f"Network error ({type(err).__name__}) "
-                    f"attempt {attempt}/{self._max_attempts}: {err}"
+                    f"attempt {attempt}/{self._max_attempts}: {err}{_task_ctx}"
                 )
 
             except TooManyRequestsError as err:
@@ -233,11 +241,12 @@ class NetworkClient:
                 if retry_on is not None:
                     logger.error(
                         f"HTTP 429 on retry_on-limited call to "
-                        f'"{func.__name__}" — re-raising (may have been committed)'
+                        f'"{func.__name__}" — re-raising (may have been committed){_task_ctx}'
                     )
                     raise
                 logger.warning(
-                    f"Rate limited (429) on attempt {attempt}/{self._max_attempts}: {err}"
+                    f"Rate limited (429) on attempt "
+                    f"{attempt}/{self._max_attempts}: {err}{_task_ctx}"
                 )
 
             except MediascopeApiError as err:
@@ -249,23 +258,27 @@ class NetworkClient:
                     code = getattr(err, "code", None)
                     logger.error(
                         f"HTTP error ({code}) on retry_on-limited call to "
-                        f'"{func.__name__}" — re-raising (may have been committed)'
+                        f'"{func.__name__}" — re-raising (may have been committed){_task_ctx}'
                     )
                     raise
                 # 5xx is retried when retry_5xx=True; all others re-raise.
                 code = getattr(err, "code", None)
                 if self._retry_5xx and code is not None and 500 <= code < 600:
                     logger.warning(
-                        f"Server error ({code}) on attempt {attempt}/{self._max_attempts}: {err}"
+                        f"Server error ({code}) on attempt "
+                        f"{attempt}/{self._max_attempts}: {err}{_task_ctx}"
                     )
                 else:
-                    logger.error(f"HTTP error ({code}) for {func.__name__}: {err}")
+                    logger.error(
+                        f"HTTP error ({code}) for {func.__name__}: {err}{_task_ctx}"
+                    )
                     raise
 
             except Exception as err:
                 logger.exception(
                     f'Unexpected error in "{func.__name__}" '
-                    f'with args="{self._redact_args(args)}" and kwargs="{self._redact_args(kwargs)}": {err}'
+                    f'with args="{self._redact_args(args)}" and kwargs='
+                    f'"{self._redact_args(kwargs)}": {err}{_task_ctx}'
                 )
                 raise
 
@@ -277,6 +290,7 @@ class NetworkClient:
 
         logger.error(
             f'Max retries exceeded for "{func.__name__}" '
-            f'with args="{self._redact_args(args)}" and kwargs="{self._redact_args(kwargs)}"'
+            f'with args="{self._redact_args(args)}" and kwargs='
+            f'"{self._redact_args(kwargs)}"{_task_ctx}'
         )
         raise MaxRetriesExceeded("Network retry limit exceeded")

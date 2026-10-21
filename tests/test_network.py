@@ -583,3 +583,57 @@ def test_vendor_json_error_no_file_dumped(tmp_path, monkeypatch, caplog):
     assert "/some/endpoint" in caplog.text
     # No json-error-*.txt file was written to CWD.
     assert not any(p.name.startswith("json-error-") for p in tmp_path.iterdir())
+
+
+async def test_call_logs_task_name_in_errors(mocker, caplog):
+    """task_name is included in log messages when provided (PIPE-010).
+
+    When ``task_name`` is passed to ``NetworkClient.call``, retry warnings
+    and the final MaxRetriesExceeded error must include ``task=<value>`` in
+    the log output so operators can correlate errors across hundreds of
+    concurrent tasks.
+    """
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+    call_count = [0]
+
+    def failing_func():
+        call_count[0] += 1
+        raise ConnectTimeout("connection timed out")
+
+    with caplog.at_level(logging.WARNING, logger="mko_get_mediascope_data.core.network"):
+        with pytest.raises(MaxRetriesExceeded, match="Network retry limit exceeded"):
+            await client.call(
+                failing_func,
+                task_name="my_tv_task_42",
+            )
+
+    log_text = caplog.text
+    # The task name appears in every retry warning.
+    assert "task=my_tv_task_42" in log_text
+    assert "Network error" in log_text
+    # All attempts were made.
+    assert call_count[0] == 3
+
+
+async def test_call_omits_task_context_when_name_is_none(mocker, caplog):
+    """When task_name is None (default), log messages contain no task context (PIPE-010).
+
+    Backward compatibility: log output is identical to the pre-task_name format.
+    """
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(max_attempts=3, sleep_time=0)
+    call_count = [0]
+
+    def failing_func():
+        call_count[0] += 1
+        raise ConnectTimeout("connection timed out")
+
+    with caplog.at_level(logging.WARNING, logger="mko_get_mediascope_data.core.network"):
+        with pytest.raises(MaxRetriesExceeded, match="Network retry limit exceeded"):
+            await client.call(failing_func)
+
+    log_text = caplog.text
+    assert "task=" not in log_text
+    assert "Network error" in log_text
+    assert call_count[0] == 3

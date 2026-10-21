@@ -2008,3 +2008,100 @@ async def test_worker_emits_per_task_duration(
         f"Task name '{ready_name}' not found among timing-call arguments; "
         f"timing calls: {timing_calls}"
     )
+
+
+# ---------------------------------------------------------------------------
+# PIPE-010: "will be skipped" warning includes item.error (reports.py:208)
+# ---------------------------------------------------------------------------
+
+
+async def test_worker_will_be_skipped_warning_includes_error_reason(
+    tmp_path: Path,
+    mocker,
+    tv_json5_content: str,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+):
+    """PIPE-010: the 'will be skipped' warning includes the task error reason.
+
+    When ``item.log_error`` is ``True``, the worker logs a "will be skipped"
+    warning.  The message now includes ``Reason: {item.error}`` so operators
+    can see why the task failed without inspecting the error JSON5 artifact.
+
+    ``send_task`` on the doubled ``MediaVortexTask`` returns an empty string
+    (falsy) → ``TVMediaReport.send_task`` sets ``task.error =
+    "Task.key is not received from API."`` and ``task.log_error = True``.
+    The worker must log that error in the "will be skipped" warning.
+    """
+
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = hermetic_app_service
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Compute result2table DataFrame columns --------------------
+    result_df = _build_result_df(data_settings, report_settings)
+
+    # ---- 4. Doubled MediaVortexTask — send_task returns falsy key ----
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    # Empty string is falsy → TVMediaReport.send_task sets log_error=True
+    mock_report_service.send_task.return_value = ""
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    # ---- 5. Real NetworkClient (sleep_time=0, max_attempts=1) ----------
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+
+    # ---- 6. Mock asyncio.sleep (no real delays) ------------------------
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    # ---- 7. Spy on reports logger.warning ------------------------------
+    reports_logger = logging.getLogger(_REPORTER_LOGGER)
+    mock_warning = mocker.spy(reports_logger, "warning")
+
+    # ---- 8. Export path ------------------------------------------------
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    # ---- 9. Construct report with check_done=False ---------------------
+    report_factory = ReportFactory(report_settings)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    # ---- 10. Run real pipeline -----------------------------------------
+    await asyncio.wait_for(report.create_report(), timeout=10.0)
+
+    # ---- 11. Assertions ------------------------------------------------
+    warning_messages = [
+        str(call.args[0]) if call.args else ""
+        for call in mock_warning.call_args_list
+    ]
+    skip_warnings = [
+        msg for msg in warning_messages if "will be skipped" in msg
+    ]
+    assert len(skip_warnings) >= 1, (
+        f"Expected a 'will be skipped' warning, got: {mock_warning.call_args_list}"
+    )
+    for msg in skip_warnings:
+        assert "Reason:" in msg, (
+            f"Expected 'Reason:' in skip warning, got: {msg}"
+        )
+        assert "Task.key is not received from API." in msg, (
+            f"Expected error reason in warning, got: {msg}"
+        )

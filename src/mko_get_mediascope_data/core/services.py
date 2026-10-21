@@ -200,6 +200,7 @@ class AppService:
                 self.get_connection,
                 report_settings.media,
                 api_call=False,
+                task_name=None,
             )
 
             report_strategies = ReportFactory(report_settings)
