@@ -221,3 +221,47 @@ def test_lazy_import_same_object_as_app_module():
     from mko_get_mediascope_data.app import run_report as app_run_report
 
     assert pkg_run_report is app_run_report
+
+
+def test_cli_missing_settings_explains_init_recovery(mocker, tmp_path):
+    """`run` with missing settings exits nonzero and shows init recovery hint."""
+    report_file = tmp_path / "report.json5"
+    report_file.write_text("{}", encoding="utf-8")
+    mocker.patch(
+        "mko_get_mediascope_data.app.get_app_service",
+        side_effect=FileNotFoundError(
+            "No such file or directory: 'test/settings/log_config.json5'"
+        ),
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["run", str(report_file)])
+    assert result.exit_code != 0
+    assert "Run 'mko-get-mediascope init'" in result.stdout
+
+
+def test_cli_list_reports_missing_settings_explains_init_recovery(mocker):
+    """`list-reports` with missing settings exits nonzero and shows init recovery hint."""
+    mocker.patch(
+        "mko_get_mediascope_data.app.get_app_service",
+        side_effect=FileNotFoundError(
+            "No such file or directory: 'test/settings/log_config.json5'"
+        ),
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["list-reports"])
+    assert result.exit_code != 0
+    assert "Run 'mko-get-mediascope init'" in result.stdout
+
+
+def test_cli_malformed_settings_does_not_suggest_init(mocker, tmp_path):
+    """Malformed settings (ValueError) propagate without the init recovery hint."""
+    report_file = tmp_path / "report.json5"
+    report_file.write_text("{}", encoding="utf-8")
+    mocker.patch(
+        "mko_get_mediascope_data.app.get_app_service",
+        side_effect=ValueError("Invalid JSON5 content"),
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["run", str(report_file)])
+    assert result.exit_code != 0
+    assert "Run 'mko-get-mediascope init'" not in result.output

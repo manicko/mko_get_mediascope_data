@@ -17,7 +17,7 @@ from rich.progress import BarColumn, Progress, TaskID, TextColumn
 from .core.init_service import init_project
 from .core.models import TaskStatus, VerbosityMode
 from .core.progress import NullProgressReporter, ProgressReporter
-from .core.services import get_app_service
+from .core.services import AppService, get_app_service
 from .core.tasks import TVTask
 from .core.utils import list_files_in_directory
 
@@ -203,6 +203,22 @@ class RichProgressReporter(ProgressReporter):
                 )
 
 
+def _get_app_service_or_exit() -> AppService:
+    """Return the AppService singleton, printing a recovery hint on missing settings.
+
+    Wraps :func:`get_app_service` and catches only ``FileNotFoundError``
+    (the missing-required-settings case). Malformed-settings errors
+    (``ValueError``, ``pydantic.ValidationError``, ``TypeError``) propagate
+    so they are reported distinctly without an ``init`` suggestion.
+    """
+    try:
+        return get_app_service()
+    except FileNotFoundError as e:
+        console.print(f"[red]❌ Error:[/red] {e}")
+        console.print("Run 'mko-get-mediascope init' to create the settings directory.")
+        raise typer.Exit(1) from e
+
+
 @app.command()
 def run(
     report: Annotated[
@@ -228,7 +244,7 @@ def run(
     # dictConfig (run inside AppService.prepare_app via __init__) is applied first.
     # configure_logging_level then overrides the root logger and handler levels.
     # Spec §7: the override must happen after dictConfig.
-    app_service = get_app_service()
+    app_service = _get_app_service_or_exit()
     mode = (
         verbosity
         if verbosity is not None
@@ -258,7 +274,8 @@ def run(
 @app.command()
 def list_reports():
     """Show all available report files"""
-    reports_dir = get_app_service().app_paths.reports
+    app_service = _get_app_service_or_exit()
+    reports_dir = app_service.app_paths.reports
     files = list_files_in_directory(
         reports_dir, extensions=("json5",), include_subfolders=True
     )
