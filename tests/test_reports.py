@@ -155,21 +155,18 @@ async def test_default_data_strategy_prepare_logs_task_name(caplog):
 
 
 # ---------------------------------------------------------------------------
-# PIPE-011: TVRegTaskStrategy.generate logs warning and skips done files
+# PIPE-011: TVRegTaskStrategy.generate now yields ALL tasks (skip moved to
+# processing_tasks so the progress bar can show the full task count)
 # ---------------------------------------------------------------------------
 
 
-async def test_tv_reg_task_strategy_skip_logs_warning(caplog):
-    """PIPE-011: ``TVRegTaskStrategy.generate`` logs a warning and skips a task
-    when its generated name already appears in ``report.done_files``.
+async def test_tv_reg_task_strategy_yields_all_tasks_including_done_files():
+    """TVRegTaskStrategy.generate yields tasks even when done_files contains them.
 
-    With a single region (id=1, ename="Moscow") and the fixture's interval /
-    target, the generated task name is::
-
-        "2025-01-01_2025-01-07_all 18+_Moscow"
-
-    Placing that name in ``done_files`` causes the strategy to emit the
-    "already exists … skipping" warning and yield zero tasks.
+    The done_files skip was moved to ``MediaReport.processing_tasks`` so the
+    progress bar can report the true total (all generated tasks, including
+    those whose output files already exist).  The strategy itself no longer
+    filters or logs warnings for done_files.
     """
     strategy = TVRegTaskStrategy()
 
@@ -193,11 +190,12 @@ async def test_tv_reg_task_strategy_skip_logs_warning(caplog):
     report.subtype = MagicMock(value=ReportSubtype.TOP_NAT_TV_ADVERTISERS.value)
     report.type = MagicMock(value=ReportType.crosstab.value)
 
-    with caplog.at_level(logging.WARNING, logger=_REPORTER_LOGGER):
-        tasks = [task async for task in strategy.generate(report)]
+    tasks = [task async for task in strategy.generate(report)]
 
-    assert len(tasks) == 0
-    assert "already exists" in caplog.text
+    # Strategy yields the task unconditionally — done_files filtering happens
+    # in processing_tasks (which reports skipped tasks as COMPLETED).
+    assert len(tasks) == 1
+    assert tasks[0].name == expected_name
 
 
 async def test_tv_reg_task_strategy_generates_tasks_for_regions():

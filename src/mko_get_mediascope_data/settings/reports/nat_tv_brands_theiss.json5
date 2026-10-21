@@ -1,57 +1,57 @@
 [
   {
-    "media": "TV",
-    "report_type": "crosstab",
-    "report_subtype": "DYNAMICS_BY_SPOTS", // тип отчета
-    "compression": {
-      "method": "gzip",
+    media: 'TV',
+    report_type: 'crosstab',
+    report_subtype: 'DYNAMICS_BY_SPOTS', // тип отчета
+    compression: {
+      method: 'gzip'
     },
-    "data_lang": "ru", // задаем язык выгрузки
-    "relative_path": "theiss/raw_data",
-    "multiple_files": true, // True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    "ad_filter": "(articleLevel3Id=176 OR articleLevel4Id IN (791, 846, 863, 864, 3631, 4413)) AND adIssueStatusId = R", // DRTHEISS
-    "target_audiences": {
-      "all 18+": "age >= 18",
-      "W 30-50": "sex = 2 AND age >= 30 AND age <= 50",
-      "W 30-50 BC": "sex = 2 AND age >= 30 AND age <= 50 AND incomeGroupRussia IN (2,3)",
-      "W 35+ BC": "sex = 2 AND age >= 35 AND incomeGroupRussia IN (2,3)",
-      "W 50+ BC": "sex = 2 AND age >= 50 AND incomeGroupRussia IN (2,3)",
-      "W 50+": "sex = 2 AND age >= 50",
-      "W 55+": "sex = 2 AND age >= 55",
+    data_lang: 'ru', // задаем язык выгрузки
+    relative_path: 'theiss/raw_data',
+    multiple_files: true, // True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    ad_filter: '(articleLevel3Id=176 OR articleLevel4Id IN (791, 846, 863, 864, 3631, 4413)) AND adIssueStatusId = R', // DRTHEISS
+    target_audiences: {
+      'all 18+': 'age >= 18',
+      'W 30-50': 'sex = 2 AND age >= 30 AND age <= 50',
+      'W 30-50 BC': 'sex = 2 AND age >= 30 AND age <= 50 AND incomeGroupRussia IN (2,3)',
+      'W 35+ BC': 'sex = 2 AND age >= 35 AND incomeGroupRussia IN (2,3)',
+      'W 50+ BC': 'sex = 2 AND age >= 50 AND incomeGroupRussia IN (2,3)',
+      'W 50+': 'sex = 2 AND age >= 50',
+      'W 55+': 'sex = 2 AND age >= 55'
     },
-    "period": {
-      "date_filter": [
-        "2023-01-01",
-        "2026-10-10",
+    period: {
+      date_filter: [
+        '2023-01-01',
+        '2026-10-10'
       ], // Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      "time_unit": "m",
+      time_unit: 'm'
       // "last_time": { //если нужно последние несколько мес
       //   "unit_count": 1,
       //   "include_current": false
       // },
-    },
+    }
   },
   {
-    "media": "TV",
-    "report_type": "crosstab",
-    "report_subtype": "DYNAMICS_BY_SPOTS_DICT", // тип отчета
-    "relative_path": "theiss/dict",
-    "data_lang": "ru", // задаем язык выгрузки
-    "multiple_files": true, // True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    "ad_filter": "(articleLevel3Id=176 OR articleLevel4Id IN (791, 846, 863, 864, 3631, 4413)) AND adIssueStatusId = R", // DRTHEISS
-    "target_audiences": {
-      "all 18+": "age >= 18",
+    media: 'TV',
+    report_type: 'crosstab',
+    report_subtype: 'DYNAMICS_BY_SPOTS_DICT', // тип отчета
+    relative_path: 'theiss/dict',
+    data_lang: 'ru', // задаем язык выгрузки
+    multiple_files: true, // True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    ad_filter: '(articleLevel3Id=176 OR articleLevel4Id IN (791, 846, 863, 864, 3631, 4413)) AND adIssueStatusId = R', // DRTHEISS
+    target_audiences: {
+      'all 18+': 'age >= 18'
     },
-    "period": {
-      "date_filter": [
-        "2023-01-01",
-        "2026-10-10",
+    period: {
+      date_filter: [
+        '2023-01-01',
+        '2026-10-10'
       ], // Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      "time_unit": "m",
+      time_unit: 'm'
       // "last_time": { //если нужно последние несколько мес
       //   "unit_count": 1,
       //   "include_current": false
       // },
-    },
-  },
+    }
+  }
 ]

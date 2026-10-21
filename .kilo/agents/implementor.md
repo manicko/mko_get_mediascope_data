@@ -38,7 +38,6 @@ permission:
     "git*commit*": allow
     "git*stash*list*": allow
     "git*stash*show*": allow
-    "git*restore*": ask 
     # === BUILD & TEST ===
     
     "uv *": allow
@@ -110,7 +109,6 @@ permission:
     "git tag -d*": ask
     "gc --prune=now*": ask
     "git update-ref -d*": ask
-    "git*": ask
     
     # === ASK: potentially destructive filesystem ===
     "pip*": ask

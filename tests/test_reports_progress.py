@@ -414,3 +414,108 @@ def test_verbose_mode_helper_reflects_root_level(
 
     configure_logging_level(VerbosityMode.VERBOSE)
     assert _verbose_mode() is True
+
+
+# ---------------------------------------------------------------------------
+# Progress bar shows ALL tasks (including skipped) — Fix 2
+# ---------------------------------------------------------------------------
+
+
+async def test_processing_tasks_reports_all_tasks_including_skipped(
+    tmp_path: Path,
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+) -> None:
+    """processing_tasks reports ALL tasks (including skipped) to the reporter.
+
+    With ``check_done=True`` and a pre-existing file for one task, the progress
+    bar should still show the total count of all generated tasks.  Skipped
+    tasks are marked ``COMPLETED`` immediately via the reporter; the remaining
+    tasks are enqueued and processed through the normal send→wait→extract pipeline.
+    """
+    from mko_get_mediascope_data.core.models import (
+        MediaType,
+        ReportType,
+    )
+
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",  # type: ignore[arg-type]
+        period={"date_filter": ["2025-01-01", "2025-01-21"]},  # type: ignore[arg-type]  # 3 weekly intervals
+        target_audiences={"all 18+": "age >= 18"},
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = _make_mock_report_service(dummy_df)
+    result_df = pd.DataFrame({"value": [1]})
+    mock_report_service.result2table.return_value = result_df
+
+    mock_network_client = MagicMock()
+
+    async def _mock_call(func: Any, *args: Any, **kwargs: Any) -> Any:
+        if func is mock_report_service.cats.get_availability_period:
+            return dummy_df
+        if func is mock_report_service.build_task:
+            return {"task_json": "mock"}
+        if func is mock_report_service.send_task:
+            return "mock_task_key_123"
+        if func is mock_report_service.get_status:
+            return {"taskStatus": "DONE"}
+        if func is mock_report_service.get_result:
+            return {"result": "mock_data"}
+        if func is mock_report_service.result2table:
+            return result_df
+        return None
+
+    mock_network_client.call = AsyncMock(side_effect=_mock_call)
+
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    # Pre-create file for the first weekly interval → that task is skipped
+    skipped_name = "2025-01-01_2025-01-07_all 18+"
+    (export_path / f"{skipped_name}.csv.gz").touch()
+
+    report_factory = ReportFactory(report_settings)
+    spy = RecordingReporter()
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=mock_network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=True,
+        reporter=spy,
+    )
+    mocker.patch.object(report, "prepare_data", AsyncMock(return_value=result_df))
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    await report.create_report()
+
+    # report_started called with total=3 (including the skipped task)
+    assert len(spy.started) == 1
+    assert spy.started[0][0] == str(report_settings.relative_path)
+    assert spy.started[0][1] == 3
+
+    # Skipped task: QUEUED → COMPLETED (1 call)
+    # Each processed task: QUEUED → SENT, SENT → COMPLETED (2 calls per task)
+    # Total: 1 + 2 + 2 = 5 status_changed calls
+    assert len(spy.calls) == 5
+    transitions = [(c[1].value, c[2].value) for c in spy.calls]
+    assert transitions.count(("QUEUED", "COMPLETED")) == 1  # skipped
+    assert transitions.count(("QUEUED", "SENT")) == 2       # sent
+    assert transitions.count(("SENT", "COMPLETED")) == 2   # extracted
+
+    # The skipped task is the first one reported
+    assert spy.calls[0][1] == TaskStatus.QUEUED
+    assert spy.calls[0][2] == TaskStatus.COMPLETED
+    assert spy.calls[0][0].name == skipped_name
+
+    # report_completed called once
+    assert len(spy.completed) == 1

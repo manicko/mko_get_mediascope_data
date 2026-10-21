@@ -7,7 +7,7 @@ import io
 import logging
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -78,6 +78,7 @@ class RichProgressReporter(ProgressReporter):
         self._bars: dict[TaskStatus, TaskID] = {}
         self._counts: dict[TaskStatus, int] = {s: 0 for s in TaskStatus}
         self._total: int = 0
+        self._saved_handler_streams: list[tuple[logging.StreamHandler[Any], Any]] = []
 
     # -- Context-manager hooks ----------------------------------------------
 
@@ -141,12 +142,25 @@ class RichProgressReporter(ProgressReporter):
     # -- Internals ----------------------------------------------------------
 
     def _start_live(self) -> None:
-        """Start the ``Live`` region, plugging in the current ``Progress``."""
+        """Start the ``Live`` region, plugging in the current ``Progress``.
+
+        Also re-points console ``StreamHandler`` instances (non-file handlers)
+        to the ``Live``-redirected ``sys.stderr`` so that log records render
+        *within* the Live region instead of interleaving with the progress
+        bars on the terminal.  File handlers are left untouched.
+        """
         if self._live is not None:
             if self._progress is not None:
                 self._live.update(self._progress)
             return
         if self._progress is not None:
+            # Save original streams of console (non-file) StreamHandlers
+            root = logging.getLogger()
+            for handler in root.handlers:
+                if isinstance(handler, logging.StreamHandler) and not isinstance(
+                    handler, logging.FileHandler
+                ):
+                    self._saved_handler_streams.append((handler, handler.stream))
             self._live = Live(
                 self._progress,
                 refresh_per_second=10,
@@ -155,12 +169,19 @@ class RichProgressReporter(ProgressReporter):
                 transient=True,
             )
             self._live.__enter__()
+            # Re-point console handlers at the Live-redirected sys.stderr
+            # so log records are captured within the Live region.
+            for handler, _ in self._saved_handler_streams:
+                handler.stream = sys.stderr
 
     def _stop_live(self) -> None:
-        """Stop the ``Live`` region if it is currently running."""
+        """Stop the ``Live`` region and restore original handler streams."""
         if self._live is not None:
+            for handler, stream in self._saved_handler_streams:
+                handler.stream = stream
             self._live.__exit__(None, None, None)
             self._live = None
+            self._saved_handler_streams = []
 
     def _refresh_bars(self) -> None:
         """Refresh all four bars after a status transition."""
