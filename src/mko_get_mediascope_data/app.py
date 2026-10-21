@@ -332,6 +332,15 @@ def run_report(
         from mko_get_mediascope_data import run_report_async
         await run_report_async("settings/reports/nat_tv_brands_last.json5")
     """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass  # No running loop — safe to delegate to asyncio.run.
+    else:
+        raise RuntimeError(
+            "run_report() cannot be called from a running event loop "
+            "(e.g. Jupyter/IPython). Use await run_report_async(...) instead."
+        )
     asyncio.run(run_report_async(report_path, progress=progress))
 
 

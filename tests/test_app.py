@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import sys
+import warnings
 
 import pytest
 from typer.testing import CliRunner
@@ -265,3 +266,36 @@ def test_cli_malformed_settings_does_not_suggest_init(mocker, tmp_path):
     result = runner.invoke(app, ["run", str(report_file)])
     assert result.exit_code != 0
     assert "Run 'mko-get-mediascope init'" not in result.output
+
+
+def test_run_report_in_running_host_loop_has_actionable_contract():
+    """ENT-008b: run_report in a running host loop raises an actionable error.
+
+    Calling run_report from an active event loop (Jupyter/IPython, FastAPI
+    handlers, any async host) must raise a RuntimeError whose message names
+    ``run_report_async`` as the recovery path, and must NOT emit the
+    unawaited-coroutine RuntimeWarning that the unguarded asyncio.run path
+    produces.
+    """
+    from mko_get_mediascope_data.app import run_report
+
+    async def call_sync_wrapper_inside_loop() -> None:
+        run_report("does_not_matter_report.json5")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(RuntimeError, match="run_report_async"):
+            asyncio.run(call_sync_wrapper_inside_loop())
+
+    unawaited = [
+        w
+        for w in caught
+        if issubclass(w.category, RuntimeWarning)
+        and "never awaited" in str(w.message)
+    ]
+    assert not unawaited, (
+        "run_report must not construct the coroutine inside a running loop; "
+        f"unexpected RuntimeWarning(s): {[str(w.message) for w in unawaited]}"
+    )
+
+    assert "run_report_async" in (run_report.__doc__ or "")
