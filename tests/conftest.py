@@ -15,8 +15,8 @@ from mko_get_mediascope_data.core.models import (
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
 from mko_get_mediascope_data.core.services import AppService
 
-# Matches reports.py:189: data_settings.options.get("kitId", 1)
-DEFAULT_KIT_ID = "1"
+# Matches the default kitId in settings/defaults/tv/crosstab.json5
+DEFAULT_KIT_ID = "7"
 
 _LOG_CONFIG_JSON5 = """
 {
