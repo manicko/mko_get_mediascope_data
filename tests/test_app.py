@@ -108,6 +108,37 @@ def test_run_report_sync_wrapper(mocker, tmp_path):
     mock_run.assert_called_once()
 
 
+def test_sync_wrapper_drives_requested_async_report_work(mocker, tmp_path):
+    """The sync wrapper's real ``asyncio.run`` must drive the requested async work.
+
+    TST-014: separate assertions prove the async API was called and the
+    scheduler was called, but not that the scheduler *actually drives* the
+    requested async report operation.  Here the real ``asyncio.run`` is kept
+    and only ``run_report_async`` is replaced with an async recording stub.
+    The stub body must actually execute, with the requested path and progress,
+    so a wrong or non-awaitable scheduled object fails the test.
+    """
+    from mko_get_mediascope_data.app import run_report
+
+    report_file = tmp_path / "report.json5"
+    report_file.write_text("{}", encoding="utf-8")
+
+    progress = mocker.MagicMock()
+    recorded: list[tuple[str, object]] = []
+
+    async def recording_stub(report_path, *, progress=None):
+        recorded.append((report_path, progress))
+
+    mocker.patch(
+        "mko_get_mediascope_data.app.run_report_async", new=recording_stub
+    )
+
+    run_report(str(report_file), progress=progress)
+
+    # The async stub body must have actually run (work was delivered).
+    assert recorded == [(str(report_file), progress)]
+
+
 def test_initialize_settings_wrapper(mocker, tmp_path):
     """initialize_settings returns the path from init_project(force=...)."""
     from mko_get_mediascope_data.app import initialize_settings
