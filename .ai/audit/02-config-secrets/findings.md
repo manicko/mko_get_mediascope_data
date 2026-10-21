@@ -1,133 +1,242 @@
 ---
 phase: "02"
 phase_name: "config-secrets"
-id_prefix: "CFG-"
+id_prefix: "CFG"
 mode: "problems-only"
 report_status: "draft"
-severity_taxonomy: ".agents/skills/02-config-secrets/references/workflow.md#severity-taxonomy"
-code_ref: "4c08eb445f80584a00f16d929bc995239a1bd3d3"
+severity_taxonomy: ".kilo/commands/audit/phases/02-audit-config-secrets.md#severity-taxonomy"
+code_ref: "d093d9c"
 ---
 
 # Audit Findings — Configuration & Secrets Management
 
 ## Summary
 
-Two HIGH findings. A report that omits an advertisement filter loses the filter selected by its defaults, broadening the generated request. A supported authenticated proxy configuration exposes its password in captured console output before a request completes.
+10 findings (3 HIGH, 4 MEDIUM, 3 LOW). The highest is HIGH: every shipped report
+template except one fails Pydantic validation, the `tv_reg` defaults template is
+malformed YAML, and the credential template is copied to a filename the code never
+reads. All three entry surfaces share a single eagerly-built `AppService` singleton
+that crashes at import if `init` hasn't run, because `yaml_to_dict` returns `None`
+instead of raising.
 
 ## Scope
 
-**Examined:** All seven phase blocks: settings distribution/copy, credential entry seam, default/subtype/client merge, validation and credential guards, assigned-setting consumers, entry-surface parity, and posture controls. Inspected core models/services/paths/init_service/reports/network/utils, entry wrappers, bundled application/logging/default/report templates, relevant tests and settings architecture documentation. Vendor credential/authentication implementation was inspected as the installed downstream consumer.
-
-**Snapshot:** Moving dirty working tree on 2026-10-21, not pristine `code_ref`. Initial evidence: `.ai/tmp/audit-2026-10-21/initial-hashes.json` and `initial-git-status.txt`. User-modified application settings and current-behavior/async-concurrency documents were preserved; coordinator subsequently reported external drift in async-concurrency and data-flow documents. Findings are grounded in current source and bounded runtime probes. Historical CFG-001–010 are reserved and not reused. Phase 01 remains frozen.
-
-**Tools:** PowerShell read-only inspection, `rg`, Git object/path inspection and existing venv Python; no dependency synchronization. Probe: `.ai/tmp/audit-2026-10-21/config_probe.py`.
-
-**Not verified:** Live API authentication, remote calculation/results, actual production credential validity, deployment ACLs or cross-environment credential reuse, full lint/type/test suite. Every attempted transport call in the credential probe is blocked before I/O; only synthetic credential files are used. No real credential value appears in evidence. No claim of an actual production credential compromise is made.
+**Examined:** `core/paths.py`, `core/init_service.py`, `core/models.py`,
+`core/services.py`, `core/network.py`, `core/utils.py`, `core/tasks.py`,
+`core/reports.py`, `app.py`, `__main__.py`, all `settings/` templates, and the
+vendored `mediascope_api` library (`core/net.py`, `core/utils.py`, `core/errors.py`).
+**Tools:** `uv run python` (Pydantic/YAML validation, init simulation), `rg`
+(field consumption).
+**Not verified:** live API calls (no credentials); log output during a real run
+(error-handler source reviewed only).
 
 ## Findings
 
 | ID | Severity | Anchor | Title |
 |---|---|---|---|
-| CFG-011 | HIGH | `src/mko_get_mediascope_data/core/services.py::AppService.merge_data_settings` | Omitted client filter erases the selected subtype's advertisement restriction |
-| CFG-012 | HIGH | `src/mko_get_mediascope_data/core/services.py::AppService.get_connection` | Authenticated proxy password reaches stdout during credential construction |
+| CFG-001 | HIGH | `settings/reports/nat_tv_brands_last.yaml::period_type` | Templates use stale field names and enum values rejected by Pydantic |
+| CFG-002 | HIGH | `settings/defaults/tv_reg/crosstab.yaml::1` | Malformed YAML (unbalanced braces) — TV_REG reports always crash |
+| CFG-003 | HIGH | `core/paths.py::AppPaths.connection_config` | Credential template name never matches the path the code reads |
+| CFG-004 | MEDIUM | `core/services.py::AppService.get_connection` | No credential guard — missing file / placeholders reach API silently |
+| CFG-005 | MEDIUM | `core/utils.py::yaml_to_dict` | Returns `None` on error → cascading `TypeError` at import and report time |
+| CFG-006 | MEDIUM | `core/services.py::AppService.get_default_data_settings` | Missing defaults for `simple` and `tv_reg/timeband` — valid combos crash |
+| CFG-007 | MEDIUM | `core/services.py::AppService.merge_data_settings` | 3 ReportSubtype values have no matching defaults key — silent skip |
+| CFG-008 | LOW | `core/init_service.py::_copy_templates` | Non-atomic template copy — interrupted `init` leaves partial files |
+| CFG-009 | LOW | `pyproject.toml::project.dependencies` | `pydantic-settings` declared but never imported — no env controls |
+| CFG-010 | LOW | `core/services.py::AppService.run_report` | `print()` in core modules — bypasses logging config |
 
-#### CFG-011 — [HIGH] Omitted client filter erases the selected subtype's advertisement restriction
+<!-- Findings body exceeds 100 lines; see Appendices for full evidence. -->
 
-**Anchor:** `src/mko_get_mediascope_data/core/services.py::AppService.merge_data_settings`
-**Anchor:** `src/mko_get_mediascope_data/core/models.py::ReportSettings`
-**Anchor:** `src/mko_get_mediascope_data/settings/defaults/tv/crosstab.json5::"TOP_NAT_TV_ADVERTISERS"`
-**Anchor:** `src/mko_get_mediascope_data/core/reports.py::DefaultTVTaskStrategy.generate`
-**Disambiguator:** `report_settings.model_dump().items()`
-**Checked:** ran
-**Why this band:** A merged configuration value silently loses its data-selection constraint and is forwarded to the API builder without detecting that loss: HIGH under this phase's data-corruption criterion. Not CRITICAL: no secret compromise or application startup gate bypass is established.
-**Problem:** The intended defaults → subtype → explicit client overlay includes model-generated defaults from `ReportSettings.model_dump()`. An omitted `ad_filter` is represented as `None`, overwriting a nonempty subtype filter. The documented contract says omitted client fields retain defaults.
-**Repro:** Build a valid TV crosstab client selecting `TOP_NAT_TV_ADVERTISERS`, with a two-day explicit period and `data_lang='en'`, omitting `ad_filter`. Load bundled defaults via the real service, merge/validate them and advance the real task strategy once. The subtype filter exists, the client field is unset, and both validated data and generated task contain `ad_filter=None`.
-**Impact:** Sellers selecting that subtype can request advertisements outside its intended status/type restriction, changing report totals without a configuration error. Remote values were not fetched; the observed consequence is removal of the request restriction before the API boundary.
-**Root cause:** The merge treats synthesized Pydantic field defaults as explicit client overrides.
-**Fix:** Make `AppService.merge_data_settings` preserve selected defaults for omitted client fields while retaining explicit null overrides. Benefit: requested data scope matches the selected configuration; effort small; advisory priority high. [SPEC-DEVIATION]
-**Verify:** new test needed: test_omitted_ad_filter_preserves_subtype_and_explicit_null_overrides
-**Related:** None.
+#### CFG-001 — [HIGH] Templates use stale field names / enum values rejected by Pydantic
 
-**Evidence — `.\.venv\Scripts\python.exe -u -X utf8 .ai/tmp/audit-2026-10-21/config_probe.py`** *(supports: omission changes the generated request constraint)*:
-```text
-subtype_ad_filter_nonempty: True
-report_explicitly_sets_ad_filter: False
-merged_ad_filter: None
-generated_task_ad_filter: None
-```
+**Checked:** ran · **Verify:** new test needed: `test_bundled_templates_validate`
 
-#### CFG-012 — [HIGH] Authenticated proxy password reaches stdout during credential construction
+30 of 32 bundled report definitions fail `ReportSettings(**rep)`. Two drifts:
+(a) `last_time` uses `period_type`/`period_num` but `LastTimeModel` (models.py:61)
+requires `time_unit`/`unit_count` with `extra="forbid"`; (b) 28 definitions use
+`report_type: TV_CROSSTAB`/`TV_DICT_CROSSTAB` but the enum (models.py:44) only
+accepts `crosstab`/`timeband`/`simple`. Templates with `TV_CROSSTAB` also omit
+required `media` and `relative_path`, using unconsumed `folder`/`category_name`.
 
-**Anchor:** `src/mko_get_mediascope_data/core/services.py::AppService.get_connection`
-**Disambiguator:** `settings_filename=cred_path`
-**Checked:** ran
-**Why this band:** Secret values reach output: the phase explicitly rates that HIGH. Not CRITICAL: only a synthetic password is observed; production credential exposure or file access by unauthorized people is not demonstrated.
-**Problem:** `get_connection` passes the credential file directly into the vendor constructor. Its supported `proxy_server` option is printed with the complete HTTPS proxy URL, including URL user information. The output bypasses application logging and argument redaction.
-**Repro:** Write a synthetic credential file under the isolated scratch settings directory with an authenticated `https://...@example.invalid` proxy URL. Capture stdout while invoking the real `AppService.get_connection`, with `Session.request` patched to reject every outbound request. The synthetic password is already present in captured stdout. A direct vendor-constructor probe reproduces the same source.
-**Impact:** CLI logs, notebook output and scheduler-captured stdout can retain a proxy password even when application error-argument redaction is enabled. An authentication failure cannot undo the earlier output.
-**Root cause:** The installed vendor's `MediascopeApiNetwork.__init__` prints the unredacted proxy mapping during credential construction; the application consumes that path without output-safe handling.
-**Fix:** Ensure `AppService.get_connection`'s supported proxy-credential path does not emit proxy user information, including during constructor failures. Benefit: proxy secrets stay out of persistent execution output; effort small to medium; advisory priority high. [SPEC-DEVIATION]
-**Verify:** new test needed: test_get_connection_does_not_emit_authenticated_proxy_password
-**Related:** Phase 15 may assess credential lifecycle; this finding owns the configuration-to-output seam.
+**Repro:** `ReportSettings(report_type='crosstab', media='TV', relative_path='x', period={'date_filter':['a','b'],'last_time':{'period_type':'m','period_num':'1','include_current':False}})` → `ValidationError: unit_count missing, period_type forbidden, period_num forbidden`
 
-**Evidence — same probe command** *(supports: secret present in output on the application's reachable path; value intentionally omitted)*:
-```text
-proxy_secret_in_constructor_stdout: True
-proxy_secret_in_get_connection_stdout: True
-```
+**Fix:** Rename `period_type→time_unit`, `period_num→unit_count`; replace
+`TV_CROSSTAB→crosstab`, `TV_DICT_CROSSTAB→crosstab`; add `media`/`relative_path`.
+**Related:** CFG-007
+
+#### CFG-002 — [HIGH] Malformed YAML in `tv_reg/crosstab.yaml`
+
+**Checked:** ran · **Verify:** new test needed: `test_tv_reg_defaults_parse`
+
+13 `{` vs 12 `}` — missing `}` to close `DATA_DEFAULTS` on line 31.
+`yaml_to_dict` catches the `YAMLError`, logs it, returns `None`;
+`DataDefaults(**None)` → `TypeError`. Every TV_REG crosstab report crashes.
+
+**Repro:** `yaml.safe_load(open('…/tv_reg/crosstab.yaml'))` → `ScannerError: expected ',' or '}', but got '<stream end>' at line 162, column 2`
+
+**Fix:** Add missing `}` after line 30. **Related:** CFG-005
+
+#### CFG-003 — [HIGH] Credential file name mismatch
+
+**Checked:** ran · **Verify:** new test needed: `test_init_produces_readable_credential_file`
+
+Template `settings/connections/mediascope_RENAME_.json` is copied by `init` to
+the user dir, but `AppPaths.connection_config` (paths.py:59) resolves
+`connections/mediascope.json`. After `init`, the expected file does not exist.
+No guard tells the user to rename it.
+
+**Repro (simulated init):** `init_project()` → file at
+`…/connections/mediascope_RENAME_.json` (exists); code reads
+`…/connections/mediascope.json` (missing → `FileNotFoundError`).
+
+**Fix:** Rename template to `mediascope.json`, or update `connection_config`
+to resolve the `_RENAME_` path; add existence guard in `get_connection`.
+
+#### CFG-004 — [MEDIUM] No credential guard before API connection
+
+**Checked:** ran · **Verify:** new test needed: `test_get_connection_raises_on_missing_credential`
+
+`get_connection` (services.py:106) passes `settings_filename` to `MediaVortexTask`
+without checking existence or placeholder values. `FileNotFoundError` is caught by
+`NetworkClient.call` (network.py:88) and logged with the file path, but the error
+is library-level, not actionable from project code. Placeholder values
+(`"you username"`, `"00000000-…"`) pass through undetected.
+
+**Fix:** Add pre-check in `get_connection` — verify file exists, raise
+project-specific error naming the expected path.
+
+#### CFG-005 — [MEDIUM] `yaml_to_dict` returns `None` on error
+
+**Checked:** ran · **Verify:** existing `test_utils.py` only tests happy paths; new test needed
+
+`yaml_to_dict` (utils.py:343) catches `YAMLError`/`FileNotFoundError`, logs,
+falls through to **implicit `return None`**. Callers do
+`AppSettings(**utils.yaml_to_dict(...))` → `TypeError`. Because `app_service`
+is a module-level singleton (services.py:163), **importing the package before
+`init` crashes**. Only `YAMLError` and `FileNotFoundError` are caught;
+`UnicodeDecodeError`, `PermissionError` are not.
+
+**Repro:** `yaml_to_dict('/nonexistent')` → `None`; `AppSettings(**None)` →
+`TypeError: argument after ** must be a mapping, not NoneType`
+
+**Fix:** Return `{}` on error (or raise typed error); broaden `except` to `OSError`.
+
+#### CFG-006 — [MEDIUM] Missing defaults templates for valid enum combos
+
+**Checked:** ran · **Verify:** new test needed: `test_get_default_data_settings_missing_file`
+
+`get_default_data_settings` (services.py:66) builds `defaults/{media}/{type}.yaml`.
+Missing: `TV/simple`, `TV_REG/timeband`, `TV_REG/simple`. Missing file →
+`yaml_to_dict` returns `None` → `DataDefaults(**None)` → `TypeError`.
+
+**Fix:** Ship the 3 missing templates or raise a specific error.
+
+#### CFG-007 — [MEDIUM] 3 ReportSubtype values have no matching defaults key
+
+**Checked:** ran · **Verify:** new test needed: `test_data_defaults_covers_all_subtypes`
+
+`merge_data_settings` (services.py:83) does `hasattr(defaults, subtype.value)`.
+`NAT_TV_CHANNELS_ATV`, `NAT_TV_CHANNELS_BA`, `NAT_TV_CHANNELS_SOC_DEM`
+have no key in any defaults template → override skipped → `statistics` stays
+`None` → `Data(statistics=None)` fails (`dict|list` type doesn't allow `None`).
+
+**Fix:** Add subtype blocks to defaults, or guard `Data` against `None`.
+
+#### CFG-008 — [LOW] Non-atomic template copy
+
+**Checked:** static · **Verify:** not checked (theoretical)
+
+`_copy_templates` (init_service.py:27) uses `shutil.copy2` per file.
+Interrupted `init` leaves a partial config tree. `force=False` preserves
+user edits (correct), but there is no temp-write + atomic-rename.
+
+**Fix:** Write to temp file, `os.replace` on success.
+
+#### CFG-009 — [LOW] `pydantic-settings` declared but unused
+
+**Checked:** static · **Verify:** not checked
+
+`pyproject.toml:21` lists `pydantic-settings>=2.12.0`; `rg` finds zero imports in
+`src/`. No env-overridable controls exist for concurrency, retry count, export
+path, or credential path.
+
+**Fix:** Implement `BaseSettings` for env overrides, or remove the dependency.
+
+#### CFG-010 — [LOW] `print()` in core modules
+
+**Checked:** ran (static) · **Verify:** existing tests don't assert output; static check only
+
+AGENTS.md: "No `print()` Statements — use `logging` in `core/`". Violations:
+services.py:117, services.py:124, services.py:154, reports.py:265.
+
+**Fix:** Replace with `logger.info()`.
 
 ## Fix Order
 
-- **Distribution:** CRITICAL 0; HIGH 2; MEDIUM 0; LOW 0.
-- **Dependencies:** None.
-- **Merge candidates:** None; data overlay and vendor output have distinct causes.
-- **Conflicting evidence:** Pydantic accepts the merged model in CFG-011, but schema acceptance does not preserve omitted-client semantics. This is not a request to replace the intended shallow overlay with deep merging or forbid legitimate API extras.
-- **Cross-phase conflicts:** Missing-settings recovery remains ENT-009 in `.ai/audit/99-validation/01-entry-architecture-validated-findings.md`; it is not refiled here. Template conformance details belong to phase 05; retry behavior belongs to phase 09.
-- **Rollout risk:** CFG-011 must retain explicit `ad_filter=null` behavior and ordinary subtype/client replacement; run service merge coverage and add the named omission-versus-null test. CFG-012 must retain proxy routing and error propagation while removing secret output; run connection/credential tests and the named proxy-output test. No shipped test specifically asserting either defect was identified in inspected service/model tests.
+- **Dependencies:** CFG-002 must be fixed before CFG-006 can be validated for TV_REG.
+  CFG-001 must be resolved before CFG-007 can be tested end-to-end.
+- **Merge candidates:** CFG-005 and CFG-006 share the `None`-return root cause.
+- **Conflicting evidence:** None.
+- **Cross-phase conflicts:** CFG-002/006 templates are read by phase 03 (async
+  pipeline); changes must not alter Strategy dispatch.
+- **Rollout risk:** CFG-003 rename may invalidate users who already renamed
+  `mediascope_RENAME_.json` → `mediascope.json` manually. `test_app.py::test_cli_init`
+  asserts `--help` only and stays green.
 
 ## Appendices
 
-### Appendix A — Complete bounded probe output
-
-Command: `.\.venv\Scripts\python.exe -u -X utf8 .ai/tmp/audit-2026-10-21/config_probe.py` (exit 0).
-The probe is isolated local evidence, not a real authentication attempt. `AssertionError` means the transport guard deliberately stopped a would-be outbound call. No secret values are printed; secret-output checks emit booleans only.
+### Appendix A — validation results for all 32 bundled report definitions
 
 ```text
-user_edit_preserved: True
-subtype_ad_filter_nonempty: True
-report_explicitly_sets_ad_filter: False
-merged_ad_filter: None
-generated_task_ad_filter: None
-type_mismatch_fields: [('slices', 'dict[str,any]'), ('slices', 'list[any]')]
-misspelled_max_attempt_retained: False
-misspelled_max_attempt_effective_attempts: 10
-permissive_data_input: {'slices': [42]} accepted: {'options': [], 'statistics': [], 'slices': [42]}
-permissive_data_input: {'options': ['kitId', 7]} accepted: {'options': ['kitId', 7], 'statistics': [], 'slices': []}
-credential_state: absent result: FileNotFoundError mentions_init: True
-credential_state: empty result: JSONDecodeError mentions_init: False
-credential_state: malformed result: JSONDecodeError mentions_init: False
-credential_state: empty_fields result: AssertionError mentions_init: False
-intercepted_auth_empty_fields: ['client_id', 'client_secret', 'password', 'username']
-proxy_secret_in_constructor_stdout: True
-proxy_secret_in_get_connection_stdout: True
-bundled_report_entries_validated: 34
-bundled_validation_failures: []
-bundled_unconsumed_extra_names: []
+gap_resurs/nat_tv_brands.yaml         [0] FAIL (7)  sovcombank/nat_tv_by_spots.yaml    [0] FAIL (6)
+gap_resurs/nat_tv_brands.yaml         [1] FAIL (7)  sovcombank/nat_tv_by_spots.yaml    [1] FAIL (6)
+gap_resurs/reg_tv_by_spots.yaml       [0] FAIL (7)  sovcombank/nat_tv_by_spots.yaml    [2] FAIL (7)
+gap_resurs/reg_tv_by_spots.yaml       [1] FAIL (7)  sovcombank/nat_tv_finance_q.yaml   [0] FAIL (6)
+gap_resurs/reg_tv_by_spots.yaml       [2] FAIL (7)  sovcombank/reg_tv_by_spots.yaml    [0] FAIL (6)
+last_category/nat_tv_brands_last.yaml [0] FAIL (6)  sovcombank/tv_msk_new_creatives.yaml       [0] FAIL (6)
+last_category/nat_tv_brands_last.yaml [1] FAIL (7)  sovcombank/tv_msk_new_creatives_short.yaml [0] FAIL (6)
+last_category/nat_tv_brands_snack.yaml [0] FAIL (6)
+last_category/nat_tv_brands_snack.yaml [1] FAIL (7)
+last_category/nat_tv_brands_weekly_reach.yaml [0] FAIL (6)
+nat_tv_brands_last.yaml [0] FAIL (3)  test.yaml [0] FAIL (6)
+nat_tv_brands_tefal.yaml [0] PASS
+nat_tv_brands_tefal.yaml [1] PASS
+nat_tv_tvreport.yaml [0..6] FAIL (3 each)
+
+Error breakdown:
+  7 errors = TV_CROSSTAB + missing media + missing relative_path + 3 last_time errors
+  6 errors = TV_CROSSTAB + missing media + missing relative_path + 2 last_time errors
+  3 errors = valid report_type + 3 last_time errors (period_type/period_num/forbidden + unit_count missing)
+
+TOTAL: 2 PASS, 30 FAIL
 ```
-*(supports: CFG-011 and CFG-012; remaining lines record the required block methodology, not additional findings or claims of remote acceptance.)*
 
-### Appendix B — Configuration and credential seam coverage
+### Appendix B — defaults template existence by MediaType × ReportType
 
-| Block | Evidence scope and ownership |
-|---|---|
-| 1: Distribution | CLI/module/library report paths converge on the same lazy service and user `APP_PATHS`. `init_project` copies packaged JSON5 templates; `_copy_file_atomic` uses a sibling temporary file and `os.replace`. Non-forced initialization preserved a deliberately edited scratch application config byte-for-byte. No claim of a transaction across all copied files. |
-| 2: Credential seam | `AppPaths.connection_config` prefers user `connections/mediascope.json`, falls back to the legacy name with a filename-only warning. `get_connection` passes that path to `MediaVortexTask(check_version=False)`. Vendor JSON reader obtains username/password/client values and endpoint URLs; token creation sends password/client secret in an `application/x-www-form-urlencoded` POST body. Subsequent API calls place the bearer token in the Authorization header. Test transport intercepted the pre-send form representation; no network was used. |
-| 3: Validation/merge | Defaults path is user `settings/defaults/<media>/<report_type>.json5`; `DataDefaults` permits subtype blocks. Base → subtype → client → language conversion → `Data` → task settings → builder. A string-valued `slices` field fails Pydantic with that field's named union locations. All 34 current bundled report entries and their selected merged Data values validated. CFG-011 concerns semantic loss despite successful validation. |
-| 4: Guards | Application guard checks credential-file existence and gives an initialization hint. Vendor JSON parsing separately rejects empty bytes and malformed syntax. Vendor field guard checks None rather than empty strings: an empty-field object reached a blocked authentication call. No genuine credential was used, no auth success occurred, and no remote failure wording is claimed. Guard effectiveness is therefore bounded to local structural checks; semantic credential validity remains unverified. |
-| 5: Liveness | Assigned application fields `export_folder`, `max_concurrent_requests`, `max_tasks`, `sleep_time`, `max_attempts`, `call_timeout`, `retry_5xx`, `log_errors_detail`, `poll`, `send_task` reach service/report/network consumers; `verbosity_mode` is consumed by the CLI. Poll's five fields and send-task's two fields reach their corresponding report call sites. Report's period/target/media/type/subtype/path/check_done/compression/language/multiple_files values have readers; `ad_filter` participates in the data overlay; regional extras reach TVRegTaskStrategy. No bundled extra setting name remained outside merged data or the explicit regions consumer. |
-| 6: Parity | All report entry surfaces share settings and credentials. CLI verbosity overrides root/handler levels, whereas library calls retain user logging configuration; documented as CLI presentation behavior, so no unintended separation or independent production config tier is invented. Proxy output in CFG-012 bypasses both paths' logging controls. |
-| 7: Posture | No application environment-variable settings override layer was found. Platformdirs selects the operator's user settings root; relative exports/logs resolve against the user root. Concurrency/retries/timeouts are typed app controls, export path is an operator-selected Path, and credential path is derived with a legacy filename fallback. `send_task` retry switches are documented controls whose transport consequences belong to phase 09; no separate hardened production variant exists to test for re-pinning. |
+```text
+                crosstab     timeband     simple
+  TV:           exists ✓     exists ✓     MISSING ✗
+  TV_REG:       malformed ✗  MISSING ✗    MISSING ✗
+```
 
-Installed vendor evidence for CFG-012 is in `mediascope_api/core/net.py::MediascopeApiNetwork.__init__`: the `proxy_server` branch formats `self.proxies` directly into `print`. Its auth seam is `MediascopeApiNetwork.get_token`; field loading is `mediascope_api/core/utils.py::load_settings`. These installed dependency files are evidence context, not tracked repository anchors. The primary tracked anchor is the application's constructor call, mechanically confirmed with `git ls-files` and source inspection.
+### Appendix C — DataDefaults attribute coverage for ReportSubtype
 
-The permissive synthetic collection and misspelled-setting probes show validation boundaries; they are not promoted to findings without a demonstrated current consumer consequence. Actual package credential strings were never emitted, and their validity was not tested. User credential stores outside scratch were not accessed.
+```text
+  DYNAMICS_BY_SPOTS           hasattr=True   (tv/crosstab.yaml, tv_reg/crosstab.yaml)
+  DYNAMICS_BY_SPOTS_DICT      hasattr=True
+  TOP_NAT_TV_ADVERTISERS      hasattr=True
+  TOP_NAT_TV_PROGRAMS         hasattr=True
+  NAT_TV_CHANNELS_ATV         hasattr=False  ← CFG-007
+  NAT_TV_CHANNELS_BA          hasattr=False  ← CFG-007
+  NAT_TV_CHANNELS_SOC_DEM     hasattr=False  ← CFG-007
+```
+
+### Appendix D — credential template vs. expected path
+
+```text
+Package template:  settings/connections/mediascope_RENAME_.json
+  keys: username, passw, client_id, client_secret, auth_server, root_url
+  placeholders: "you username", "you password", "00000000-…"
+Code expects:    settings/connections/mediascope.json  (AppPaths.connection_config, paths.py:59)
+After init:      mediascope_RENAME_.json exists; mediascope.json MISSING
+```
