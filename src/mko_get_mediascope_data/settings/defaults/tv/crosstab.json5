@@ -57,7 +57,7 @@
     "options": {
       // dataset id (1-TV Index All Russia, 2-TV Index Russia 100+, 3-TV Index Cities, 4-TV Index Plus All Russia, 5-TV Index Plus Russia 100+, 6-TV Index Moscow, 7-Big TV, 9-TV Index Russia Special, 10-TV Index Moscow Special)
       // Only one value can be specified
-      "kitId": 1, //TV Index All Russia
+      "kitId": 7, //Big TV
       "issueType": "AD",  // Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       "standRtg": {
         "useRealDuration": false,  // Calculated based on actual ad duration.
@@ -85,7 +85,7 @@
     "options": {
       // dataset id (1-TV Index All Russia, 2-TV Index Russia 100+, 3-TV Index Cities, 4-TV Index Plus All Russia, 5-TV Index Plus Russia 100+, 6-TV Index Moscow, 7-Big TV, 9-TV Index Russia Special, 10-TV Index Moscow Special)
       // Only one value can be specified
-      "kitId": 1, //TV Index All Russia
+      "kitId": 7, //Big TV
       "issueType": "AD",  // Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       "standRtg": {
         "useRealDuration": false,  // Calculated based on actual ad duration.
@@ -102,7 +102,7 @@
     "options": {
       // dataset id (1-TV Index All Russia, 2-TV Index Russia 100+, 3-TV Index Cities, 4-TV Index Plus All Russia, 5-TV Index Plus Russia 100+, 6-TV Index Moscow, 7-Big TV, 9-TV Index Russia Special, 10-TV Index Moscow Special)
       // Only one value can be specified
-      "kitId": 1, //TV Index All Russia
+      "kitId": 7, //Big TV
       "issueType": "AD",   //Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
       "standRtg": {
         "useRealDuration": false,  // Calculated based on actual ad duration.
@@ -146,7 +146,7 @@
       "RtgPerAvg"
     ],
     "options": {
-      "kitId": 1, //TV Index All Russia
+      "kitId": 7, //Big TV
       "totalType": "TotalTVSet", //Share calculation base: Total Channels. Available options: TotalTVSet, TotalChannelsThem
       "issueType": "BREAKS"   //Event type for Cross-tab (Crosstab) report: PROGRAM, BREAKS, AD
     }
@@ -177,7 +177,7 @@
       "Share"
     ],
     "options": {
-      "kitId": 1, //TV Index All Russia
+      "kitId": 7, //Big TV
       "totalType": "TotalTVSet" //Share calculation base: Total Channels. Available options: TotalTVSet, TotalChannelsThem
     }
   },
