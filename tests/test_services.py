@@ -369,6 +369,57 @@ def test_merge_data_settings_applies_subtype_overlay() -> None:
                 )
 
 
+def test_omitted_ad_filter_preserves_subtype_and_explicit_null_overrides() -> None:
+    """The client overlay must not synthesize omitted keys (CFG-011).
+
+    ``merge_data_settings`` derives its client overlay from
+    ``report_settings.model_dump(exclude_unset=True)`` so a client that omits
+    ``ad_filter`` keeps the non-empty subtype default instead of overwriting it
+    with an implicit ``None``. An explicit ``ad_filter: null`` from the client
+    still overrides to ``None`` (so ``exclude_none`` is deliberately NOT used),
+    and an explicit non-empty value still overrides.
+
+    The generated-task path consumes exactly ``Data(**merged).model_dump()``
+    (``DefaultTVTaskStrategy.generate``), so asserting on that dict reflects the
+    real ``TVTask.settings`` value.
+    """
+    defaults_path = APP_PATHS.app_settings_dir / "defaults" / "tv" / "crosstab.json5"
+    data = json5.loads(defaults_path.read_text(encoding="utf-8"))
+    defaults = DataDefaults(**data)
+
+    subtype_overlay = getattr(defaults, ReportSubtype.TOP_NAT_TV_ADVERTISERS.value)
+    subtype_ad_filter = subtype_overlay["ad_filter"]
+    assert subtype_ad_filter, "Fixture requires a non-empty subtype ad_filter"
+
+    base_kwargs = {
+        "media": MediaType.TV,
+        "report_type": ReportType.crosstab,
+        "report_subtype": ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        "relative_path": "tv/test",
+        "data_lang": "en",
+        "period": {"last_time": {"unit_count": 1}, "time_unit": "m"},
+    }
+
+    # Case 1 — omitted ad_filter keeps the non-empty subtype value.
+    omitted = ReportSettings(**base_kwargs)  # type: ignore[arg-type]
+    assert "ad_filter" not in omitted.model_fields_set
+    merged_omitted = AppService.merge_data_settings(defaults, omitted)
+    assert merged_omitted["ad_filter"] == subtype_ad_filter
+    assert Data(**merged_omitted).model_dump()["ad_filter"] == subtype_ad_filter
+
+    # Case 2 — explicit null overrides to None.
+    explicit_null = ReportSettings(ad_filter=None, **base_kwargs)  # type: ignore[arg-type]
+    assert "ad_filter" in explicit_null.model_fields_set
+    merged_null = AppService.merge_data_settings(defaults, explicit_null)
+    assert merged_null["ad_filter"] is None
+
+    # Case 3 — explicit non-empty overrides with the client value.
+    client_value = "adIssueStatusId = R and adTypeId IN (7)"
+    explicit_value = ReportSettings(ad_filter=client_value, **base_kwargs)  # type: ignore[arg-type]
+    merged_value = AppService.merge_data_settings(defaults, explicit_value)
+    assert merged_value["ad_filter"] == client_value
+
+
 def test_prepare_app_resolves_handler_filename(mocker, tmp_path: Path) -> None:
     """prepare_app resolves handler 'filename' paths via PathResolver (services.py:60-64)."""
     # Build a log config with a file handler that has a filename

@@ -132,7 +132,7 @@ class AppService:
         if subtype.value and hasattr(defaults, subtype.value):
             data_settings.update(getattr(defaults, subtype.value))
 
-        for k, v in report_settings.model_dump().items():
+        for k, v in report_settings.model_dump(exclude_unset=True).items():
             if k in data_settings:
                 data_settings[k] = v
 
