@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import json5
 
-from tests.conftest import expected_output_columns
+from tests.conftest import MOCK_TASK_KEY, expected_output_columns
 from mko_get_mediascope_data.core.models import (
     DataDefaults,
     Data,
@@ -96,7 +96,7 @@ async def test_run_report_with_real_models(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
     mock_report_service.result2table.return_value = _compute_result_df(
@@ -452,7 +452,7 @@ async def test_run_report_multi_entry_yields_multiple_paths(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
 

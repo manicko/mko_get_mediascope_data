@@ -18,7 +18,7 @@ import pytest
 import json5
 from unidecode import unidecode
 
-from tests.conftest import expected_output_columns
+from tests.conftest import MOCK_TASK_KEY, expected_output_columns
 from mko_get_mediascope_data.core.errors import NoReportFoundError
 from mko_get_mediascope_data.core.models import (
     Data,
@@ -89,7 +89,7 @@ async def test_create_report_writes_csv_and_marks_queue_done(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
     mock_report_service.result2table.return_value = result_df
@@ -162,7 +162,7 @@ async def test_create_report_skips_done_files(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
     mock_report_service.result2table.return_value = result_df
@@ -252,7 +252,7 @@ async def test_create_report_timeout_does_not_hang(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     # Non-terminal status — wait_task inner loop never breaks
     mock_report_service.get_status.return_value = {"taskStatus": "IN_PROGRESS"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
@@ -348,7 +348,7 @@ async def test_create_report_zero_tasks_raises_no_report_found(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
     mock_report_service.result2table.return_value = result_df
@@ -415,7 +415,7 @@ async def test_create_report_out_of_range_date_filter_raises(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
     mock_report_service.result2table.return_value = result_df
@@ -489,7 +489,7 @@ async def test_wait_task_max_polls_limit(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     # Non-terminal status — without the max_polls guard the loop would spin
     # indefinitely waiting for the (mocked) task to finish.
     mock_report_service.get_status.return_value = {"taskStatus": "IN_PROGRESS"}
@@ -758,7 +758,7 @@ async def test_worker_log_error_false_no_json5(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
     # Empty DataFrame → df.empty is True → log_error=False
@@ -855,7 +855,7 @@ async def test_wait_task_resets_status_on_failed(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "FAILED"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
     mock_report_service.result2table.return_value = result_df
@@ -931,7 +931,7 @@ async def test_wait_task_resets_status_on_cancelled(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "CANCELLED"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
     mock_report_service.result2table.return_value = result_df
@@ -1009,7 +1009,7 @@ async def test_worker_does_not_log_ready_on_failed(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "FAILED"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
     mock_report_service.result2table.return_value = result_df
@@ -1276,7 +1276,7 @@ async def test_wait_task_poll_deadline_exceeded(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "IN_PROGRESS"}
 
     network_client = NetworkClient(sleep_time=0, max_attempts=1)
@@ -1394,7 +1394,7 @@ async def test_send_task_config_wiring(
 
     mock_network_client_1 = MagicMock()
     mock_network_client_1.call = AsyncMock(
-        side_effect=[{"task_json": "mock"}, "mock_task_key_123"]
+        side_effect=[{"task_json": "mock"}, MOCK_TASK_KEY]
     )
 
     report_1 = TVMediaReport(
@@ -1418,7 +1418,7 @@ async def test_send_task_config_wiring(
     send_call_1 = mock_network_client_1.call.call_args_list[1]
     assert send_call_1.kwargs["retryable"] is False
     assert send_call_1.kwargs["retry_on"] is None
-    assert task_1.key == "mock_task_key_123"
+    assert task_1.key == MOCK_TASK_KEY
 
     # ---- Case 2: retryable=True, retry_on_connection_error=False → retry_on=None
     mock_report_service_2 = MagicMock()
@@ -1428,7 +1428,7 @@ async def test_send_task_config_wiring(
 
     mock_network_client_2 = MagicMock()
     mock_network_client_2.call = AsyncMock(
-        side_effect=[{"task_json": "mock"}, "mock_task_key_123"]
+        side_effect=[{"task_json": "mock"}, MOCK_TASK_KEY]
     )
 
     report_2 = TVMediaReport(
@@ -1455,7 +1455,7 @@ async def test_send_task_config_wiring(
     send_call_2 = mock_network_client_2.call.call_args_list[1]
     assert send_call_2.kwargs["retryable"] is True
     assert send_call_2.kwargs["retry_on"] is None
-    assert task_2.key == "mock_task_key_123"
+    assert task_2.key == MOCK_TASK_KEY
 
 
 # ---------------------------------------------------------------------------
@@ -1812,7 +1812,7 @@ async def test_large_result_is_processed(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
     # 10 001 entries — previously exceeded the 10 000-row cap.
     # With the cap removed this is processed like any other result.
@@ -1907,7 +1907,7 @@ async def test_worker_emits_per_task_duration(
     mock_report_service.cats = MagicMock()
     mock_report_service.cats.get_availability_period.return_value = dummy_df
     mock_report_service.build_task.return_value = {"task_json": "mock"}
-    mock_report_service.send_task.return_value = "mock_task_key_123"
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
     mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
     mock_report_service.get_result.return_value = {"result": "mock_data"}
     mock_report_service.result2table.return_value = result_df

@@ -18,6 +18,14 @@ from mko_get_mediascope_data.core.services import AppService
 # Matches the default kitId in settings/defaults/tv/crosstab.json5
 DEFAULT_KIT_ID = "7"
 
+# Representative positive submission mapping returned by a doubled ``send_task``.
+# Mirrors the vendor contract: ``MediaVortexTask.get_status`` / ``get_result``
+# read the ``taskId`` key and route it to ``/task/state/<tid>`` /
+# ``/task/result/<tid>``.  Non-empty dict → truthy, so ``not task.key`` falsy
+# semantics are preserved.  Individual negative tests intentionally keep their
+# own falsy values (``""``, ``False``) and must not use this constant.
+MOCK_TASK_KEY = {"taskId": "mock_task_key_123"}
+
 _LOG_CONFIG_JSON5 = """
 {
   "version": 1,

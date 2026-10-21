@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pandas as pd
 import pytest
 
+from tests.conftest import MOCK_TASK_KEY
 from mko_get_mediascope_data.app import configure_logging_level
 from mko_get_mediascope_data.core.models import (
     MediaType,
@@ -105,7 +106,7 @@ def _make_mock_report_service(dummy_df: pd.DataFrame) -> MagicMock:
     mock.cats = MagicMock()
     mock.cats.get_availability_period.return_value = dummy_df
     mock.build_task.return_value = {"task_json": "mock"}
-    mock.send_task.return_value = "mock_task_key_123"
+    mock.send_task.return_value = MOCK_TASK_KEY
     mock.get_status.return_value = {"taskStatus": "DONE"}
     mock.get_result.return_value = {"result": "mock_data"}
     return mock
@@ -145,7 +146,7 @@ async def test_task_status_changed_at_send_extract_boundaries(
         if func is mock_report_service.build_task:
             return {"task_json": "mock"}
         if func is mock_report_service.send_task:
-            return "mock_task_key_123"
+            return MOCK_TASK_KEY
         if func is mock_report_service.get_result:
             return {"result": "mock_data"}
         if func is mock_report_service.result2table:
@@ -235,7 +236,7 @@ async def test_task_status_changed_at_send_failure_boundary(
         if func is mock_report_service.build_task:
             return {"task_json": "mock"}
         if func is mock_report_service.send_task:
-            return "mock_task_key_123"
+            return MOCK_TASK_KEY
         return None
 
     mock_network_client.call = AsyncMock(side_effect=_mock_call)
@@ -293,7 +294,7 @@ async def test_null_reporter_used_when_no_reporter_passed(
     mock_report_service = _make_mock_report_service(dummy_df)
     mock_network_client = MagicMock()
     mock_network_client.call = AsyncMock(
-        side_effect=[{"task_json": "mock"}, "mock_key"]
+        side_effect=[{"task_json": "mock"}, MOCK_TASK_KEY]
     )
 
     export_path = tmp_path / "output"
@@ -358,7 +359,7 @@ async def test_stage_complete_logs_suppressed_in_debug_mode(
         if func is mock_report_service.build_task:
             return {"task_json": "mock"}
         if func is mock_report_service.send_task:
-            return "mock_task_key_123"
+            return MOCK_TASK_KEY
         if func is mock_report_service.get_result:
             return {"result": "mock_data"}
         if func is mock_report_service.result2table:
@@ -466,7 +467,7 @@ async def test_processing_tasks_reports_all_tasks_including_skipped(
         if func is mock_report_service.build_task:
             return {"task_json": "mock"}
         if func is mock_report_service.send_task:
-            return "mock_task_key_123"
+            return MOCK_TASK_KEY
         if func is mock_report_service.get_status:
             return {"taskStatus": "DONE"}
         if func is mock_report_service.get_result:
