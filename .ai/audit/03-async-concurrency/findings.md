@@ -1,268 +1,196 @@
 ---
 phase: "03"
 phase_name: "async-concurrency"
-id_prefix: "ASY"
+id_prefix: "ASY-"
 mode: "problems-only"
 report_status: "draft"
-severity_taxonomy: ".kilo/commands/audit/phases/03-audit-async-concurrency.md#severity-taxonomy"
-code_ref: "d093d9c"
+severity_taxonomy: ".agents/skills/03-async-concurrency/references/workflow.md#severity-taxonomy"
+code_ref: "4c08eb445f80584a00f16d929bc995239a1bd3d3"
 ---
 
 # Audit Findings — Async Concurrency & Worker Safety
 
 ## Summary
 
-Seven findings across CRITICAL / HIGH / MEDIUM / LOW bands. The worker lifecycle has no exception isolation: any API error inside a worker skips `task_done()`, deadlocking `queue.join()` and hanging every invocation. A synchronous API call in the TV_REG strategy bypasses the Semaphore and blocks the event loop. The pool/Semaphore sizing was re-examined and confirmed as an intentional two-level design (see ASY-004 correction); the queue depth is not observable.
+Four findings, including one CRITICAL and one HIGH. A failure while recording a task error can leave the report waiting indefinitely, and timed-out work can exceed the configured concurrency ceiling. Some early exits leave workers alive, while task generation proceeds ahead of the intended queue bound.
 
 ## Scope
 
-**Examined:** `core/reports.py` (`MediaReport.worker`, `MediaReport.processing_tasks`, `TVMediaReport.wait_task`, `TVRegTaskStrategy.generate`), `core/network.py` (`NetworkClient.__init__`, `NetworkClient.call`), `core/services.py` (`AppService.run_report` instantiation site), `core/tasks.py` (`TVTask`).
+**Examined:** All five phase blocks: API/pool ceilings, worker cancellation and shutdown, producer backpressure, worker failure isolation and retry permit lifetime. Inspected core reports/network/tasks/services/models, concurrency documentation and relevant network/report tests. Historical ASY-001–007 are reserved; none is reused.
 
-**Tools:** `grep` (symbol lookup), `read` (static source), static control-flow analysis of the async pipeline. No runtime execution available (phase instructions require Docker start, but this project has no Docker composition).
+**Snapshot:** Current moving dirty working tree on 2026-10-21; `code_ref` identifies the base commit, not pristine audited content. Preserve initial hashes/status under `.ai/tmp/audit-2026-10-21/`. Pre-existing application-settings and overview-document edits, report deletions and settings-wiring plan are external work; coordinator also reported external async-concurrency/data-flow document drift. Findings use current source and scoped probes; prior phase inputs remain frozen.
 
-**Not verified:** Runtime behaviour under load or cancellation — no Docker services to start; tests mock `create_report` entirely and provide no coverage of the worker pool lifecycle.
+**Tools:** Read-only PowerShell, `rg`, Git path/history inspection, existing venv Python. Probe `.ai/tmp/audit-2026-10-21/async_probe.py` invokes real application coroutines, asyncio tasks/queues/semaphores and worker threads with local fakes.
+
+**Verification limits:** No real API calls, remote computations, real filesystem failure or production load. Native Windows asyncio setup previously stalled in socketpair creation inside the sandbox. The initial native escalation was interrupted by coordinator control; it was not a user rejection or product defect. Initial runtime evidence used `--socket-free`, an actual SelectorEventLoop with self-pipe/selector I/O mocked. The coordinator subsequently brokered approval and executed the native branch outside the sandbox without that flag: exit 0 in 1.9s, with matching findings. The auditor inspected its exact saved output in `.ai/tmp/audit-2026-10-21/async-native-output.txt`; Appendix C preserves it. Every case has a 2s deadline; the initial socket-free run also had an outside-process 12s timeout. Intentional pending tasks are explicitly collected/cancelled. No full test/lint/type suite was run. Process inventory via CIM was unavailable; no unidentified process was killed.
 
 ## Findings
 
 | ID | Severity | Anchor | Title |
 |---|---|---|---|
-| ASY-001 | CRITICAL | `core/reports.py::MediaReport.worker` | Worker exception skips `task_done()`, `queue.join()` deadlocks forever |
-| ASY-002 | HIGH | `core/reports.py::TVRegTaskStrategy.generate` | Synchronous `get_tv_region()` call bypasses Semaphore, retry, and `to_thread` |
-| ASY-003 | MEDIUM | `core/reports.py::MediaReport.processing_tasks` | Workers cancelled with bare `cancel()`, never awaited or gathered |
-| ASY-004 | LOW | `core/reports.py::MediaReport.__init__` | Pool size and Semaphore limits are intentionally independent (original claim not substantiated — advisory only) |
-| ASY-005 | MEDIUM | `core/reports.py::TVMediaReport.wait_task` | `while True` poll loop has no timeout, worker can hang indefinitely |
-| ASY-006 | MEDIUM | `core/reports.py::MediaReport.processing_tasks` | Queue depth is non-observable — no logging of backpressure or stall |
-| ASY-007 | LOW | `core/network.py::NetworkClient.call` | Exhausted-retry raises generic `RuntimeError`, indistinguishable from permanent failures |
+| ASY-008 | CRITICAL | `src/mko_get_mediascope_data/core/reports.py::MediaReport.worker` | Error-persistence failure kills workers and strands queue completion |
+| ASY-009 | HIGH | `src/mko_get_mediascope_data/core/network.py::NetworkClient._invoke` | Timed-out synchronous calls continue beyond released semaphore permits |
+| ASY-010 | MEDIUM | `src/mko_get_mediascope_data/core/reports.py::MediaReport.processing_tasks` | Generation and enqueue exits leave workers outside shutdown cleanup |
+| ASY-011 | MEDIUM | `src/mko_get_mediascope_data/core/reports.py::MediaReport.processing_tasks` | Full task materialization bypasses producer backpressure |
 
----
-
-#### ASY-001 — [CRITICAL] Worker exception skips `task_done()`, `queue.join()` deadlocks forever
+#### ASY-008 — [CRITICAL] Error-persistence failure kills workers and strands queue completion
 
 **Anchor:** `src/mko_get_mediascope_data/core/reports.py::MediaReport.worker`
-`src/mko_get_mediascope_data/core/reports.py::MediaReport.processing_tasks`
-**Disambiguator:** `task_done`
-**Checked:** static
-**Why this band:** The CRITICAL taxonomy band is "a queue `task_done` that is never called so `join()` deadlocks forever, hanging every invocation." The worker has no `try/except/finally` around any of its `await` calls, so any exception — including the common `NetworkClient.call` `RuntimeError` after exhausted retries, or `BadRequestError`/`AuthorizationError` — propagates before `task_done()` is reached.
-**Problem:** `MediaReport.worker` (line 141–153) has no error isolation. If `send_task`, `wait_task`, or `extract_data` raises, execution exits the `while True` body before `self.task_queue.task_done()` (line 153) is called. `processing_tasks` then never returns from `await self.task_queue.join()` (line 161), hanging every invocation.
-**Repro:** 1. Configure a report whose `send_task` triggers an API error (e.g. invalid filter → `BadRequestError` from `NetworkClient.call`). 2. `send_task` raises at line 263 or 269. 3. The exception propagates out of `worker` — `task_done()` at line 153 is never reached. 4. `queue.join()` at line 161 waits indefinitely for the unacked item. 5. The process hangs until killed externally.
-**Impact:** A single malformed task or transient API error (4xx, exhausted retries) hangs the entire report run. The on-call operator must kill the process; partial CSV output from completed tasks survives, but all unprocessed tasks and in-flight results are lost.
-**Root cause:** No `try/finally` around the worker's queue-item processing to guarantee `task_done()` is always called.
-**Fix:** Wrap the worker body in `try/finally` so `self.task_queue.task_done()` is always called, or use a bounded semaphore-pattern that releases on exception. Target symbol: `MediaReport.worker` — add a `finally: self.task_queue.task_done()` around the per-item processing block.
-**Verify:** new test needed: `test_worker_exception_does_not_deadlock_join` — assert that after a worker raises, `queue.join()` still returns and all remaining items are processed.
-**Related:** ASY-003, ASY-005
-
-**Evidence — `grep` of `reports.py` for `task_done`, `while True`, `join`, `create_task`, `cancel`:**
-```text
-core/reports.py:92:         max_tasks: int = 100,
-core/reports.py:115:         self.task_queue = asyncio.Queue(maxsize=self.max_tasks)
-core/reports.py:141:         while True:
-core/reports.py:150:                 await asyncio.to_thread(item.to_yaml, self.export_path)
-core/reports.py:153:             self.task_queue.task_done()
-core/reports.py:159:         task_group = [asyncio.create_task(self.worker()) for _ in range(self.max_tasks)]
-core/reports.py:161:         await self.task_queue.join()
-core/reports.py:162:         [t.cancel() for t in task_group]
-core/reports.py:277:         while True:
-core/reports.py:387:         available_regions = report.catalogs.get_tv_region()
-```
-
-**Evidence — `grep` of `network.py` for `RuntimeError`, `Semaphore`:**
-```text
-core/network.py:55:         self._semaphore = asyncio.Semaphore(max_concurrent_requests)
-core/network.py:126:         raise RuntimeError("Network retry limit exceeded")
-```
-
----
-
-#### ASY-002 — [HIGH] Synchronous `get_tv_region()` call bypasses Semaphore, retry, and `to_thread`
-
-**Anchor:** `src/mko_get_mediascope_data/core/reports.py::TVRegTaskStrategy.generate`
-**Disambiguator:** `get_tv_region`
-**Checked:** static
-**Why this band:** The HIGH taxonomy band includes exceeding the concurrency ceiling. `TVRegTaskStrategy.generate` calls `report.catalogs.get_tv_region()` (line 387) directly — a synchronous API call that bypasses `NetworkClient.call` entirely, meaning no `Semaphore` permit, no retry/backoff, and no `asyncio.to_thread` bridge. The event loop is blocked for the full duration of the API call.
-**Problem:** At line 387, `available_regions = report.catalogs.get_tv_region()` executes a synchronous network call inside an `async def generate` method, which runs on the event loop thread during the producer phase of `processing_tasks`. This call: (a) holds no `Semaphore` — it is unbounded relative to the 5-permit ceiling; (b) has no retry/backoff — a single transient failure aborts the entire report; (c) blocks the event loop — no worker can make progress during the call.
-**Repro:** 1. Configure a TV_REG report. 2. `TVMediaReport.generate_tasks` (line 335) delegates to `TVRegTaskStrategy.generate`. 3. Line 387 calls `get_tv_region()` synchronously. 4. During the (blocking) API call, all 100 worker coroutines and the producer are frozen. 5. If the API call fails, no retry is attempted — the report raises immediately.
-**Impact:** TV_REG report generation has no concurrency control and no fault tolerance on this call path. Transient network blips abort the report. Event-loop blocking degrades throughput for all concurrent work. Sellers running TV_REG reports experience intermittent total failure.
-**Root cause:** `TVRegTaskStrategy.generate` reaches the Mediascope API directly via `report.catalogs` instead of going through `NetworkClient.call`, which is the only code path that applies the `Semaphore`, retry/backoff, and `to_thread` bridge.
-**Fix:** Route `get_tv_region()` through `self.network_client.call(self.catalogs.get_tv_region)`. Target symbol: `TVRegTaskStrategy.generate` — line 387.
-**Verify:** new test needed: `test_tv_reg_strategy_routes_get_tv_region_via_network_client` — assert that `network_client.call` is invoked for the catalog lookup, not the raw method.
-**Related:** ASY-004
-
-**Evidence — `grep` of `reports.py` for `get_tv_region` (isolated call site):**
-```text
-core/reports.py:387:         available_regions = report.catalogs.get_tv_region()
-```
-
-*(All other API calls in `TVMediaReport` route through `self.network_client.call` — see lines 197, 258, 263, 280, 301, 309.)*
-
----
-
-#### ASY-003 — [MEDIUM] Workers cancelled with bare `cancel()`, never awaited or gathered
-
 **Anchor:** `src/mko_get_mediascope_data/core/reports.py::MediaReport.processing_tasks`
-**Disambiguator:** `t.cancel`
-**Checked:** static
-**Why this band:** The MEDIUM taxonomy band is "a cancellation path that is not awaited, risking partial state across Python versions." Line 162 calls `t.cancel()` on each worker but never awaits or gathers the results. Additionally, if `generate_tasks()` or `queue.join()` raises before line 162 is reached, the `task_group` is never cleaned up — workers are orphaned as pending tasks.
-**Problem:** `processing_tasks` (line 155–162) creates 100 worker tasks and only cancels them with `[t.cancel() for t in task_group]` (line 162) — a fire-and-forget list comprehension that discards the return value and never `await`s. If `generate_tasks()` (line 160) raises mid-stream, the cancel at line 162 is never reached and all workers remain as dangling pending tasks with potentially in-flight `asyncio.to_thread` calls. Even in the normal flow, the cancellation is not confirmed before the method returns.
-**Repro:** 1. Inject an exception during `generate_tasks` (e.g. a strategy that raises). 2. The async list comprehension at line 160 propagates the exception. 3. Line 162 is never executed. 4. The 100 workers created at line 159 remain pending — some may have called `task_queue.get()` and are mid-`send_task` with a live `asyncio.to_thread` blocking in a worker thread. 5. The exception propagates to `run_report` and `asyncio.run`, which performs a coarse `_cancel_all_tasks` at loop shutdown — but in-flight `to_thread` calls in C-extension-backed Mediascope API code may not be interruptible.
-**Impact:** Resource leak across reports within a single invocation (workers accumulate). Abrupt shutdown may leave Mediascope API tasks orphaned on the remote side, continuing to consume server-side resources after the client process exits.
-**Root cause:** No `try/finally` or `asyncio.gather(..., return_exceptions=True)` around the worker lifecycle to ensure graceful cancellation is awaited in all exit paths.
-**Fix:** Replace line 162 with explicit cancellation and await: `for t in task_group: t.cancel(); await asyncio.gather(*task_group, return_exceptions=True)`. Wrap the entire `processing_tasks` body in `try/finally` so cleanup runs on any exit path. Target symbol: `MediaReport.processing_tasks`.
-**Verify:** new test needed: `test_workers_cancelled_and_awaited_on_exception` — assert that when `generate_tasks` raises, all worker tasks are cancelled and joined within a bounded time.
-**Related:** ASY-001
+**Anchor:** `src/mko_get_mediascope_data/core/tasks.py::TVTask.to_file`
+**Disambiguator:** `await asyncio.to_thread(item.to_file, self.export_path)`
+**Checked:** ran
+**Why this band:** On the reproduced failure path, no worker remains to acknowledge the queued task, leaving `queue.join()` without a completion path: the phase's CRITICAL indefinite-join criterion. This is conditional on an error-output failure, not every healthy invocation; the probe is stopped externally after observing the condition.
+**Problem:** Error-handler branches await `TVTask.to_file` without protecting against its own failures. Disk/path/permission errors can escape the handler and terminate the worker. The coordinator waits only for queue completion, without monitoring failed workers; its final gather cannot execute until that wait ends.
+**Repro:** Use one worker and two generated tasks. Make `_process_item` raise an ordinary task error, and patch only the error-file writer to raise a synthetic `OSError`. After a bounded observation, the worker is done with OSError, the second task remains queued, and report processing is pending. Cancel and collect the coordinator explicitly to end the probe.
+**Impact:** Sellers can face an indefinite report wait precisely when the error-output destination fails; queued report work stops progressing instead of reporting a terminal run failure.
+**Root cause:** Secondary failures inside worker error handling escape the isolation boundary; `processing_tasks` does not detect worker termination while awaiting queue join.
+**Fix:** Make `MediaReport.worker` and `processing_tasks` preserve a terminating queue/pool contract when error persistence fails. Benefit: a broken output destination cannot silently hang remaining work; effort medium; advisory priority highest. [SPEC-DEVIATION]
+**Verify:** new test needed: test_error_persistence_failure_does_not_strand_queue_join
+**Related:** ASY-010 concerns a separate pre-join cleanup gap.
 
-**Evidence — `grep` of `reports.py`:**
+**Evidence — native and socket-free probes, commands in Appendices A/C** *(supports: dead worker plus queued work and pending coordinator)*:
 ```text
-core/reports.py:159:         task_group = [asyncio.create_task(self.worker()) for _ in range(self.max_tasks)]
-core/reports.py:161:         await self.task_queue.join()
-core/reports.py:162:         [t.cancel() for t in task_group]
+persistence_failure_parent_pending: True
+persistence_failure_queued: 1
+persistence_failure_worker_result: OSError
 ```
 
----
+#### ASY-009 — [HIGH] Timed-out synchronous calls continue beyond released semaphore permits
 
-#### ASY-004 — [LOW] Pool size (100) and Semaphore permits (5) are intentionally independent limits (original claim not substantiated)
-
-**Anchor:** `src/mko_get_mediascope_data/core/reports.py::MediaReport.__init__`
-`src/mko_get_mediascope_data/core/network.py::NetworkClient.__init__`
-`src/mko_get_mediascope_data/core/services.py::AppService.run_report` (line 155)
-**Disambiguator:** `max_tasks`
-**Checked:** static
-**Why this band:** Re-verified after validation: the two parameters intentionally limit two different resources. `max_tasks` (Level 1) bounds in-flight tasks in the remote calculation base; `max_concurrent_requests` (Level 2) bounds concurrent client HTTP calls and, with the smoothing sleep, the polling cadence. The original claim of "95 workers perpetually blocked at the Semaphore" is factually incorrect — the smoothing sleep (network.py:69) precedes semaphore acquisition (network.py:73), so a polling worker holds a permit only for the brief HTTP status call (~1% of a ~52 s cycle) and sleeps outside the semaphore the rest of the time. LOW band: advisory documentation note only.
-**Problem:** None in code. The pair of defaults is undocumented, so a future maintainer could mistakenly couple them (e.g. derive `max_tasks` from the Semaphore limit), which would cut remote-base in-flight capacity from 100 to 5, serialize a 100-task report into ~20 batches (~20× slower), and destroy the submit-then-poll overlap.
-**Repro:** N/A — no defect to reproduce. (Original repro assumed workers stall at the semaphore; tracing shows they stall in `asyncio.sleep` outside it.)
-**Impact:** Original finding's stated impacts do not occur. Residual risk is maintainability only.
-**Root cause:** The two levels' independence is intentional but undocumented.
-**Fix:** No code change. Document the two-level model in `docs/00-overview/async-concurrency-architecture.md`. Do NOT implement the previously proposed `test_pool_size_aligned_with_semaphore` — it would encode an incorrect coupling.
-**Verify:** N/A (documentation change).
-**Related:** ASY-002
-
-**Evidence — instantiation site (no override of `max_concurrent_requests`; note corrected line):**
-```text
-core/services.py:155:             network_client: NetworkClient = NetworkClient()
-```
-*(Note: this file previously cited services.py:130; the current source line is 155.)*
-
----
-
-#### ASY-005 — [MEDIUM] `while True` poll loop has no timeout
-
-**Anchor:** `src/mko_get_mediascope_data/core/reports.py::TVMediaReport.wait_task`
-**Disambiguator:** `while True`
-**Checked:** static
-**Why this band:** The MEDIUM band covers robustness gaps that can escalate under adverse conditions. `wait_task` (lines 277–293) polls the Mediascope API in a `while True` loop with only a 2-second `asyncio.sleep` between checks and no timeout, deadline, or maximum iteration count. If the remote task never reaches a terminal status (`DONE`, `FAILED`, `CANCELLED`), the worker hangs indefinitely — never calling `task_done()`, deadlocking `join()`.
-**Problem:** `TVMediaReport.wait_task` (lines 271–293) contains `while True:` (line 277) with no exit condition other than the API returning a terminal status. The loop sleeps 2 seconds between polls (`await asyncio.sleep(2)` at line 278) and calls `network_client.call` to check status. If the Mediascope API returns non-terminal status (e.g. `"RUNNING"`) indefinitely — due to a stuck remote task or a status-field change — the worker never returns, never calls `task_done()`, and `queue.join()` at line 161 never completes.
-**Repro:** 1. Submit a task to the Mediascope API that enters `RUNNING` state but never completes (e.g. due to a server-side processing bug). 2. `wait_task` polls every 2 seconds, receiving `"RUNNING"` status each time. 3. The worker never breaks out of the loop. 4. `task_done()` at line 153 is never called for this item. 5. `queue.join()` waits forever for the unacked item. 6. All other workers eventually drain the queue and block on `get()`, but `join()` still never returns. 7. The process hangs until killed.
-**Impact:** A single stuck remote task hangs the entire report run indefinitely. The operator has no way to interrupt or timeout the poll. This is more likely during Mediascope backend maintenance windows.
-**Root cause:** No `asyncio.wait_for` deadline or iteration cap on the polling loop.
-**Fix:** Wrap the poll loop in `asyncio.wait_for` with a configurable timeout (e.g. 30 minutes), or add a maximum iteration count. Target symbol: `TVMediaReport.wait_task`.
-**Verify:** new test needed: `test_wait_task_terminates_on_timeout` — assert that `wait_task` raises or returns after a bounded number of poll iterations even if status never becomes terminal.
-**Related:** ASY-001
-
-**Evidence — `grep` of `reports.py` for `while True` (both worker and wait_task):**
-```text
-core/reports.py:141:         while True:
-core/reports.py:277:         while True:
-```
-
-*(Line 141 is the `worker` loop — exits via cancellation. Line 277 is the `wait_task` poll loop — exits only via terminal status from the API.)*
-
----
-
-#### ASY-006 — [MEDIUM] Queue depth is non-observable
-
-**Anchor:** `src/mko_get_mediascope_data/core/reports.py::MediaReport.processing_tasks`
-**Disambiguator:** `task_queue.put`
-**Checked:** static
-**Why this band:** The MEDIUM taxonomy band includes "a queue depth that is unbounded or non-observable." The `Queue(maxsize=100)` is bounded, but no code path logs the queue depth, pending count, or producer-stall duration. When backpressure stalls the producer (the `async for` at line 160 blocks on a full queue), there is no signal.
-**Problem:** `processing_tasks` (line 155–162) creates `Queue(maxsize=self.max_tasks)` (line 115, maxsize=100) and feeds it via `[await self.task_queue.put(t) async for t in self.generate_tasks()]` (line 160). When the queue is full, `put` blocks the producer, providing backpressure. However, nothing logs: (a) the current queue depth (`qsize()`); (b) when the producer enters a stall; (c) how long the stall lasts. The worker method (line 134–153) also has no logging of queue state.
-**Repro:** 1. Configure a report with 200 tasks. 2. Run with 5 workers (Semaphore limit). 3. The producer fills the 100-slot queue and blocks on the 101st `put`. 4. No log message indicates backpressure. 5. An operator monitoring the run sees only the periodic `print("=")` progress dot from `send_task` (line 265) — which stops during the stall — with no indication of why.
-**Impact:** Silent backpressure stalls are invisible to operators. Without observability, it is impossible to distinguish a slow API from a stalled producer or a deadlock. This compounds ASY-001 and ASY-005, where a hang would produce no diagnostic signal.
-**Root cause:** No `qsize()` instrumentation in `processing_tasks` or `worker`.
-**Fix:** Add `logger.debug` calls in `processing_tasks` before the producer loop and in the worker to log `self.task_queue.qsize()` when the queue crosses a threshold (e.g. 80% full) or when the producer stalls. Target symbol: `MediaReport.processing_tasks` and `MediaReport.worker`.
-**Verify:** new test needed: `test_queue_depth_logged_under_backpressure` — assert that a debug log records `qsize()` when the queue is full and the producer blocks.
-**Related:** ASY-001, ASY-005
-
-**Evidence — `grep` of `reports.py` for `qsize`, `logger` in processing context:**
-```text
-core/reports.py:115:         self.task_queue = asyncio.Queue(maxsize=self.max_tasks)
-core/reports.py:160:         [await self.task_queue.put(t) async for t in self.generate_tasks()]
-core/reports.py:161:         await self.task_queue.join()
-```
-
-*(No `qsize()` usage or queue-depth logging appears anywhere in `reports.py`.)*
-
----
-
-#### ASY-007 — [LOW] Exhausted-retry raises generic `RuntimeError`
-
+**Anchor:** `src/mko_get_mediascope_data/core/network.py::NetworkClient._invoke`
 **Anchor:** `src/mko_get_mediascope_data/core/network.py::NetworkClient.call`
-**Disambiguator:** `RuntimeError`
-**Checked:** static
-**Why this band:** The LOW band covers observability and error-classification drift with no runtime consequence today. `NetworkClient.call` raises `RuntimeError("Network retry limit exceeded")` (line 126) after all retries are exhausted. This is a generic builtin that callers cannot catch specifically — any `except RuntimeError` elsewhere would also catch unrelated errors.
-**Problem:** After `max_attempts` retries, `NetworkClient.call` raises `RuntimeError("Network retry limit exceeded")` (line 126). This is not a custom exception type — it is `RuntimeError`, the most generic built-in exception in Python. Callers in `MediaReport.worker` (which has no exception handling — see ASY-001) cannot distinguish an exhausted-retry from any other `RuntimeError` raised anywhere in the call stack.
-**Repro:** 1. Create a `NetworkClient(max_attempts=3, sleep_time=0)`. 2. Call `client.call(failing_func)` where `failing_func` raises `ConnectTimeout`. 3. After 3 attempts, `RuntimeError("Network retry limit exceeded")` is raised. 4. The test at `tests/test_network.py::test_network_retry_and_fail` asserts this exact behavior: `with pytest.raises(RuntimeError, match="Network retry limit exceeded")`.
-**Impact:** No runtime issue today — the exception IS raised with a descriptive message. However, callers cannot programmatically distinguish an exhausted-retry from other unrelated `RuntimeError` instances, limiting automated error handling and retry-of-retry logic.
-**Root cause:** No custom exception class defined for the exhausted-retry condition.
-**Fix:** Define `MaxRetriesExceeded(RuntimeError)` (subclass for backward compatibility) in `core/errors.py` and raise it at line 126. Target symbol: `NetworkClient.call` — line 126. Update: `tests/test_network.py::test_network_retry_and_fail` currently asserts `RuntimeError`; if subclassing `RuntimeError`, the existing test still passes via inheritance.
-**Verify:** `tests/test_network.py::test_network_retry_and_fail` asserts current `RuntimeError` behavior — the fix should subclass `RuntimeError` to preserve compatibility.
-**Related:** ASY-001
+**Disambiguator:** `asyncio.wait_for(coro, timeout=self._call_timeout)`
+**Checked:** ran
+**Why this band:** The actual underlying call count exceeds the configured production ceiling and remains active after exhaustion. Rated HIGH for a broken concurrency boundary, rather than MEDIUM cancellation hygiene. No live remote task abandonment is proved, so the CRITICAL remote-computation criterion is not claimed.
+**Problem:** A timeout cancels the awaited `to_thread` future, but the synchronous function can keep running. `call` releases its semaphore permit and retries, so subsequent attempts overlap earlier timed-out work despite the configured limit.
+**Repro:** Set concurrency=1, attempts=2, timeout=0.02s and deterministic zero jitter/backoff. The synchronous fake increments a thread-safe activity counter and waits on a bounded threading event. After both timeouts, two calls remain active, exceeding the single permit. Release the event and allow threads to finish before exiting.
+**Impact:** Under slow/stalled transport, operators' concurrency setting no longer bounds actual outbound work; retries add overlap during the failure condition it should constrain. The measured work is local fake calls; remote request volume is not measured.
+**Root cause:** Semaphore permit lifetime tracks the cancellable awaitable rather than the lifetime of the synchronous operation it dispatched.
+**Fix:** Make `NetworkClient._invoke`/`call` retain an effective bound on still-running synchronous operations after timeout/cancellation. Benefit: failure-time concurrency remains within the operator's ceiling; effort medium; advisory priority high. [SPEC-DEVIATION]
+**Verify:** new test needed: test_timed_out_sync_calls_remain_within_concurrency_ceiling
+**Related:** Phase 09 owns the blocking bridge and retry policy; this finding owns the measured concurrency-bound failure.
 
-**Evidence — `grep` of `network.py`:**
+**Evidence — same bounded probe** *(supports: two active synchronous operations under a one-permit ceiling)*:
 ```text
-core/network.py:126:         raise RuntimeError("Network retry limit exceeded")
+thread_timeout_final_exception: MaxRetriesExceeded
+thread_timeout_peak_active: 2
+thread_timeout_semaphore_capacity: 1
+thread_timeout_still_active_after_call: 2
 ```
 
-**Evidence — existing test asserting the current behavior:**
+#### ASY-010 — [MEDIUM] Generation and enqueue exits leave workers outside shutdown cleanup
+
+**Anchor:** `src/mko_get_mediascope_data/core/reports.py::MediaReport.processing_tasks`
+**Disambiguator:** `async for task in self.generate_tasks()`
+**Checked:** ran
+**Why this band:** Cleanup/cancellation is not awaited on these reachable exits, matching MEDIUM shutdown discipline. No live remote abandonment is proved; the probe observes leftover local worker tasks, not a CRITICAL remote orphan.
+**Problem:** Workers are created before generation and enqueueing, but the cancellation/gather `finally` covers only `queue.join()`. Generation failure, progress callbacks or cancellation while a full queue blocks `put` exit without cleaning up the already created workers.
+**Repro:** First, make an async task generator raise after yielding control: one worker remains pending after `processing_tasks` raises. Separately, generate five tasks with one worker blocked in a fake item pipeline. Cancel the coordinator while queue capacity is full. The parent finishes cancellation, but one worker remains alive and one task remains queued. The probe explicitly cancels/gathers leftovers afterward.
+**Impact:** In a long-lived async library host, a failed/cancelled report can leave background work running independently of the caller and retain queued task state. CLI loop-level cleanup may mask the lifetime gap; it is not a report-owned shutdown guarantee.
+**Root cause:** The worker-group lifetime begins before the encompassing cleanup boundary.
+**Fix:** Make `MediaReport.processing_tasks` own worker cleanup across generation, progress notification, enqueueing and joining. Benefit: every report exit has a defined worker lifetime; effort small; advisory priority medium. [SPEC-DEVIATION]
+**Verify:** new test needed: test_processing_tasks_cleans_workers_on_generation_failure_and_enqueue_cancel
+**Related:** ASY-008 is worker death after entering processing; ASY-010 is coordinator exit before its cleanup boundary.
+
+**Evidence — same bounded probe** *(supports: leftover workers on both pre-join exit paths)*:
 ```text
-tests/test_network.py:7: @pytest.mark.asyncio
-tests/test_network.py:8: async def test_network_retry_and_fail():
-tests/test_network.py:9:     """Проверяем, что после max_attempts поднимается RuntimeError"""
-tests/test_network.py:15:     with pytest.raises(RuntimeError, match="Network retry limit exceeded"):
-tests/test_network.py:16:         await client.call(failing_func)
+generation_failure_pending_workers: 1
+enqueue_before_cancel_queue_size: 1
+enqueue_cancel_pending_workers: 1
+enqueue_cancel_unprocessed_queued: 1
 ```
 
----
+#### ASY-011 — [MEDIUM] Full task materialization bypasses producer backpressure
+
+**Anchor:** `src/mko_get_mediascope_data/core/reports.py::MediaReport.processing_tasks`
+**Disambiguator:** `all_tasks.append(task)`
+**Checked:** ran
+**Why this band:** The producer's retained backlog is not bounded by the queue, analogous to the phase's MEDIUM unbounded-depth criterion. Not HIGH: no silent producer stall is claimed. No measured resource exhaustion or capacity cost is claimed.
+**Problem:** `processing_tasks` consumes the complete generator into `all_tasks` before enqueueing any task. Queue `maxsize` bounds only the subsequent handoff, so worker demand cannot apply backpressure to task generation or its retained backlog.
+**Repro:** Configure one worker/queue slot, generate 50 local tasks and record how many have been generated when processing begins. All 50 are generated before the first item starts; queue capacity is one.
+**Impact:** Large date/audience/region combinations retain the entire task set before processing and cannot rely on queue capacity to bound production. This establishes the missing bound; memory growth under production load is not measured here.
+**Root cause:** A full intermediate task list is materialized to supply an exact progress total before bounded enqueueing.
+**Fix:** Make `MediaReport.processing_tasks`' producer retention contract match the intended backpressure boundary while preserving accurate progress behavior. Benefit: worker demand can limit outstanding generated work; effort medium; advisory priority medium. [SPEC-DEVIATION]
+**Verify:** new test needed: test_task_generation_obeys_bounded_producer_backpressure
+**Related:** Phase 13 may measure capacity effects; this phase establishes queue/producer semantics only.
+
+**Evidence — same bounded probe** *(supports: producer consumes the full set ahead of a one-slot queue)*:
+```text
+generation_before_first_processed: 50
+generation_queue_capacity: 1
+```
 
 ## Fix Order
 
-- **Dependencies:** ASY-001 must land before or alongside ASY-003 and ASY-005 — the `try/finally` in `worker` that guarantees `task_done()` is the foundation for all shutdown discipline. ASY-002 and ASY-004 are independent of the worker-lifecycle fixes.
-- **Merge candidates:** ASY-001 + ASY-003 + ASY-007 share the `worker`/`processing_tasks`/`call` code paths — a single PR modifying all three is coherent. ASY-003 and ASY-005 are both about `processing_tasks` shutdown — merge if possible.
-- **Conflicting evidence:** None.
-- **Cross-phase conflicts:** The blocking-work bridge (the synchronous `get_tv_region` call in ASY-002, and the `asyncio.to_thread` usage in `worker`) overlaps with phase 09 (blocking-work bridge) — ASY-002 is filed here because the Semaphore-bypass aspect is owned by this phase; the `to_thread` discipline is owned by phase 09. The `print("=")` progress statement at `reports.py:265` and the `print()` calls in `services.py:117-158` are code-quality issues owned by phase 10 — not filed here.
-- **Rollout risk:** Fixing ASY-001 (guaranteeing `task_done` in `finally`) changes the hang-on-error behaviour to a continue-on-error behaviour — existing report runs that currently hang on an API error will now complete (with some tasks skipped). `tests/test_services.py::test_run_report_with_real_models` mocks `create_report` entirely, so it will not be affected; no shipped test asserts the hang.
+- **Distribution:** CRITICAL 1; HIGH 1; MEDIUM 2; LOW 0.
+- **Dependencies:** None are required before the independent thread-bound fix. Review queue supervision and lifetime cleanup together before changing task production.
+- **Merge candidates:** ASY-008 and ASY-010 touch the same worker-group lifecycle but have different triggers; do not collapse their verification cases. ASY-011 may interact with lifecycle/progress changes.
+- **Conflicting evidence:** Ordinary task exceptions remain isolated when error recording succeeds; ASY-008 addresses the secondary error path. Existing `task_done` in `finally` acknowledges the current item, not still-queued work after all workers die.
+- **Cross-phase conflicts:** ENT-008/009 and CFG-011/012 remain in their existing phases. Phase 09 owns sync bridging/retry semantics adjacent to ASY-009; phase 13 owns measured memory/capacity effects adjacent to ASY-011.
+- **Rollout risk:** ASY-008/010 changes must preserve successful drain, no-task/all-skipped exits and ordinary per-item failure continuation. ASY-009 must preserve retry classification, cancellation delivery and bounded latency while accounting for outstanding sync work; `tests/test_network.py::test_invoke_applies_timeout_and_thread` currently checks prompt exhaustion, not thread termination, and may constrain remediation timing. ASY-011 must preserve progress totals/skipped-file reporting; inspected strategy tests document this materialization contract, so progress behavior is a remediation constraint.
 
 ## Appendices
 
-### Appendix A — Semaphore scope (single shared instance, not per-call)
+### Appendix A — Complete bounded socket-free runtime output
 
-```text
-core/network.py:55:         self._semaphore = asyncio.Semaphore(max_concurrent_requests)
-core/network.py:73:             async with self._semaphore:
-core/network.py:74:             return await asyncio.to_thread(func, *args, **kwargs)
+Exact command:
+```powershell
+.\.venv\Scripts\python.exe -u -X utf8 -c "import subprocess,sys; p=subprocess.run([sys.executable,'-u','-X','utf8','.ai/tmp/audit-2026-10-21/async_probe.py','--socket-free'],timeout=12); print('outer_process_exit:',p.returncode)"
 ```
-
-The Semaphore is held only for the duration of `asyncio.to_thread(func, ...)` (the actual API call), not across the backoff sleep at line 124. This is correct — the retry backoff runs outside the Semaphore, so a retrying call does not throttle the pool. No finding filed for this property.
-
-### Appendix B — No test coverage of the worker lifecycle
-
+Output (outer command exit 0; elapsed approximately 3.3s):
 ```text
-tests/test_network.py:7:  @pytest.mark.asyncio
-tests/test_network.py:8:  async def test_network_retry_and_fail():           # retry exhaustion only
-tests/test_reports.py:27: @pytest.mark.asyncio
-tests/test_reports.py:28:  async def test_default_task_strategy(mock_report): # strategy only, no worker
-tests/test_reports.py:35: async def test_dict_data_strategy():                 # data prep only, no worker
-tests/test_services.py:9:  @pytest.mark.asyncio
-tests/test_services.py:10: async def test_run_report_with_real_models(tmp_path, mocker, tv_yaml_content):
-tests/test_services.py:48:     mocker.patch("mko_get_mediascope_data.core.reports.TVMediaReport.create_report", new_callable=AsyncMock)  # creates_report mocked entirely
+generation_failure_pending_workers: 1
+enqueue_before_cancel_queue_size: 1
+enqueue_cancel_pending_workers: 1
+enqueue_cancel_unprocessed_queued: 1
+persistence_failure_parent_pending: True
+persistence_failure_queued: 1
+persistence_failure_worker_result: OSError
+generation_before_first_processed: 50
+generation_queue_capacity: 1
+ordinary_failure_tasks_processed: ['0', '1']
+thread_timeout_final_exception: MaxRetriesExceeded
+thread_timeout_peak_active: 2
+thread_timeout_semaphore_capacity: 1
+thread_timeout_still_active_after_call: 2
+outer_process_exit: 0
 ```
+*(supports: ASY-008–011 under the explicitly mocked I/O-loop environment. The ordinary failure line records block-4 methodology, not a separate finding.)*
 
-No test exercises `MediaReport.worker`, `MediaReport.processing_tasks`, `TVMediaReport.wait_task`, or the Semaphore-pool interaction. All seven ASY findings require new tests.
+### Appendix B — Five-block scope coverage and static boundaries
 
-### Appendix C — Pool and Semaphore defaults (no configuration propagation)
+| Block | Coverage and limit |
+|---|---|
+| 1: Ceiling/pool | Service supplies `max_tasks` (default 100) to report worker count and queue capacity, and creates a per-report NetworkClient with `max_concurrent_requests` (default 5). These distinct controls are intentionally independent. API call paths for task submit/status/result and availability/regions use that client's semaphore. `api_call=False` bypasses it for builder/result conversion and connection construction; vendor constructor internals may themselves perform authentication/catalog calls and are outside a strict local-only assumption. ASY-009 measures a separate timeout breach on the normal semaphore path. This phase makes no global cross-process ceiling claim. |
+| 2: Shutdown | Normal queue join, zero generated tasks and all-skipped paths cancel and gather the worker group. Pre-join exits do not share that protection (ASY-010). Polling has configured count/deadline checks rather than the historical unbounded-loop claim. Cancellation of dispatched synchronous operations cannot prove transport termination (ASY-009). Live remote task cleanup and partial output fidelity were not tested. |
+| 3: Queue | Queue `maxsize=self.max_tasks`; `await put` does block the enqueueing coordinator when capacity is full, observed in the enqueue-cancel probe. Worker debug logs report queue depth after get, so the historical non-observability finding is not repeated. Generation has already finished before enqueue backpressure occurs (ASY-011). No production memory/load benchmark was performed. |
+| 4: Isolation | Worker wraps ordinary `_process_item` errors and calls `task_done` in finally. Controlled ordinary error plus functioning writer allows tasks 0 and 1 to be processed. A secondary writer OSError instead terminates the worker and strands remaining queue work (ASY-008). Reporter callback failures are statically reachable adjacent cases but not separate runtime findings. |
+| 5: Retry isolation | Static `async with self._semaphore` surrounds `_invoke` only; exception handlers and backoff execute after permit release. Formula is `sleep_time * 1.2**(attempt-1) + uniform(0,5)` plus initial smoothing, so historical full-backoff permit holding/no-jitter claims are not repeated. Probe exhaustion is `MaxRetriesExceeded`, distinct from permanent exceptions. Actual synchronous operation lifetime outlasts the permit after timeout (ASY-009). Vendor transport retries are reserved for phase 09. |
 
+Anchor gates: each cited production path is tracked (`git ls-files`); named classes/functions and primary disambiguators were resolved by source inspection. Probe writes are limited to the assigned `.ai/tmp/` directory; application code/configuration/tests/documentation and `.kilo` were not changed. No malformed shared-template pointer was copied into front matter.
+
+### Appendix C — Native Windows asyncio confirmation
+
+Coordinator-brokered approved execution outside the sandbox, with no `--socket-free` flag:
+```powershell
+.\.venv\Scripts\python.exe -u -X utf8 '.ai\tmp\audit-2026-10-21\async_probe.py'
+```
+Coordinator reported exit 0 in 1.9s. Auditor inspected `.ai/tmp/audit-2026-10-21/async-native-output.txt`; its exact stdout is:
 ```text
-core/reports.py:92:  max_tasks: int = 100,          # worker pool + queue maxsize
-core/network.py:51:  max_concurrent_requests: int = 5,  # Semaphore permits
-core/services.py:155: network_client: NetworkClient = NetworkClient()  # default, no override
+generation_failure_pending_workers: 1
+enqueue_before_cancel_queue_size: 1
+enqueue_cancel_pending_workers: 1
+enqueue_cancel_unprocessed_queued: 1
+persistence_failure_parent_pending: True
+persistence_failure_queued: 1
+persistence_failure_worker_result: OSError
+generation_before_first_processed: 50
+generation_queue_capacity: 1
+ordinary_failure_tasks_processed: ['0', '1']
+thread_timeout_final_exception: MaxRetriesExceeded
+thread_timeout_peak_active: 2
+thread_timeout_semaphore_capacity: 1
+thread_timeout_still_active_after_call: 2
 ```
-
-`func.__name__` in `NetworkClient.call` (line 83, 90, 115) references the function name for logging, but `self.catalogs.get_tv_region` at `reports.py:387` does not go through `call` at all.
+*(supports: ASY-008–011 in the native Windows asyncio branch, matching initial mocked-I/O measurements. Synthetic task/writer/transport fakes remain; no actual Mediascope behavior is claimed.)*
