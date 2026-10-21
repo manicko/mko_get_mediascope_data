@@ -538,7 +538,7 @@ async def test_cpu_local_calls_bypass_semaphore_and_jitter(mocker):
     mock_semaphore.acquire = AsyncMock()
     client._semaphore = mock_semaphore
 
-    result = await client.call(lambda: None, api_call=False)
+    result = await client.call(lambda: sentinel, api_call=False)
 
     assert result == sentinel
     assert mock_sleep.call_count == 0, (
