@@ -86,16 +86,39 @@ Test fixtures live in `tests/conftest.py`: `mock_network_client`, `dummy_df`,
 4. **Single Responsibility** — Modules, services, and functions must be small and focused on one thing.
 5. **Avoid Overengineering** — Prefer simple, obvious, and maintainable solutions over complex abstractions.
 6. **Composition Over Inheritance** — Prefer composition; the Strategy pattern in `reports.py` exemplifies this.
-7. **Follow Existing Patterns** — Respect and follow established patterns and conventions in the codebase.
+7. **Follow Existing Patterns** — Respect and follow established patterns and conventions in the codebase. Do not introduce new abstractions without strong justification.
 8. **Meaningful & Consistent Naming** — Use clear, concise, and consistent names for files, functions, and variables.
-9. **Type Safety Everywhere** — Use strict type hints on all functions. Pydantic v2 for all models and validation. Avoid `Any` where possible.
-10. **Enums for All Constants** — All fixed values use `Enum` (in `core/models.py`).
+9. **Type Safety Everywhere** — Use strict type hints on all functions. Pydantic v2 for all models and validation. Do not introduce `Any` or untyped equivalents.
+10. **Enums for All Constants** — Fixed value sets and settings use `Enum` or `StrEnum`, declared separately in `core/models.py`, rather than raw string/dict/list vocabularies. Ordinary data collections remain collections.
 11. **Pydantic v2** — All config/settings/models use Pydantic v2 (`BaseModel`, `Field`, `field_validator`, `model_validator`). Django ORM is not used.
 12. **No `print()` Statements** — Use `logging.getLogger(__name__)` in `core/` modules. CLI user-facing output uses `rich.console.Console.print` in `app.py`.
 13. **Small Modules and Functions** — Short, focused files and functions are easier to maintain.
 14. **Keep Documentation Updated** — Architecture decisions and setup instructions must stay current.
+15. **Internationalization Is Part of Done** — Account for internationalization in user-visible changes while retaining the project's English-only text requirement. Do not introduce a new translation framework without a requirement.
+16. **Workspace Cleanliness** — Before creating a file, establish its place in the task/module architecture and its operational or maintenance purpose. If neither exists, write only to `.ai/tmp/`.
+
+## Codex Roles and Workflows
+
+- Preserve `.kilo/` and every nested file. Kilo Code and Codex must remain usable in parallel. Work on the Codex configuration under `.codex/` and `.agents/skills/`; do not redirect edits into the Kilo originals.
+- Roles describe the executor in `.codex/agents/*.toml`. Skills describe procedures in `.agents/skills/*/SKILL.md`. Read the selected Skill and its required references before execution; do not replace a detailed workflow with a generic checklist.
+- Delegate when the user or an applicable Skill explicitly calls for specialized agents. Follow the Skill's role sequence, gates, artifacts, and user decisions. For an ordinary task without such instructions, work directly.
+- Maximum **2 active subagents across the whole task tree**, and **1 implementor at a time**. The parent counts toward neither limit. Nested coordinators must share this budget; execute sequentially if slots are unavailable. Never fire and forget: wait for every delegated result before finishing. Prefer resuming an existing agent after an interruption.
+- The main agent owns routing, output checks, and final completeness. Send each executor a scoped task, source Skill path, relevant context, output path, constraints, and acceptance criteria. Preserve workflow prompts marked `original_prompt`; add context without weakening them.
+- Use `tech-lead` for coordination; `analyst` for business specifications; `researcher` for evidence and technical options; `planner` for dependency-safe plans; `auditor` for assigned audit work; `validator` for independent verification; `implementor` for scoped changes; `test-engineer` for test analysis; `docs-specialist` for documentation. Audit phases and their executors are listed in [.codex/audit-phases.md](.codex/audit-phases.md).
+- Role boundaries and migrated command/tool policies are in [.codex/agent-permissions.md](.codex/agent-permissions.md). Read the relevant policy when assigning or assuming a role. These are behavioral restrictions, not a separate sandbox; inherited host permissions and higher-priority instructions still apply. Do not use shell commands or another tool to bypass a role's edit restriction.
+- Do not invent missing tools, roles, templates, or decisions. Report unavailable delegation or blocked prerequisites and preserve partial results. A serial fallback is acceptable only when independence is not required; label it and never claim independent validation.
+- Honor existing user authorization. Ask only for unresolved required input or a workflow's actual pending approval; do not ask again for information or approval already supplied. If a gate blocks progress, identify the exact Skill and gate.
+- Keep application code, dependencies, build/deployment settings, and Kilo files unchanged during AI-configuration migration or maintenance. Broader changes require a separate applicable user task.
+
+## Toolchain Details
+
+- Windows 11: use PowerShell and `uv`; `make` requires an additional GNU Make/WSL installation. `.\Makefile.ps1` defaults to `all` (lint, then tests); it also accepts `test`, `lint`, `typecheck`, and `format`.
+- Lint: `uv run ruff check src tests`; types: `uv run mypy src tests`; tests: `uv run pytest`. CI runs lint and tests on every push/PR. Pytest enforces `--cov-fail-under=70` and includes slow tests by default.
+- `ruff check --fix` is the fix/import-sorting command (subject to the actual enabled rules); `ruff format` changes formatting only. `.\Makefile.ps1 format` currently calls `ruff check --fix src tests`. Do not auto-fix application code during configuration-only work.
+- Add dependencies through `uv add <package>` or `uv add --dev <package>` only within an authorized dependency-change task. Do not install unrelated Docker, database, or frontend tooling for this package.
 
 ## Detailed Instructions
 
 For specific guidelines, see:
 - [Doc maintenance rules](docs/00-overview/doc-maintenance-rules.md)
+- [Codex migration, source mapping, invocation examples, and limitations](docs/codex-migration.md)

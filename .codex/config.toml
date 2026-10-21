@@ -1,0 +1,5 @@
+# Project roles are discovered from standalone files in .codex/agents/.
+# Inherit the user's model, provider, sandbox, approvals, and MCP configuration.
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 2
