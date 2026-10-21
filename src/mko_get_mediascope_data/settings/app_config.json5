@@ -7,6 +7,9 @@
   "sleep_time": 2,
   "retry_5xx": true,
   "log_errors_detail": false,
+  /* Verbosity mode controls log level and progress bar rendering.
+     QUIET→WARNING (no bars), DEFAULT→WARNING (bars), VERBOSE→INFO (bars),
+     DEBUG→DEBUG (bars), SILENT→CRITICAL (no bars, no output). */
   "verbosity_mode": "DEFAULT",
   "poll": {
     "sleep_time": 30,

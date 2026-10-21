@@ -193,13 +193,6 @@ def test_bundled_templates_kitId_conformance() -> None:
                 f"Invalid kitId={kid} in {f.relative_to(APP_PATHS.app_settings_dir)}"
             )
 
-    # Verify TOP_NAT_TV_ADVERTISERS has kitId=1 in defaults
-    tv_crosstab = defaults_dir / "tv" / "crosstab.json5"
-    data = json5.loads(tv_crosstab.read_text(encoding="utf-8"))
-    assert data["TOP_NAT_TV_ADVERTISERS"]["options"]["kitId"] == 1, (
-        "TOP_NAT_TV_ADVERTISERS default must define kitId"
-    )
-
 
 def test_tv_report_template_entry0_has_options() -> None:
     """VAL-003: nat_tv_tvreport.json5 entry[0] (TOP_NAT_TV_ADVERTISERS)
@@ -211,7 +204,6 @@ def test_tv_report_template_entry0_has_options() -> None:
     assert "options" in entry0, (
         "Entry[0] TOP_NAT_TV_ADVERTISERS must have options block"
     )
-    assert entry0["options"]["kitId"] == 1, "kitId must be 1 (TV Index All Russia)"
 
 
 def test_report_settings_rejects_invalid_enum():

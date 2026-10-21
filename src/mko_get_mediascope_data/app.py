@@ -236,20 +236,22 @@ def run(
     )
     configure_logging_level(mode)
 
-    if mode != VerbosityMode.QUIET:
+    if mode not in (VerbosityMode.QUIET, VerbosityMode.SILENT):
         console.print(f"[blue]▶ Running report:[/blue] {report.name}")
 
     try:
-        if mode != VerbosityMode.QUIET:
+        if mode not in (VerbosityMode.QUIET, VerbosityMode.SILENT):
             reporter = RichProgressReporter()
             with reporter:
                 asyncio.run(run_report_async(report, progress=reporter))
         else:
             asyncio.run(run_report_async(report))
-        console.print("[green]✅ Report completed successfully[/green]")
+        if mode != VerbosityMode.SILENT:
+            console.print("[green]✅ Report completed successfully[/green]")
 
     except Exception as e:
-        console.print(f"[red]❌ Error:[/red] {e}")
+        if mode != VerbosityMode.SILENT:
+            console.print(f"[red]❌ Error:[/red] {e}")
         raise typer.Exit(1) from e
 
 

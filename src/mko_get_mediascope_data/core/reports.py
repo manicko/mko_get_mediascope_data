@@ -22,6 +22,7 @@ from mko_get_mediascope_data.core.models import (
     ReportSettings,
     ReportSubtype,
     ReportType,
+    SendTaskSettings,
     TaskStatus,
 )
 from mko_get_mediascope_data.core.network import NetworkClient, RETRIABLE_EXCEPTIONS
@@ -35,10 +36,12 @@ logger = logging.getLogger(__name__)
 
 
 def _verbose_mode() -> bool:
-    """Return True when VERBOSE (DEBUG) mode is active.
+    """Return True when DEBUG mode is active (root logger at DEBUG level).
 
-    In VERBOSE mode, per-task stage-complete INFO logs are suppressed —
-    the progress bars are the single source of truth (R-05).
+    When True (DEBUG level), per-task stage-complete INFO logs are
+    suppressed — the progress bars are the single source of truth (R-05).
+    When False (VERBOSE/INFO, DEFAULT/WARNING, etc.), those INFO logs
+    are surfaced through the logging system.
     """
     return logging.getLogger().getEffectiveLevel() <= logging.DEBUG
 
@@ -109,6 +112,7 @@ class MediaReport(Report):
         network_client: NetworkClient,
         max_tasks: int = 100,
         poll: PollSettings | None = None,
+        send_task_settings: SendTaskSettings | None = None,
         check_done: bool | None = True,
         reporter: ProgressReporter | None = None,
     ):
@@ -132,6 +136,7 @@ class MediaReport(Report):
         # limits maximum tasks sent to Mediascope API
         self.max_tasks = max_tasks
         self.poll = poll or PollSettings()
+        self.send_task_settings: SendTaskSettings = send_task_settings or SendTaskSettings()
         self.task_queue: asyncio.Queue[TVTask] = asyncio.Queue(maxsize=self.max_tasks)
 
         self.period: list[tuple[str, str]] | list[tuple[date, date]] | None = None
@@ -324,6 +329,7 @@ class TVMediaReport(MediaReport):
         data_strategy: DataPreparationStrategy | None = None,
         max_tasks: int = 100,
         poll: PollSettings | None = None,
+        send_task_settings: SendTaskSettings | None = None,
         check_done: bool | None = True,
         reporter: ProgressReporter | None = None,
     ):
@@ -335,6 +341,7 @@ class TVMediaReport(MediaReport):
             network_client=network_client,
             max_tasks=max_tasks,
             poll=poll,
+            send_task_settings=send_task_settings,
             check_done=check_done,
             reporter=reporter,
         )
@@ -446,8 +453,17 @@ class TVMediaReport(MediaReport):
             # timeout, connection reset) that occur BEFORE the POST is committed.
             # HTTP-level errors (429, 5xx, MediascopeApiError) are re-raised
             # immediately to avoid duplicate task creation.
+            cfg = self.send_task_settings
+            # retryable=False forces a single attempt (retry_on must be None so the
+            # early-return path at network.py:182 is taken); otherwise retry_on_connection_error
+            # selects selective (transport-only) vs default-unrestricted retry scope.
+            retryable: bool = cfg.retryable
+            retry_on: tuple[type[BaseException], ...] | None = (
+                RETRIABLE_EXCEPTIONS if cfg.retry_on_connection_error else None
+            ) if cfg.retryable else None
+
             task.key = await self.network_client.call(
-                self.sender, task_json, retry_on=RETRIABLE_EXCEPTIONS
+                self.sender, task_json, retryable=retryable, retry_on=retry_on
             )
 
             if not _verbose_mode():
@@ -501,7 +517,7 @@ class TVMediaReport(MediaReport):
         sleep_interval = self.poll.initial_interval  # Start at 30s; API needs ~40s to process after submit
         while True:
             polls += 1
-            if polls >= max_polls:
+            if polls > max_polls:
                 task.status = False
                 task.log_error = True
                 task.error = f"Poll deadline exceeded ({max_polls} polls)"

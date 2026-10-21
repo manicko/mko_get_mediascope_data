@@ -320,16 +320,16 @@ async def test_null_reporter_used_when_no_reporter_passed(
 # ---------------------------------------------------------------------------
 
 
-async def test_stage_complete_logs_suppressed_in_verbose_mode(
+async def test_stage_complete_logs_suppressed_in_debug_mode(
     tmp_path: Path,
     mocker,
     dummy_df: pd.DataFrame,
     hermetic_app_service: AppService,
     restore_root_logger: logging.Logger,
 ) -> None:
-    """task_stage_complete INFO logs are suppressed when VERBOSE (DEBUG) mode is active.
+    """task_stage_complete INFO logs are suppressed when DEBUG mode is active.
 
-    R-05: In VERBOSE mode the progress bars are the single source of truth,
+    R-05: In DEBUG mode the progress bars are the single source of truth,
     so ``send_task``, ``wait_task``, and ``extract_data`` must NOT emit
     ``task_stage_complete`` INFO records.
 
@@ -337,8 +337,8 @@ async def test_stage_complete_logs_suppressed_in_verbose_mode(
     spies on ``reports_logger.info``, then drives ``send_task`` and
     ``extract_data`` directly and asserts zero ``task_stage_complete`` calls.
     """
-    # Enable VERBOSE mode — root at DEBUG, all handlers at DEBUG
-    configure_logging_level(VerbosityMode.VERBOSE)
+    # Enable DEBUG mode — root at DEBUG, all handlers at DEBUG
+    configure_logging_level(VerbosityMode.DEBUG)
     assert _verbose_mode() is True
 
     reports_logger = logging.getLogger("mko_get_mediascope_data.core.reports")
@@ -398,21 +398,26 @@ async def test_stage_complete_logs_suppressed_in_verbose_mode(
         if "task_stage_complete" in str(c.args[0])
     ]
     assert len(stage_calls) == 0, (
-        f"Expected no task_stage_complete calls in VERBOSE mode, got: {stage_calls}"
+        f"Expected no task_stage_complete calls in DEBUG mode, got: {stage_calls}"
     )
 
 
 def test_verbose_mode_helper_reflects_root_level(
     restore_root_logger: logging.Logger,
 ) -> None:
-    """``_verbose_mode()`` returns True at DEBUG and False at INFO.
+    """``_verbose_mode()`` returns True at DEBUG and False at INFO/WARNING.
 
     This directly tests the helper used to gate stage-complete INFO logs.
+    With the new verbosity mapping (VERBOSE→INFO), INFO level returns False
+    (logs surfaced), while DEBUG level returns True (logs suppressed).
     """
     configure_logging_level(VerbosityMode.DEFAULT)
     assert _verbose_mode() is False
 
     configure_logging_level(VerbosityMode.VERBOSE)
+    assert _verbose_mode() is False
+
+    configure_logging_level(VerbosityMode.DEBUG)
     assert _verbose_mode() is True
 
 

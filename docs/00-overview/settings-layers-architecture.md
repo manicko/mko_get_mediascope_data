@@ -160,7 +160,7 @@ never forwarded into the API parameter dict.
 
 | Setting | Effect |
 |---|---|
-| `verbosity_mode` | Console verbosity and log level: `QUIET`→WARNING (progress bars suppressed), `DEFAULT`→INFO (progress bars shown), `VERBOSE`→DEBUG (progress bars shown). Mapped via `VerbosityMode.to_logging_level()` (`core/models.py:60-73`). Injected at the CLI layer by `configure_logging_level()` (`app.py:46-57`); does not affect pipeline behavior. See [Console verbosity and progress bars](current-behavior.md#console-verbosity-and-progress-bars) for the full model. |
+| `verbosity_mode` | Console verbosity and log level: `QUIET`→WARNING (progress bars suppressed), `DEFAULT`→WARNING (progress bars shown), `VERBOSE`→INFO (progress bars shown), `DEBUG`→DEBUG (progress bars shown), `SILENT`→CRITICAL (progress bars suppressed, all console output suppressed). Mapped via `VerbosityMode.to_logging_level()` (`core/models.py:60-73`). Injected at the CLI layer by `configure_logging_level()` (`app.py:46-57`); does not affect pipeline behavior. See [Console verbosity and progress bars](current-behavior.md#console-verbosity-and-progress-bars) for the full model. |
 
 ### Template Conformance Rules
 

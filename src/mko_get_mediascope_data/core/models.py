@@ -58,18 +58,30 @@ class SendTaskSettings(BaseModel):
 
 
 class VerbosityMode(StrEnum):
-    """Console verbosity modes that map to stdlib logging levels."""
+    """Console verbosity modes that map to stdlib logging levels.
+
+    Mapping (CLI flag → logging level → progress bars):
+    - QUIET → WARNING — only warnings/errors shown; progress bars suppressed.
+    - DEFAULT → WARNING — only warnings/errors shown; progress bars shown.
+    - VERBOSE → INFO — task start/completion logs; progress bars shown.
+    - DEBUG → DEBUG — full internal state, API timing, poll logs; progress bars shown.
+    - SILENT → CRITICAL — all console output suppressed; progress bars suppressed.
+    """
 
     QUIET = "QUIET"
     DEFAULT = "DEFAULT"
     VERBOSE = "VERBOSE"
+    DEBUG = "DEBUG"
+    SILENT = "SILENT"
 
     def to_logging_level(self) -> int:
         """Return the stdlib logging level corresponding to this verbosity."""
         return {
             VerbosityMode.QUIET: logging.WARNING,
-            VerbosityMode.DEFAULT: logging.INFO,
-            VerbosityMode.VERBOSE: logging.DEBUG,
+            VerbosityMode.DEFAULT: logging.WARNING,
+            VerbosityMode.VERBOSE: logging.INFO,
+            VerbosityMode.DEBUG: logging.DEBUG,
+            VerbosityMode.SILENT: logging.CRITICAL,
         }[self]
 
 

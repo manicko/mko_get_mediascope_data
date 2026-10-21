@@ -53,11 +53,17 @@ class TestVerbosityModeToLoggingLevel:
     def test_quiet_maps_to_warning(self) -> None:
         assert VerbosityMode.QUIET.to_logging_level() == logging.WARNING
 
-    def test_default_maps_to_info(self) -> None:
-        assert VerbosityMode.DEFAULT.to_logging_level() == logging.INFO
+    def test_default_maps_to_warning(self) -> None:
+        assert VerbosityMode.DEFAULT.to_logging_level() == logging.WARNING
 
-    def test_verbose_maps_to_debug(self) -> None:
-        assert VerbosityMode.VERBOSE.to_logging_level() == logging.DEBUG
+    def test_verbose_maps_to_info(self) -> None:
+        assert VerbosityMode.VERBOSE.to_logging_level() == logging.INFO
+
+    def test_debug_maps_to_debug(self) -> None:
+        assert VerbosityMode.DEBUG.to_logging_level() == logging.DEBUG
+
+    def test_silent_maps_to_critical(self) -> None:
+        assert VerbosityMode.SILENT.to_logging_level() == logging.CRITICAL
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +84,8 @@ class TestAppSettingsVerbosityMode:
             ("QUIET", VerbosityMode.QUIET),
             ("DEFAULT", VerbosityMode.DEFAULT),
             ("VERBOSE", VerbosityMode.VERBOSE),
+            ("DEBUG", VerbosityMode.DEBUG),
+            ("SILENT", VerbosityMode.SILENT),
         ],
     )
     def test_accepts_string_value(self, raw: str, expected: VerbosityMode) -> None:
@@ -109,31 +117,47 @@ class TestConfigureLoggingLevel:
         for handler in root_logger_state.handlers:
             assert handler.level == logging.WARNING
 
-    def test_default_sets_root_and_handlers_to_info(
+    def test_default_sets_root_and_handlers_to_warning(
         self, root_logger_state: logging.Logger
     ) -> None:
         configure_logging_level(VerbosityMode.DEFAULT)
+        assert root_logger_state.level == logging.WARNING
+        for handler in root_logger_state.handlers:
+            assert handler.level == logging.WARNING
+
+    def test_verbose_sets_root_and_handlers_to_info(
+        self, root_logger_state: logging.Logger
+    ) -> None:
+        configure_logging_level(VerbosityMode.VERBOSE)
         assert root_logger_state.level == logging.INFO
         for handler in root_logger_state.handlers:
             assert handler.level == logging.INFO
 
-    def test_verbose_sets_root_and_handlers_to_debug(
+    def test_debug_sets_root_and_handlers_to_debug(
         self, root_logger_state: logging.Logger
     ) -> None:
-        configure_logging_level(VerbosityMode.VERBOSE)
+        configure_logging_level(VerbosityMode.DEBUG)
         assert root_logger_state.level == logging.DEBUG
         for handler in root_logger_state.handlers:
             assert handler.level == logging.DEBUG
 
+    def test_silent_sets_root_and_handlers_to_critical(
+        self, root_logger_state: logging.Logger
+    ) -> None:
+        configure_logging_level(VerbosityMode.SILENT)
+        assert root_logger_state.level == logging.CRITICAL
+        for handler in root_logger_state.handlers:
+            assert handler.level == logging.CRITICAL
+
     def test_lowers_handler_level_that_was_higher(
         self, root_logger_state: logging.Logger
     ) -> None:
-        """A handler at ERROR level must be lowered to DEBUG in VERBOSE mode."""
+        """A handler at ERROR level must be lowered to DEBUG in DEBUG mode."""
         test_handler = logging.StreamHandler()
         test_handler.setLevel(logging.ERROR)
         root_logger_state.addHandler(test_handler)
         try:
-            configure_logging_level(VerbosityMode.VERBOSE)
+            configure_logging_level(VerbosityMode.DEBUG)
             assert test_handler.level == logging.DEBUG
         finally:
             root_logger_state.removeHandler(test_handler)
@@ -166,7 +190,7 @@ class TestConfigureLoggingLevel:
         # dictConfig (triggered by hermetic_app_service) sets root to INFO
         assert root_logger_state.level == logging.INFO
 
-        configure_logging_level(VerbosityMode.VERBOSE)
+        configure_logging_level(VerbosityMode.DEBUG)
         assert root_logger_state.level == logging.DEBUG
         for handler in root_logger_state.handlers:
             assert handler.level == logging.DEBUG
@@ -230,7 +254,7 @@ class TestCliVerbosityFlag:
         spy.assert_called_once_with(VerbosityMode.QUIET)
         assert logging.getLogger().level == logging.WARNING
 
-    def test_default_sets_root_to_info(
+    def test_default_sets_root_to_warning(
         self,
         mocker,
         mock_app_service: MagicMock,
@@ -246,9 +270,9 @@ class TestCliVerbosityFlag:
         )
         assert result.exit_code == 0, result.stdout
         spy.assert_called_once_with(VerbosityMode.DEFAULT)
-        assert logging.getLogger().level == logging.INFO
+        assert logging.getLogger().level == logging.WARNING
 
-    def test_verbose_sets_root_to_debug(
+    def test_verbose_sets_root_to_info(
         self,
         mocker,
         mock_app_service: MagicMock,
@@ -264,7 +288,61 @@ class TestCliVerbosityFlag:
         )
         assert result.exit_code == 0, result.stdout
         spy.assert_called_once_with(VerbosityMode.VERBOSE)
+        assert logging.getLogger().level == logging.INFO
+
+    def test_debug_sets_root_to_debug(
+        self,
+        mocker,
+        mock_app_service: MagicMock,
+        mock_run_report_async: AsyncMock,
+        report_file: Path,
+        root_logger_state: logging.Logger,
+    ) -> None:
+        spy = mocker.spy(app_module, "configure_logging_level")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app, ["run", str(report_file), "--verbosity", "DEBUG"]
+        )
+        assert result.exit_code == 0, result.stdout
+        spy.assert_called_once_with(VerbosityMode.DEBUG)
         assert logging.getLogger().level == logging.DEBUG
+
+    def test_silent_sets_root_to_critical(
+        self,
+        mocker,
+        mock_app_service: MagicMock,
+        mock_run_report_async: AsyncMock,
+        report_file: Path,
+        root_logger_state: logging.Logger,
+    ) -> None:
+        spy = mocker.spy(app_module, "configure_logging_level")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app, ["run", str(report_file), "--verbosity", "SILENT"]
+        )
+        assert result.exit_code == 0, result.stdout
+        spy.assert_called_once_with(VerbosityMode.SILENT)
+        assert logging.getLogger().level == logging.CRITICAL
+
+    def test_silent_suppresses_console_output(
+        self,
+        mocker,
+        mock_app_service: MagicMock,
+        mock_run_report_async: AsyncMock,
+        report_file: Path,
+        root_logger_state: logging.Logger,
+    ) -> None:
+        """SILENT mode must suppress 'Running report' banner, progress bars,
+        and the 'Report completed' success message."""
+        runner = CliRunner()
+        result = runner.invoke(
+            app, ["run", str(report_file), "--verbosity", "SILENT"]
+        )
+        assert result.exit_code == 0
+        assert "Running report" not in result.stdout
+        assert "Report completed" not in result.stdout
 
     def test_default_verbosity_when_flag_omitted(
         self,
@@ -277,14 +355,14 @@ class TestCliVerbosityFlag:
         """Omitting --verbosity consults config for the default mode.
 
         The mock's ``app_config.app_settings.verbosity_mode`` is set to
-        ``VerbosityMode.VERBOSE`` (not the default) to prove the config value
+        ``VerbosityMode.DEBUG`` (not the default) to prove the config value
         is consulted when the flag is absent.
         """
-        mock_app_service.app_config.app_settings.verbosity_mode = VerbosityMode.VERBOSE
+        mock_app_service.app_config.app_settings.verbosity_mode = VerbosityMode.DEBUG
         spy = mocker.spy(app_module, "configure_logging_level")
 
         runner = CliRunner()
         result = runner.invoke(app, ["run", str(report_file)])
         assert result.exit_code == 0, result.stdout
-        spy.assert_called_once_with(VerbosityMode.VERBOSE)
+        spy.assert_called_once_with(VerbosityMode.DEBUG)
         assert logging.getLogger().level == logging.DEBUG
