@@ -108,10 +108,10 @@ Verified call directions (not inferred from names) `[code]`:
   `:283-289`); → `processing_tasks()` → `generate_tasks()` →
    `task_strategy.generate(self)` (`reports.py:202-219`, `:512-514`).
 - `worker` → `send_task` → `network_client.call(builder, api_call=False)` then
-  `network_client.call(sender, retryable=False)`; → `wait_task` → `network_client.call(
+  `network_client.call(sender, ...)` (config-driven via `SendTaskSettings`); → `wait_task` → `network_client.call(
   get_status)`; → `extract_data` → `network_client.call(get_result)` and
   `network_client.call(result2table, api_call=False)` → `prepare_data` → `data_strategy.prepare`
-  → `asyncio.to_thread(utils.csv_to_file, …)` (`reports.py:161-200`, `:358-510`).
+  → `asyncio.to_thread(utils.csv_to_file, …)` (`reports.py:162-239`, `:440-614`).
 
 ### Data-flow overview
 
@@ -160,7 +160,7 @@ sequenceDiagram
         REP->>REP: resolve + slice period
         REP->>REP: generate tasks (interval × audience)
         loop worker pool (≤100 concurrent tasks)
-            REP->>NET: build_task [api_call=False] + send_task [retryable=False]
+            REP->>NET: build_task [api_call=False] + send_task [SendTaskSettings-driven]
             NET->>API: HTTP
             API-->>REP: task key
             loop poll
@@ -210,20 +210,20 @@ Error path worth understanding, with the failure classes separated `[code]`:
 | `python-dateutil` | Calendar arithmetic for periods | `utils.get_last_period`, `iter_period_slices` |
 
 Runtime knobs that shape behavior, all hard-coded defaults (no config file
-maps to them): `max_tasks = 100` (`reports.py:95`), `NetworkClient`
+maps to them): `max_tasks = 100` (`reports.py:113`), `NetworkClient`
 (`max_concurrent_requests=5`, configurable via `app_config.json5`, `sleep_time=2`, `max_attempts=10`,
 `call_timeout=300.0`, `retry_5xx=True`, `log_errors_detail=False`,
-`network.py:58-66`), `api_call=False` discriminator on `builder`/`result2table`/
+`network.py:101-110`), `api_call=False` discriminator on `builder`/`result2table`/
 `get_connection` short-circuits `NetworkClient.call` to direct `_invoke`
-(network.py:101-102), task-submission POST passes `retryable=False`
-(reports.py:367), poll cadence starts at 30 s and ramps to 60 s (increasing:
-30 → 50 → 60) (`reports.py:406, 411`), with `get_status(sleep_time=30)`
-(`reports.py:410-412`). **No row-count limit
+(network.py:174-175), task-submission POST is config-driven via `SendTaskSettings`
+(reports.py:465-467), poll cadence starts at 30 s and ramps to 60 s (increasing:
+30 → 50 → 60) (`reports.py:517, 557`), with `get_status(sleep_time=30)`
+(`reports.py:533-535`). **No row-count limit
 is enforced** — `resultBody` of any size is always passed through to
 `result2table`/`DataFrame` materialization (`max_result_rows` was removed in
 W-13). Per-task latency is
 logged via structured `task_stage_complete`/`task_complete` records
-(`reports.py:152-158, 369-374, 432-437, 481-486`) replacing the prior
+(`reports.py:177-183, 469-475, 560-566, 615-621`) replacing the prior
 `logger.info("=")` placeholder in `send_task`.
 
 ### Design decisions and trade-offs
