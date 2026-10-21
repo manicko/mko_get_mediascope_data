@@ -1,25 +1,95 @@
 {
+  // Where CSV exports are written. Relative paths resolve under the user settings
+  // directory (~/.config/mko_get_mediascope_data/settings/); absolute paths point anywhere.
+  // Expanded for ~ at validation; PathResolver.resolve() creates the directory if needed.
   "export_folder": "output",
+
+  // Level 2 concurrency: limits simultaneous HTTP requests to the Mediascope API.
+  // Enforced via asyncio.Semaphore in NetworkClient. PositiveInt >= 1 (1 serializes all calls).
+  // Increase for throughput but risk HTTP 429; decrease to reduce API load.
   "max_concurrent_requests": 5,
+
+  // Level 1 concurrency: number of concurrent remote calculations (workers) and task queue capacity.
+  // Each worker runs the send→wait→extract pipeline. PositiveInt >= 1.
+  // Independent of max_concurrent_requests (this is remote-calc capacity, not HTTP concurrency).
   "max_tasks": 100,
+
+  // Per-call timeout (seconds) for ALL API calls, applied via asyncio.wait_for.
+  // PositiveFloat > 0. Includes build_task, result2table, get_connection too.
+  // Total per-call time ≈ max_attempts * call_timeout. Increase for slow calls; decrease to fail fast.
   "call_timeout": 300.0,
+
+  // Max retry attempts on transient errors (timeouts, 429, connection errors, 5xx when retry_5xx).
+  // PositiveInt >= 1. 1 disables retries (single attempt). Backoff = sleep_time * 1.2^(attempt-1) + jitter.
+  // Applies to the retry loop in NetworkClient.call(); non-retryable calls bypass the loop entirely.
   "max_attempts": 10,
+
+  // Global backoff floor (seconds) for non-poll API calls. PositiveInt >= 1.
+  // Effective sleep = max(this, any per-call sleep_time). For polling, poll.sleep_time wins (max(30,2)=30).
+  // Increase for slower retries / less load; decrease for faster retries / more load.
   "sleep_time": 2,
+
+  // Whether to retry HTTP 5xx on normal (non-POST) API calls. bool.
+  // When true, 500/502/503/504 retried with backoff; when false, re-raised immediately.
+  // HTTP 429 is ALWAYS retried (separate handler) regardless of this setting.
+  // Irrelevant for task-submission POST (send_task): retry_on takes precedence, 5xx never retried.
   "retry_5xx": true,
+
+  // Whether to log full args/kwargs (repr) on API errors. bool.
+  // False (default) redacts args to '<redacted>' in error logs — protects PII (userName, filters, etc.).
+  // Set true only for temporary debugging of specific API failures, then revert.
   "log_errors_detail": false,
-  /* Verbosity mode controls log level and progress bar rendering.
-     QUIET→WARNING (no bars), DEFAULT→WARNING (bars), VERBOSE→INFO (bars),
-     DEBUG→DEBUG (bars), SILENT→CRITICAL (no bars, no output). */
+
+  // Verbosity mode controls log level and progress bar rendering.
+  // Map: QUIET→WARNING (no bars), DEFAULT→WARNING (bars), VERBOSE→INFO (bars),
+  //      DEBUG→DEBUG (bars), SILENT→CRITICAL (no bars, no output).
+  // CLI `--verbosity/-v` flag overrides this when provided. Purely a presentation concern.
   "verbosity_mode": "DEFAULT",
+
+  /* Polling settings applied during task waiting (get_status in wait_task).
+     These control how often a completed/in-progress remote task is checked and how
+     long the pipeline waits before giving up. They are SEPARATE from the top-level
+     sleep_time (which floors backoff for all other API calls). */
   "poll": {
+    // Pre-call backoff smoothing (seconds) passed to network_client.call(get_status).
+    // int (accepts 0/negatives, though 0 returns immediately from asyncio.sleep).
+    // Effective = max(this, top-level sleep_time) = max(30, 2) = 30 by default.
     "sleep_time": 30,
+
+    // Outer poll cadence (seconds): wait BETWEEN successive get_status polls.
+    // float. Ramps as initial_interval→50.0→max_interval. Higher = fewer poll calls.
     "initial_interval": 30.0,
+
+    // Ceiling for the outer poll cadence. float. Must be >= 50.0 (hardcoded midpoint).
+    // Higher = less frequent polling during long waits (lower API load).
     "max_interval": 60.0,
+
+    // Counter-based guard: allows exactly this many polls before failing with
+    // 'Poll deadline exceeded'. int. 0 fails immediately; 60 ≈ up to 1 hour of polling.
+    // Checked alongside deadline — whichever triggers first wins.
     "max_polls": 60,
+
+    // Wall-clock guard (seconds) measured by monotonic loop.time() INCLUDING API call time.
+    // float. 0.0 trips immediately. Override per-call via wait_task's poll_deadline param.
+    // With defaults, max_polls trips first (~3560s < 3600s deadline).
     "deadline": 3600.0,
   },
+
+  /* Task-submission (POST) settings — applied to the report-creation POST in
+     TVMediaReport.send_task. NOTE: this POST is sent only once to prevent
+     duplicate task creation. Retry semantics are counter-intuitive by design. */
   "send_task": {
+    // Whether the POST uses the retry loop. bool.
+    // False → single attempt (retry_on ignored, no retry loop).
+    // True + retry_on_connection_error=True → retry_on=RETRIABLE_EXCEPTIONS (transport only, safe).
+    // True + retry_on_connection_error=False → retry_on=None (broad: includes 429/5xx, RISK of duplicate tasks).
     "retryable": true,
+
+    // When retryable is true, which exceptions trigger a retry. bool.
+    // True (default) RESTRICTS retries to transport-level errors only (ConnectTimeout,
+    // ConnectionError, Timeout, etc.) — safe, no duplicate-task risk.
+    // False allows ALL retriable errors (including HTTP 429/5xx) — broader but risks
+    // duplicate task creation if the POST was actually received by the API.
     "retry_on_connection_error": true,
   },
 }
