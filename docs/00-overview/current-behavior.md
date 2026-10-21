@@ -50,20 +50,20 @@ code.
 |---|---|---|
 | Console script | `mko-get-mediascope <command>` | `pyproject.toml:44` → `mko_get_mediascope_data.app:app` |
 | Python module | `uv run -m mko_get_mediascope_data <command>` (or `python -m …`) | `__main__.py:1-4` imports `app` from `app.py` |
-| Library (sync) | `from mko_get_mediascope_data import run_report; run_report("report.json5", progress=None)` | `app.py:251-265` (accepts optional `progress`, delegates to `run_report_async`), re-exported lazily via PEP 562 `__getattr__` in `__init__.py:24-37` |
-| Library (async) | `from mko_get_mediascope_data import run_report_async` | `app.py:234-248` (accepts optional `progress: ProgressReporter \| None`) |
-| Library (setup) | `initialize_settings(force=False)` | `app.py:268-270` → `init_service.py:93` |
+| Library (sync) | `from mko_get_mediascope_data import run_report; run_report("report.json5", progress=None)` | `app.py:311-344` (accepts optional `progress`; delegates to `run_report_async` via `asyncio.run`). **Not safe in a running event loop** — if `asyncio.get_running_loop()` succeeds, `run_report` raises `RuntimeError` (naming `run_report_async` as the alternative) before constructing the coroutine, so no `run_report_async` coroutine is ever left unawaited. Synchronous scripts and Airflow tasks use this; Jupyter/IPython and other active-loop hosts use `await run_report_async(...)` instead. Re-exported lazily via PEP 562 `__getattr__` in `__init__.py:24-37` |
+| Library (async) | `from mko_get_mediascope_data import run_report_async` | `app.py:290-308` (accepts optional `progress: ProgressReporter \| None`) — the supported entry point for Jupyter/IPython, FastAPI handlers, and other hosts with a running event loop |
+| Library (setup) | `initialize_settings(force=False)` | `app.py:347-349` → `init_service.init_project` (`init_service.py:93`) |
 
 Both library functions delegate to `AppService.run_report`
-(`services.py:156`), the same method the CLI uses.
+(`services.py:167`), the same method the CLI uses.
 
 ### CLI command surface (verified)
 
 | Command | Arguments / options | Behavior |
 |---|---|---|
 | `init` | `--force / -f` | Copies the package's bundled `settings/` tree into the user settings folder via `_copy_templates` (`init_service.py:37-57`, force skip at `:53-54`); also runs the legacy credential rename `_migrate_old_credential_name` (`init_service.py:60-90`); without `--force`, existing files are kept |
-| `run` | `REPORT` (required, must exist, must be a file), `--verbosity [QUIET|DEFAULT|VERBOSE] / -v` (default `DEFAULT`) | Runs the report(s) in the JSON5 file (`app.py:185-216`) |
-| `list-reports` | — | Lists `*.json5` files (recursive) under the user settings `reports/` folder (`app.py:66-77`) |
+| `run` | `REPORT` (required, must exist, must be a file), `--verbosity [QUIET|DEFAULT|VERBOSE|DEBUG|SILENT] / -v` (default: from config) | Runs the report(s) in the JSON5 file (`app.py:222-271`); bootstraps the service via `_get_app_service_or_exit()` (`app.py:206-219`) before configuring logging and dispatching to `asyncio.run(run_report_async(...))` |
+| `list-reports` | — | Lists `*.json5` files (recursive) under the user settings `reports/` folder (`app.py:274-286`); also bootstraps via `_get_app_service_or_exit()` (`app.py:206-219`) |
 
 Discrepancies between the README and the actual CLI, verified by invoking the
 app with `typer.testing.CliRunner`:
@@ -92,7 +92,7 @@ purely a presentation concern. The mapping is defined by
 `VerbosityMode.to_logging_level()` in `core/models.py:60-73`.
 
 **Progress bars.** When verbosity is `DEFAULT`, `VERBOSE`, or `DEBUG`, the CLI creates a
-`RichProgressReporter` (`app.py:60-182`) that renders four fixed-position bars — one per task lifecycle status (`QUEUED`, `SENT`, `COMPLETED`, `FAILED`).
+`RichProgressReporter` (`app.py:60-204`) that renders four fixed-position bars — one per task lifecycle status (`QUEUED`, `SENT`, `COMPLETED`, `FAILED`).
 Each bar is labeled `STATUS [██░░░░░] XX% (N/total)` and updates as tasks
 transition between statuses. `report_started` / `report_completed` are called
 in `MediaReport.processing_tasks` (`reports.py:227-265`) at the point the real
@@ -134,18 +134,22 @@ Two startup defects are relevant to configuration handling:
   shipped template; after `init`, the expected file does not exist until the
   user renames it (`paths.py:58`; lead: audit CFG-003).
 - `AppService` is created lazily on first use and immediately reads
-  `log_config.json5` and `app_config.json5` (`services.py:33-36` calls `prepare_app()`, `services.py:58-65`; `get_app_service`
-at `services.py:210`). If the user has not run `init`, the first command raises
-  `FileNotFoundError` from `json5_to_dict` (`utils.py:365-389`) and the CLI
-  prints `❌ Error: …` and exits 1 (`app.py:60-62`).
+  `log_config.json5` and `app_config.json5` (`services.py:35-38` calls `prepare_app()`; `prepare_app` at `services.py:60-67`; `get_app_service`
+  at `services.py:239-247`). If the user has not run `init`, the first command raises
+  `FileNotFoundError` from `json5_to_dict` (`utils.py:371-395`). Both `run` and
+  `list-reports` route bootstrap through `_get_app_service_or_exit()`
+  (`app.py:206-219`): on `FileNotFoundError` it prints `❌ Error: …` followed by
+  `Run 'mko-get-mediascope init' to create the settings directory.` and exits 1.
+  Malformed-settings errors (`ValueError`, `pydantic.ValidationError`,
+  `TypeError`) are **not** caught here — they propagate without an `init`
+  suggestion, so they are reported distinctly from the missing-settings case.
 
 ### Scenario: `run` — step by step
 
-Entry: `run <report.json5>` → `configure_logging_level(verbosity)` then
-`asyncio.run(run_report_async(report, progress=reporter))` (`app.py:185-216`),
+Entry: `run <report.json5>` → `_get_app_service_or_exit()` (bootstrap boundary, `app.py:206-219`) → resolve `mode` from the `-v` flag or `app_config` (`app.py:248-252`) → `configure_logging_level(mode)` (`app.py:253`) → `asyncio.run(run_report_async(report, progress=reporter))` (`app.py:258-264`),
 where `reporter` is a `RichProgressReporter` in DEFAULT/VERBOSE/DEBUG modes and
 omitted (→ `NullProgressReporter`) in QUIET and SILENT modes. `run_report_async` delegates
-to `AppService.run_report` (`services.py:167-231`).
+to `AppService.run_report` (`services.py:167-233`).
 
 1. **Parse and validate.** `get_report_settings` iterates the JSON5 list and
    constructs `ReportSettings(**entry)` per entry (`services.py:86-98`). A
@@ -222,8 +226,8 @@ to `AppService.run_report` (`services.py:167-231`).
     `csv_to_file` with `mode="w"` (`reports.py:471-478`). Structured
     `task_stage_complete stage=extract` timing log at exit (`reports.py:481-486`).
 6. **Result:** `run_report` returns the list of export directories
-    (`services.py:204`); the CLI prints a success line and exits 0
-   (`app.py:58`).
+    (`services.py:233`); the CLI prints a success line and exits 0
+   (`app.py:265-266`).
 
 ### Inputs: the report JSON5 file
 
@@ -294,7 +298,8 @@ the table below is resolved — see G-01.
 
 | Situation | Current behavior | Evidence |
 |---|---|---|
-| Report entry fails validation | `ReportSettings` error is logged and re-raised; the whole file aborts; CLI prints the error, exit 1 | `services.py:86-98`, `app.py:60-62` |
+| `run_report` called from a running event loop | `run_report` raises `RuntimeError` (the message names `run_report_async` as the alternative) before constructing its coroutine, so no `run_report_async` coroutine is ever left unawaited. Active-loop hosts (Jupyter/IPython, FastAPI handlers, async frameworks) must use `await run_report_async(...)` instead; `run_report` is for synchronous scripts and Airflow tasks only | `app.py:335-344` |
+| Report entry fails validation | `ReportSettings` error is logged and re-raised; the whole file aborts; CLI prints the error, exit 1 | `services.py:86-98`, `app.py:258-271` |
 | Missing/malformed DEFAULT template | `FileNotFoundError` / `ParserError` propagates from `json5_to_dict`; run aborts with exit 1 | `utils.py:381-389`, `services.py:100-114` |
 | `date_filter` set, `last_time: null` | Works — `time_unit` is on `PeriodModel` (default `w`), so `get_period` reads it without dereferencing `last_time` | code (`reports.py:295-338`, `models.py:67-84`) |
 | Requested period entirely outside the API window | Period is clipped (`reports.py:322-325`); when the clipped period is inverted (`start > end`), `NoReportFoundError` is raised and the CLI prints `❌ Error: …` and exits 1 — visible, not silent. **Resolved by W-02 (G-01)**. | `reports.py:327-330`; `errors.py:1-9` (lead: audit PIPE-005) |
@@ -305,7 +310,7 @@ the table below is resolved — see G-01.
 | Vendor rejects a request (HTTP 4xx / auth / bad request) | Raised immediately by `NetworkClient`, no retry | `network.py:76-118` |
 | Transient network failure | Retried up to 10 attempts with backoff + jitter inside `NetworkClient.call`; then `RuntimeError("Network retry limit exceeded")`. Retry/backoff log messages append `task=<task_name>` for traceability when `call()` is given a `task_name` — all per-task call sites in `reports.py` pass `task_name=task.name`, while the `get_connection` availability-check call in `services.py` passes `None` | `network.py:135-296` (`call` + retry loop), `network.py:143` (`task_name` parameter), `network.py:183` (`task=<name>` context); `reports.py:452, 471, 540, 582, 591, 601` (`task_name=task.name`), `services.py:203` (`task_name=None`); covered by `tests/test_network.py` (run: passed) |
 | Exception raised inside a worker | **Resolved by W-02 (G-02).** The worker now wraps `_process_item` in `try/except/finally`: `TimeoutError` and `Exception` are caught, the task is marked failed, an error JSON5 is written via `json5.dump`, and `task_done()` is always called in `finally` — so `queue.join()` cannot hang. The pre-W-02 behavior (worker death → silent hang, no traceback) is documented as historical context below. | `reports.py:149-188`; `tasks.py:7, 52` (lead: audit PIPE-002 / ASY-001) |
-| Failure before the worker pool | Validation errors, missing/malformed DEFAULT templates, connection and availability-check failures (`create_report` → `get_period` → `get_available_period`) abort the run with a printed error and exit code 1 — visible, no hang | `services.py:86-114`, `app.py:60-62`, `reports.py:220-223, 327-330` |
+| Failure before the worker pool | Validation errors, missing/malformed DEFAULT templates, connection and availability-check failures (`create_report` → `get_period` → `get_available_period`) abort the run with a printed error and exit code 1 — visible, no hang | `services.py:86-114`, `app.py:258-271`, `reports.py:220-223, 327-330` |
 | `wait_task` never terminates | **Resolved by W-02 (G-02, slice 4).** `wait_task` now has two guard deadlines: `max_polls=60` iterations and `poll_deadline=3600.0` seconds (wall-clock). Additionally, the outer worker wraps `_process_item` in `asyncio.wait_for` when a `timeout` is set. A stuck task now marks itself failed and writes an error artifact instead of pinning a worker forever. | `reports.py:363-386, 403-408` (lead: audit PIPE-006) |
 | Task status `FAILED`/`CANCELLED` | Now sets `task.status = False`, `task.log_error = True`, and `task.error = f"Task {terminal}"` before breaking the poll loop — `extract_data` is NOT attempted for a failed task. **Updated 2026-10-16 (W-02).** | `reports.py:403-408` (lead: audit PIPE-006) |
 | Error JSON5 round-trip | Written with `json5.dump` (not `yaml.dump`), so tuples render as plain JSON5 and `json5.load` round-trips correctly. **Updated 2026-10-16 (W-02).** | `tasks.py:7, 52-57`; probe (lead: audit OUT-001) |
@@ -439,7 +444,7 @@ background reading, not evidence.
 | `log_error` is write-only — verified by grep (5 writes, 0 reads) at the audit baseline | "Empty result" and "error" are indistinguishable downstream. **Resolved by W-02 (2026-10-16):** `log_error` is now read in the worker branching at `reports.py:165`; `log_error=True` → error JSON5, `log_error=False` → warning only. | audit PIPE-009; gap G-01/G-02 → RESOLVED |
 | Region id 99 is hard-coded as excluded — verified by reading `reports.py:539` | Users cannot include 99 or express an exclusion list; the owner requires template-driven region selection (D-10) | gap G-03; DISC-09 |
 | Error YAML written with `yaml.dump` [pre-JSON5 migration] — verified by probe (`!!python/tuple`, not `safe_load`-able) at the audit baseline | Error artifacts cannot be re-loaded with safe tooling. **Resolved by W-02 (2026-10-16):** `tasks.py` now uses `json5.dump` (`tasks.py:7, 52-57`). | audit OUT-001; gap G-02 → RESOLVED |
-| Module-import `sys.stdout.reconfigure()` | Fixed at HEAD — the call was moved into the `run` command (commit `706eed0`); importing the library no longer reconfigures stdout (verified: `app.py:51-52`) | audit ENT-001 (baseline only; fixed at HEAD) |
+| Module-import `sys.stdout.reconfigure()` | Fixed at HEAD — the call was moved into the `run` command (commit `706eed0`); importing the library no longer reconfigures stdout (verified: `app.py:240-241`) | audit ENT-001 (baseline only; fixed at HEAD) |
 | `print()` in `core/` | Fixed at HEAD — replaced by `logger.info()` in commit `606c899` (verified: no active `print(` in `core/`) | audit OPS-003 / CFG-010 (baseline only; fixed at HEAD) |
 
 Further limitations observed during this investigation, each traceable to code:
