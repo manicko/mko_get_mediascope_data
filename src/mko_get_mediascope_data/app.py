@@ -275,7 +275,11 @@ async def run_report_async(
     progress: ProgressReporter | None = None,
 ) -> None:
     """
-    Async version for async environments (e.g., FastAPI).
+    Async version for environments with a running event loop.
+
+    Use this instead of :func:`run_report` from FastAPI handlers, Jupyter /
+    IPython notebooks, and other async hosts where ``asyncio.run`` cannot be
+    called.
 
     :param progress: Optional progress reporter. When ``None``,
         a :class:`NullProgressReporter` is used.
@@ -292,14 +296,24 @@ def run_report(
     progress: ProgressReporter | None = None,
 ) -> None:
     """
-    Synchronous wrapper for Jupyter / Airflow.
+    Synchronous wrapper for scripts and Airflow tasks.
+
+    Blocks until the report finishes. It runs the coroutine via
+    :func:`asyncio.run`, so it must **not** be called from a thread that is
+    already running an event loop (Jupyter / IPython, FastAPI handlers, or any
+    async framework): doing so raises ``RuntimeError`` and the report is never
+    awaited. In those hosts, ``await`` :func:`run_report_async` instead.
 
     :param progress: Optional progress reporter. When ``None``,
         a :class:`NullProgressReporter` is used.
 
-    Example in Jupyter:
+    Example (synchronous script or Airflow task):
         from mko_get_mediascope_data import run_report
         run_report("settings/reports/nat_tv_brands_last.json5")
+
+    Example (Jupyter / active event loop):
+        from mko_get_mediascope_data import run_report_async
+        await run_report_async("settings/reports/nat_tv_brands_last.json5")
     """
     asyncio.run(run_report_async(report_path, progress=progress))
 

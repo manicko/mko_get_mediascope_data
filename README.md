@@ -87,16 +87,30 @@ uv run -m mko_get_mediascope_data run --verbosity VERBOSE ~/.config/mko_get_medi
 uv run -m mko_get_mediascope_data run --verbosity QUIET ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5
 ```
 
-## 🔌 Public API (Jupyter, Airflow, scripts)
+## 🔌 Public API (scripts, Airflow, notebooks)
+
+Choose the entry point that matches the host environment:
+
+- **Synchronous scripts and Airflow tasks** — `run_report(...)` blocks until the
+  report finishes. It must **not** be called from within a running event loop.
+- **Jupyter / IPython notebooks and other active-loop hosts** —
+  `await run_report_async(...)` runs inside the existing event loop.
 
 ```python
-from mko_get_mediascope_data import run_report, initialize_settings
+from mko_get_mediascope_data import run_report, run_report_async, initialize_settings
 
 # Initialize settings (once)
 initialize_settings(force=True)
 
-# Run report
-run_report("~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5")
+# Synchronous script or Airflow task
+run_report("~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5")
+```
+
+```python
+# Jupyter / IPython notebook or any host with a running event loop
+from mko_get_mediascope_data import run_report_async
+
+await run_report_async("~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5")
 ```
 
 ## 🛠️ Requirements
