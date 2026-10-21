@@ -52,6 +52,6 @@ uv run pytest -m "not slow"
 
 ## Test fixtures
 
-Source of truth: `tests/conftest.py` (`mock_network_client`, `dummy_df`,
-`tv_json5_content`, `tmp_report_dir`). `tests/test_services.py` defines the
-`local_app_service` fixture (hermetic `AppService` backed by `tmp_path`).
+Source of truth: `tests/conftest.py` (`dummy_df`, `tv_json5_content`,
+`tmp_report_dir`, `hermetic_app_service`). The `hermetic_app_service` fixture
+provides a hermetic `AppService` backed by `tmp_path`.
