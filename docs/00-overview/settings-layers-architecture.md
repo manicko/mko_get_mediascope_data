@@ -85,7 +85,7 @@ layers. It is a **shallow top-level overlay**, not a deep merge. The steps are:
 |---|---|---|
 | 1 | `data_settings = defaults.DATA_DEFAULTS.copy()` (`services.py:128`) | Start with a shallow copy of the DEFAULT base dict (15 keys for crosstab). |
 | 2 | `if subtype.value and hasattr(defaults, subtype.value):` + `data_settings.update(...)` (`services.py:131-132`) | If the report's `report_subtype` matches a subtype block absorbed as an extra on `DataDefaults`, overlay that block's keys via `dict.update` (whole-value replacement per key). |
-| 3 | `for k, v in report_settings.model_dump().items(): if k in data_settings: data_settings[k] = v` (`services.py:134-136`) | Overlay top-level keys from the CLIENT layer, but **only** those that already exist in `data_settings`. Keys the client specifies replace the default value; keys the client does not specify keep their default. |
+| 3 | `for k, v in report_settings.model_dump(exclude_unset=True).items(): if k in data_settings: data_settings[k] = v` (`services.py:135-137`) | Overlay top-level keys the CLIENT layer **explicitly set**, but **only** those that already exist in `data_settings`. Keys the client specifies replace the default value; keys the client does not specify (omitted) keep their default. |
 | 4 | `if report_settings.data_lang == "ru": data_settings["slices"] = utils.en_to_ru(...)` (`services.py:138-141`) | For Russian-language reports, translate slice names from English to Russian using `utils.en_to_ru` (`core/utils.py:229-239`). |
 
 **Override rules (explicit):**
@@ -96,7 +96,16 @@ layers. It is a **shallow top-level overlay**, not a deep merge. The steps are:
   guard (`services.py:135`) ensures that CLIENT fields not present in `DATA_DEFAULTS`
   (e.g. `media`, `report_type`, `period`) never enter the merged data dict.
 - **An omitted key keeps its default.** If the CLIENT layer does not specify a key
-  that exists in `DATA_DEFAULTS`, the default value remains.
+  that exists in `DATA_DEFAULTS`, the default value remains — the client overlay
+  iterates only the keys the client explicitly set, via
+  `report_settings.model_dump(exclude_unset=True)` (`services.py:135`), so an unset
+  key is excluded from the dump and never overwrites a subtype-selected or base
+  default.
+- **An explicit `null` still overrides.** `exclude_unset` distinguishes "not set"
+  from "set to `null`": a key the client explicitly sets to `null` is included in
+  the dump and replaces the default (including a subtype-selected non-empty value).
+  `exclude_none` is deliberately **not** used, so explicit nulls are intentional
+  overrides rather than being dropped.
 
 This shallow overlay is the intended contract. The CLIENT layer tunes the program
 (it selects a subtype and overrides specific parameter keys); it does not replace
