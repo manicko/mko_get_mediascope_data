@@ -60,7 +60,7 @@ permission:
      "kubectl delete namespace*": deny
      "kubectl delete pv*": deny
      "redis-cli FLUSHALL*": deny
-
+     "git*": allow
      "*git*reset *": ask
      "git*restore*": ask 
      "*git*checkout *": ask
@@ -75,7 +75,7 @@ permission:
      "git tag -d*": ask
      "git gc --prune=now*": ask
      "git update-ref -d*": ask
-     "git *": ask
+
      "docker compose down*": allow
      "docker volume rm*": allow
      "docker volume prune*": allow
