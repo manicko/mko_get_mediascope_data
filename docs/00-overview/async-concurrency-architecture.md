@@ -165,6 +165,13 @@ jitter = uniform(0, 5)                        # network.py:172
 await asyncio.sleep(backoff + jitter)         # network.py:173
 ```
 
+`call()` accepts an optional `task_name: str | None = None` parameter (`network.py:143`).
+When provided, every retry/backoff log message appends `task=<task_name>` (via `_task_ctx`
+at `network.py:183`), so transient errors and the final "Max retries exceeded" failure are
+traceable to their originating task. All per-task call sites in `reports.py` pass
+`task_name=task.name`; calls without a task context (e.g. the `get_connection` availability
+check at `services.py:203`) pass `None`, leaving log messages unchanged.
+
 Retryable conditions:
 - Members of `RETRIABLE_EXCEPTIONS` (network.py:32–44): transport errors such as
   `ConnectTimeout`, `ConnectionError`, `Timeout`, `socket.timeout`, and `TimeoutError`
