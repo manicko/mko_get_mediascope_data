@@ -75,6 +75,7 @@ dependency is the Mediascope HTTP API, reached through the vendor library
 | Network layer | `core/network.py` | `NetworkClient.call`: semaphore-bounded, thread-offloaded, retrying wrapper around most vendor calls; the `api_call=False` discriminator short-circuits CPU/local calls (`builder`, `result2table`) to direct `_invoke` (bypassing jitter, semaphore, and retry); the `get_connection` constructor performs authenticated catalog I/O and uses the normal retry path (transport-only `retry_on`); the direct `cats.get_tv_region()` catalog read in `TVRegTaskStrategy` bypasses `NetworkClient` entirely | no |
 | Utilities | `core/utils.py` | Date/period math, JSON5/CSV I/O, suffix mapping, slice localization, frequency pivot, file listing | no |
 | Errors | `core/errors.py` | `NoReportFoundError`, `WrongDataSettings` — `NoReportFoundError` is raised by `get_period` for out-of-range periods (`TVMediaReport.get_period`) and by `processing_tasks` for a zero-task fan-out; since PIPE-013 `AppService.run_report` catches both per entry, logs a warning, and continues to the next entry (unexpected errors are not caught and still abort). `WrongDataSettings` is declared but unused (reserved for future subtype-default validation) | no |
+| Vendor session lifecycle | `core/vendor_lifecycle.py` | `CapturedSessions`, `capture_sessions`, `capture_singleton_sessions`, `release_sessions`: deterministic, exception-safe closure of the `requests.Session` objects allocated by the vendor constructor. Captured right after construction and released in a `finally` in `AppService.run_report`; idempotent via a `WeakSet`; guarded by `NetworkClient.has_outstanding_deferred()` so a session is never closed while a timed-out thread still holds it or a later entry already replaced it (EXT-010, EXT-011) | no |
 
 ### Component diagram (call direction)
 
@@ -91,6 +92,8 @@ flowchart TD
     REPORTS --> TASKS["core/tasks.py<br/>TVTask"]
     REPORTS --> NET["core/network.py<br/>NetworkClient"]
     SVC --> NET
+    SVC --> VENDOR_LIFECYCLE["core/vendor_lifecycle.py<br/>capture/release sessions (finally)"]
+    VENDOR_LIFECYCLE --> VENDOR
     NET --> VENDOR["mediascope_api<br/>MediaVortexTask (vendor)"]
     UTILS --> MODELS
 ```
@@ -99,10 +102,10 @@ Verified call directions (not inferred from names) `[code]`:
 
 - `app.run` → `get_app_service().run_report` (`app.py:57`, `services.py:166`).
 - `AppService.run_report` → `get_report_settings` → `ReportSettings`
-  (`services.py:85-98`); → `get_data_settings` → `get_default_data_settings` +
-  `merge_data_settings` → `Data` (`services.py:135-138`); → `NetworkClient.call(
-  self.get_connection, media, retry_on=_CONSTRUCTOR_RETRIABLE)` (`services.py:186-190`); → `ReportFactory(...)` →
-  `TVMediaReport(...)` → `create_report()` (`services.py:194`).
+   (`services.py:112-125`); → `get_data_settings` → `get_default_data_settings` +
+   `merge_data_settings` → `Data` (`services.py:171-174`); → `NetworkClient.call(
+   self._get_connection_with_attempt_cleanup, media, retry_on=_CONSTRUCTOR_RETRIABLE)` (`services.py:281-286`); → `ReportFactory(...)` →
+   `TVMediaReport(...)` → `create_report()` (`services.py:311`).
 - `TVMediaReport.create_report` → `get_period()` → `get_available_period()` →
   `network_client.call(catalogs.get_availability_period)` (`reports.py:236-295`,
   `:283-289`); → `processing_tasks()` → `generate_tasks()` →
@@ -205,7 +208,7 @@ Error path worth understanding, with the failure classes separated `[code]`:
 
 | Dependency | Role | Notes |
 |---|---|---|
-| `mediascope-api-lib` | Vendor API client: authentication, task build/send/status/result, catalogs | Instantiated per report as `MediaVortexTask(settings_filename=…/mediascope.json, check_version=False)` (`services.py:140-154`) |
+| `mediascope-api-lib` | Vendor API client: authentication, task build/send/status/result, catalogs | Instantiated per report as `MediaVortexTask(settings_filename=…/mediascope.json, check_version=False)`, now routed through `NetworkClient.call` with the transport-only `_CONSTRUCTOR_RETRIABLE` retry (`services.py:176-206` `get_connection`; `services.py:281-286` the `call` site; `core/vendor_lifecycle.py` captures/releases the sessions it allocates) |
 | `pandas` | Result table conversion and CSV writing | `result2table` returns a DataFrame; `csv_to_file` writes it |
 | `pydantic` v2 | All settings models and validation | see [settings-layers-architecture.md](settings-layers-architecture.md) |
 | `typer` + `rich` | CLI and console output | `app.py` |
@@ -259,7 +262,7 @@ are pointers, not evidence, and several audit entries do not match HEAD.
 | Named loggers in `log_config.json5` never fire; root handler applies | `services.py:58-65` vs module logger names | audit OPS-003 lead |
 | Test suite covers utils/models/strategy selection only; no coverage of the period, worker, and CLI happy paths | `tests/` (42 collected, 42 pass, verified `test_create_report_skips_done_files` + `test_create_report_timeout_does_not_hang`) | audit TST-* leads |
 | **RESOLVED (W-02):** `errors.py` exceptions were dead code | `errors.py:1-9`; `NoReportFoundError` now raised at `reports.py:327-330` and `:213-218` | — |
-| One `requests.Session` per report entry, never closed | `services.py:140-154`; vendor `mediavortex/tasks.py:43-47`, `core/net.py:73` | audit EXT-006 lead |
+| **RESOLVED (EXT-010):** One `requests.Session` per report entry, never closed | `services.py:281-286` (connection built through `_get_connection_with_attempt_cleanup`); `services.py:330-335` (`release_sessions` in the `finally`); `core/vendor_lifecycle.py` (`capture_sessions`, `capture_singleton_sessions`, `release_sessions`, idempotent via `WeakSet`); vendor `mediavortex/tasks.py:43-47`, `core/net.py:73` | audit EXT-006 / EXT-010 lead |
 | Live API behavior never observed in this investigation (no credentials) | stated limitation of this investigation | — |
 
 ### Gaps between owner intent and this architecture

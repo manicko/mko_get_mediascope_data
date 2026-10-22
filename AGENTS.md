@@ -46,6 +46,7 @@ src/mko_get_mediascope_data/
 │   ├── reports.py           # Report classes + Strategy pattern (task/data strategies)
 │   ├── tasks.py             # TVTask — async task representation
 │   ├── network.py           # NetworkClient — async retry with backoff + semaphore
+│   ├── vendor_lifecycle.py  # Deterministic release of vendor (requests.Session) objects owned by one report entry
 │   ├── utils.py             # Helpers: date/period logic, JSON5/CSV I/O
 │   └── errors.py            # NoReportFoundError, WrongDataSettings
 └── settings/                # Bundled default templates (app_config.json5, log_config.json5, reports/, etc.)
@@ -56,6 +57,7 @@ src/mko_get_mediascope_data/
 - **Strategy pattern** (`core/reports.py`): `ReportFactory` selects a `TaskGenerationStrategy` and `DataPreparationStrategy` based on `MediaType`/`ReportSubtype`. New report types add a strategy subclass.
 - **Async pipeline** (`core/network.py`): `NetworkClient.call` wraps every API call with retries, exponential backoff + jitter, a per-call `asyncio.wait_for` timeout (`call_timeout`, default 300s), and concurrency limiting via `asyncio.Semaphore`. Transient errors (timeouts, connection errors, HTTP 429) are retried; other client errors (4xx) raise immediately; 502/503/504 also retry at the vendor transport layer (`urllib3.Retry`). The task-submission POST is config-driven via `SendTaskSettings`: by default (`retryable=True`, `retry_on_connection_error=True`) the application retry loop is entered for `RETRIABLE_EXCEPTIONS` (`ConnectionError`, `Timeout` including `ReadTimeout`), while HTTP 429/5xx are re-raised; `retryable=False` makes it a single attempt. Retrying a selected transport error does not prove the request body was unapplied — a reply may already be committed — and the vendor's independent `urllib3.Retry` layer can replay a POST regardless of app retries, so unique task creation is best-effort (D-16), not a guarantee.
 - **Orchestration** (`core/services.py`): `AppService.run_report` loads JSON5 settings, validates via Pydantic, builds `Data` settings from defaults, creates a `TVMediaReport`, and drives `create_report()`.
+- **Vendor session lifecycle** (`core/vendor_lifecycle.py`): `AppService.run_report` captures and deterministically releases the `requests.Session` objects allocated by the vendor constructor in a `finally` block, guarded by `NetworkClient.has_outstanding_deferred()` so sessions are never closed beneath in-flight deferred work.
 
 ## Test Environment
 

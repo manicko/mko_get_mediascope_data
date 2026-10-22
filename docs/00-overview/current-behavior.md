@@ -163,8 +163,11 @@ to `AppService.run_report` (`services.py:167-233`).
    then `merge_data_settings` overlays the subtype block and report deltas
    (`services.py:116-133`), then Russian slice names are substituted
    when `data_lang: ru` (`services.py:130-131`).
-   c. A fresh `NetworkClient` is created and the vendor connection
-   (`MediaVortexTask`) is built through it (`services.py:175-179`, `:140-154`).
+    c. A fresh `NetworkClient` is created and the vendor connection
+    (`MediaVortexTask`) is built through it via `_get_connection_with_attempt_cleanup`
+    (`services.py:268-286`; the connection is retried with transport-only
+    `_CONSTRUCTOR_RETRIABLE` and the vendor sessions it allocates are captured for
+    deterministic release in the `finally`).
     d. `ReportFactory` selects the task-generation and data-preparation
     strategies (`reports.py`, `ReportFactory`); a `TVMediaReport` is
     constructed and `create_report()` is awaited (`services.py`,
@@ -325,7 +328,7 @@ the table below is resolved — see G-01.
 | Output file already exists | `csv_to_file` uses `mode="w"` (overwrites) and publishes atomically (temp file + `os.replace`); a failure leaves any prior final file intact. In the report pipeline, `check_done=True` pre-filters tasks by name match against existing files *before* submission (`Report.get_done_files`, which excludes `utils.CSV_TEMP_PREFIX` temp artifacts so a crashed write is never treated as published output), so already-exported tasks are skipped with a warning. `check_done=False` re-runs bypass the pre-filter and overwrite. **Updated 2026-10-16 (W-02): `mode` changed from `"x"` to `"w"`; the `FileExistsError`-swallow path is gone. Atomic publication and temp-exclusion from resume discovery since PIPE-012.** | `utils.csv_to_file`; `reports.py` (`Report.get_done_files`) (lead: audit PIPE-001 / OUT-003) |
 | Task fails logically (no key, empty result, missing columns) | `task.status = False` → worker checks `log_error`: if `True` (processing failure), writes error JSON5 via `json5.dump` and logs a warning; if `False` (no data), logs a warning only, no error JSON5 (D-15). Run continues. **Updated 2026-10-16 (W-02): worker branching on `log_error` (`reports.py:164-169`).** Updated 2026-10-19 (W-13): oversized `resultBody` (formerly guarded by `max_result_rows`, 10 000) is **no longer rejected** — there is no row-count cap; the full result is always passed to `result2table` (`reports.py:454-457`). | `reports.py:164-169`, `tasks.py:27-57` |
 | Vendor rejects a request (HTTP 4xx / auth / bad request) | Raised immediately by `NetworkClient`, no retry | `network.py:76-118` |
-| Transient network failure | Retried up to 10 attempts with backoff + jitter inside `NetworkClient.call`; then `RuntimeError("Network retry limit exceeded")`. Retry/backoff log messages append `task=<task_name>` for traceability when `call()` is given a `task_name` — all per-task call sites in `reports.py` pass `task_name=task.name`, while the `get_connection` availability-check call in `services.py` passes `None` | `network.py:135-296` (`call` + retry loop), `network.py:143` (`task_name` parameter), `network.py:183` (`task=<name>` context); `reports.py:452, 471, 540, 582, 591, 601` (`task_name=task.name`), `services.py:203` (`task_name=None`); covered by `tests/test_network.py` (run: passed) |
+| Transient network failure | Retried up to 10 attempts with backoff + jitter inside `NetworkClient.call`; then `RuntimeError("Network retry limit exceeded")`. Retry/backoff log messages append `task=<task_name>` for traceability when `call()` is given a `task_name` — all per-task call sites in `reports.py` pass `task_name=task.name`, while the `get_connection` constructor call through `_get_connection_with_attempt_cleanup` passes `None` (`services.py:285`) | `network.py:135-296` (`call` + retry loop), `network.py:143` (`task_name` parameter), `network.py:183` (`task=<name>` context); `reports.py:452, 471, 540, 582, 591, 601` (`task_name=task.name`), `services.py:285` (`task_name=None`); covered by `tests/test_network.py` (run: passed) |
 | Exception raised inside a worker | **Resolved by W-02 (G-02).** The worker now wraps `_process_item` in `try/except/finally`: `TimeoutError` and `Exception` are caught, the task is marked failed, an error JSON5 is written via `json5.dump`, and `task_done()` is always called in `finally` — so `queue.join()` cannot hang. The pre-W-02 behavior (worker death → silent hang, no traceback) is documented as historical context below. | `reports.py:149-188`; `tasks.py:7, 52` (lead: audit PIPE-002 / ASY-001) |
 | Failure before the worker pool | Validation errors, missing/malformed DEFAULT templates, and connection/auth failures (`create_report` → `get_period` → `get_available_period`) abort the run with a printed error and exit code 1 — visible, no hang — **except** `NoReportFoundError` (out-of-range period or zero tasks), which `AppService.run_report` now catches per entry, warns, and continues (PIPE-013). | `services.py` (`AppService.run_report`); `app.py`; `reports.py` (`get_period`, `get_available_period`, `processing_tasks`) |
 | `wait_task` never terminates | **Resolved by W-02 (G-02, slice 4).** `wait_task` now has two guard deadlines: `max_polls=60` iterations and `poll_deadline=3600.0` seconds (wall-clock). Additionally, the outer worker wraps `_process_item` in `asyncio.wait_for` when a `timeout` is set. A stuck task now marks itself failed and writes an error artifact instead of pinning a worker forever. | `reports.py:363-386, 403-408` (lead: audit PIPE-006) |
@@ -506,8 +509,13 @@ Further limitations observed during this investigation, each traceable to code:
   `MediaVortexTask` (`.venv/…/core/net.py:73`, created in
   `MediaVortexTask.__init__`, `mediavortex/tasks.py:43-47`), and
   `AppService.get_connection` constructs a new `MediaVortexTask` per report
-  entry (`services.py:140-154`, `:175-179`) — so each entry in a report file
-  opens its own session; none is explicitly closed.
+  entry (`services.py:176-206`, invoked through `_get_connection_with_attempt_cleanup`
+  at `services.py:281-286`). Each entry opens its own sessions, which are captured
+  by `core/vendor_lifecycle.py` (`capture_sessions` / `capture_singleton_sessions`)
+  and deterministically released in `AppService.run_report`'s `finally` block via
+  `release_sessions` (`services.py:330-335`), guarded by
+  `NetworkClient.has_outstanding_deferred()` so a session is never closed beneath
+  in-flight deferred work (EXT-010, EXT-011).
 - Type safety is now enforced: `uv run mypy src tests` passes with **0 errors**
   at HEAD (verified on the investigation machine; down from 56 errors in 7 files
   at the audit baseline). mypy checks both `src` and `tests` per

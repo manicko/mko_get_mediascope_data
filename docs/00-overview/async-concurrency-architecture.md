@@ -245,7 +245,7 @@ error-artifact write (ASY-008) nor an unexpected worker exit (ASY-008
 | `get_status` (poll) | reports.py:568-570 | 30 (`self.poll.sleep_time`) | default (True) | uniform 15–60 s |
 | `get_result` | reports.py:611-613 | default (2) | default (True) | uniform 1–4 s |
 | `result2table` | reports.py:619-622 | default (2) | **False** | bypassed (no jitter, no semaphore) |
-| `get_connection` | services.py:199-203 | default (2), transport-only `retry_on` | default (True) | uniform 1–4 s |
+| `get_connection` (via `_get_connection_with_attempt_cleanup`) | services.py:281-286 | default (2), transport-only `retry_on` (`_CONSTRUCTOR_RETRIABLE`) | default (True) | uniform 1–4 s |
 | `get_availability_period` | reports.py:398-400 | default (2) | default (True) | uniform 1–4 s |
 | `get_tv_region` | reports.py:720-722 | default (2) | default (True) | uniform 1–4 s |
 
@@ -288,8 +288,8 @@ await asyncio.sleep(backoff + jitter)         # network.py:339
 When provided, every retry/backoff log message appends `task=<task_name>` (via `_task_ctx`
 at `network.py:235`), so transient errors and the final "Max retries exceeded" failure are
 traceable to their originating task. All per-task call sites in `reports.py` pass
-`task_name=task.name`; calls without a task context (e.g. the `get_connection` availability
-check at `services.py:203`) pass `None`, leaving log messages unchanged.
+`task_name=task.name`; calls without a task context (e.g. the `get_connection` constructor call
+through `_get_connection_with_attempt_cleanup` at `services.py:285`) pass `None`, leaving log messages unchanged.
 
 Retryable conditions:
 - Members of `RETRIABLE_EXCEPTIONS` (network.py:34–47): transport errors such as
@@ -337,6 +337,42 @@ actually finishes, so the caller does **not** wait for it. The previous `except 
 handler was removed — the vendor client never raises `requests.HTTPError`, so that
 branch was dead code.
 
+### Vendor session lifecycle (EXT-010 / EXT-011)
+
+The vendor constructor `MediaVortexTask.__init__` allocates two `requests.Session`
+objects (one via `network_module`, one via `cats.msapi_network`) as side effects
+of authenticated catalog I/O during construction.  Because the vendor exposes no
+close lifecycle, those sessions were previously left to garbage collection with no
+deterministic release guarantee.  `core/vendor_lifecycle.py` is the adapter seam
+that owns that decision:
+
+| Function | Role |
+|---|---|
+| `capture_sessions` | Snapshots the two sessions (and their owning vendor networks) right after a successful construction, so release can re-check ownership by identity. |
+| `capture_singleton_sessions` | Snapshots the sessions from the partially-initialized vendor singletons when the constructor raised mid-way (no `MediaVortexTask` instance was returned). |
+| `release_sessions` | Closes the captured sessions idempotently (`WeakSet`-guarded), skipping any session whose owner has already been replaced by a later entry, and skipping entirely when deferred work is outstanding. |
+
+**Report-boundary release contract.**  `AppService.run_report` captures sessions
+after the constructor succeeds (line `services.py:287`) and releases them in a
+`finally` block on **every** exit path: success, constructor partial failure
+(`captured is None` → `capture_singleton_sessions()`), execution failure, and the
+`NoReportFoundError` skip path (`services.py:330-335`).
+
+**Deferred-work guard (reuses ASY-009).**  The release is guarded by
+`network_client.has_outstanding_deferred()` (`services.py:334`): when a timed-out
+`asyncio.to_thread` future is still running (the `CallTimeoutError` path that
+retains the inner thread via `asyncio.shield`), the sessions it may still hold are
+left intact and a warning is logged instead of closing beneath in-flight work.
+
+**Per-attempt cleanup (EXT-011).**  The constructor is invoked through
+`AppService._get_connection_with_attempt_cleanup` (`services.py:208-238`), which
+wraps `get_connection` so that each retried attempt's intermediate-attempt
+sessions are captured via `capture_singleton_sessions()` and released via
+`release_sessions()` (again respecting the deferred-work guard) before the
+original exception propagates to `NetworkClient`'s retry loop.  The
+`WeakSet`-based idempotency in `release_sessions` ensures the per-entry
+`finally` does not close a session already closed by an intermediate attempt.
+
 ### Change guidance
 
 | What to tune | How |
@@ -351,4 +387,5 @@ branch was dead code.
 - [Doc Maintenance Rules](doc-maintenance-rules.md)
 - [core/reports.py](../../src/mko_get_mediascope_data/core/reports.py)
 - [core/network.py](../../src/mko_get_mediascope_data/core/network.py)
+- [core/vendor_lifecycle.py](../../src/mko_get_mediascope_data/core/vendor_lifecycle.py)
 - [core/errors.py](../../src/mko_get_mediascope_data/core/errors.py)

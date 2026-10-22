@@ -38,7 +38,7 @@ meaning is unconfirmed are marked `[open]` and tracked in
 | DEFAULT parameter template | JSON5 with `DATA_DEFAULTS` + subtype blocks | `settings/defaults/<media>/<report_type>.json5` → `DataDefaults` (`services.py:100-114`, `models.py:128-130`) | `[code]` |
 | App/log configuration | JSON5 | `settings/app_config.json5`, `settings/log_config.json5` (`services.py:33-56`) | `[code]` |
 | Mediascope credentials | JSON | `settings/connections/mediascope.json` (`paths.py:60-81`) | `[code]` |
-| Mediascope API | HTTP JSON | vendor library `mediascope-api-lib` (`MediaVortexTask`), called through `NetworkClient` (`services.py:20`, `network.py:59-126`) | `[code]` |
+| Mediascope API | HTTP JSON | vendor library `mediascope-api-lib` (`MediaVortexTask`), called through `NetworkClient` (`services.py:268-286`, `network.py:59-126`) | `[code]` |
 | Previously written outputs | CSV/CSV.gz files | read as a name set (not parsed) for resume logic (`reports.py:75-83`) | `[code]` |
 
 ### The merge: two layers into one API parameter set
