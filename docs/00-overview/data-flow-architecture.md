@@ -114,7 +114,10 @@ Rules and their edge cases `[code]`:
   when available (D-20, DISC-11).
 - **Clipping can invert the period** (start > end) when the requested range does
   not overlap the window — since W-02, this raises `NoReportFoundError` rather
-   than silently producing zero intervals (`reports.py:327-330`; lead: audit PIPE-005).
+   than silently producing zero intervals (`TVMediaReport.get_period`). Since
+   PIPE-013 `AppService.run_report` catches this per entry, logs a warning naming
+   the entry and reason, and continues to the next entry (no export path is
+   appended for the skipped entry).
 - The interval length comes from `period.time_unit` (default `w`), which is
   always available on `PeriodModel` regardless of whether `date_filter` or
   `last_time` is used (`models.py:67-84`, `reports.py:317`).
@@ -123,15 +126,27 @@ Rules and their edge cases `[code]`:
 
 | Strategy | Produces | Task/file name |
 |---|---|---|
-| `DefaultTVTaskStrategy` (`reports.py:481-506`) | interval × audience tasks | `<start>_<end>_<ascii audience name>` |
-| `TVRegTaskStrategy` (`reports.py:513-569`) | region × interval × audience tasks | `<start>_<end>_<ascii audience>_<ascii region name>`; region id 99 is currently hard-coded as excluded (only 99 — the owner recalled 99 and 100, DISC-09; template-driven selection is the intent, D-10); company filter extended with `regionId IN (<id>)` |
+| `DefaultTVTaskStrategy` | interval × audience tasks | `<start>_<end>_<ascii audience name>` |
+| `TVRegTaskStrategy` | region × interval × audience tasks | `<start>_<end>_<ascii audience>_<ascii region name>`; region id 99 is currently hard-coded as excluded (only 99 — the owner recalled 99 and 100, DISC-09; template-driven selection is the intent, D-10); company filter extended with `regionId IN (<id>)` |
 
-Audience names are transliterated with `unidecode` (`reports.py:504`, `reports.py:550`
-for region names), producing a flat, URL-safe task name used as the CSV stem. This is
+Audience names are transliterated with `unidecode` (`DefaultTVTaskStrategy.generate`,
+`TVRegTaskStrategy.generate`), producing a flat, URL-safe task name used as the CSV stem. This is
 why on-disk file names contain plain ASCII audience labels
 such as `all 20-45 BC`. The current exclusion of region id 99 is a code-level
 rule the owner has declared incorrect; the meaning of region ids is not
 documented in the repository — see Q-05 / D-10.
+
+**Collision-safe task identity (PIPE-014).** Distinct audiences can
+transliterate to the same readable name (e.g. a Cyrillic `А` and a Latin `A`
+both reducing to `A`), which would let two tasks share one persisted filename
+and let resume treat the shared path as complete for both. Each strategy
+records the original pre-transliteration identity as `TVTask._collision_id`
+(`"{t_name}|{interval[0]}|{interval[1]}"` for TV, `"...|{reg_id}"` for TV_REG).
+`MediaReport.processing_tasks` calls `Report._disambiguate_task_names` after the
+zero-task check and before `report_started`/`report_completed`: for any group of
+two or more tasks sharing a name, it appends `"_" + sha256(collision_id)[:8]`
+(deterministic and stable across runs). Non-colliding legacy names are left
+verbatim, so resume discovery of existing output files is unchanged.
 
 ### Per-task data path inside the API cycle
 
@@ -205,15 +220,22 @@ repository — `[open]` Q-09.
 
 ### Output writing rules
 
-`utils.csv_to_file` (`utils.py:192-220`) `[code]`:
+`utils.csv_to_file` (`utils.py`) `[code]`:
 
 - path = `<csv_path_out>/<file_prefix><optional timestamp><ext>`, where `ext`
   follows the `compression` setting (`.csv`, `.csv.gz`, `.csv.bz2`, …;
-  `utils.get_files_suffix`, `utils.py:158-189`);
+  `utils.get_files_suffix`);
 - `to_csv` with `sep=";"`, `decimal=","`, `index=False`, `encoding="utf-8-sig"`,
-  `compression=<setting>`, **`mode="w"`**;
+  `na_rep=""`, `compression=<setting>`, **`mode="w"`**;
 - `lineterminator` is not set, so line endings follow the platform
-  (`utils.py:211-220`; lead: audit OUT-002);
+  (`lead: audit OUT-002`);
+- **Atomic publication (PIPE-012):** the DataFrame is first written to a sibling
+  temp file in the same directory (`utils.CSV_TEMP_PREFIX = ".tmp_csv_"`)
+  whose suffix matches the final format (so `compression="infer"` and compressed
+  writers keep working), then flushed + `fsync`'d and finally `os.replace`'d
+  onto the final path. A partial write is never observable on resume; on failure
+  only the temp artifact is removed and any previously published final file is
+  left intact before the exception is re-raised;
 - (since W-02) there is no `FileExistsError` swallow — the file is overwritten;
   the `check_done` pre-filter prevents re-submission of already-written tasks.
 
@@ -221,7 +243,7 @@ repository — `[open]` Q-09.
 
 | Case | Handling | Certainty |
 |---|---|---|
-| Output file already exists (duplicate) | Pre-filtered before submission by `check_done`: existing file names (extension stripped) are collected by `get_done_files` and matching tasks are skipped (`reports.py:75-76, 78-83`, `:507-509`); the TV_REG strategy skips silently (`reports.py:563-567`; lead: audit PIPE-011) | `[code]` |
+| Output file already exists (duplicate) | Pre-filtered before submission by `check_done`: existing file names (extension stripped) are collected by `Report.get_done_files` and matching tasks are skipped; `get_done_files` excludes `utils.CSV_TEMP_PREFIX` temp artifacts so a crashed/interrupted atomic write is never treated as published output (PIPE-012); the TV_REG strategy skips silently (`TVRegTaskStrategy`; lead: audit PIPE-011) | `[code]` |
 | Empty result DataFrame | Task marked failed with `log_error=False` (no data → warning only, no error JSON5 written) (`reports.py:433-436`); the worker checks `log_error` at `reports.py:165`: `True` → error JSON5, `False` → warning only (D-15, W-02). Now resolved per owner intent | `[code]` |
 | Result JSON not returned | Task marked failed with `log_error=True`, error JSON5 (`reports.py:421-424`) | `[code]` |
 | Missing columns in the DataFrame | `KeyError` → log → task failed (`reports.py:591-596`) | `[code]` |

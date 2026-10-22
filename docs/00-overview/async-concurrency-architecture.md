@@ -149,7 +149,7 @@ worker loop (reports.py:207)
           ├── get_result call        (reports.py:611)
           ├── result2table call      (reports.py:619, api_call=False)
           │   [task_stage_complete stage=extract — reports.py:651-657]
-          └── csv_to_file via to_thread  (reports.py:636)
+          └── csv_to_file via to_thread  (reports.py:673-680, atomic publication — PIPE-012)
       [task_complete (end-to-end), reports.py:190-198]
 ```
 
@@ -167,36 +167,41 @@ normal drain, generation failure, cancellation while blocked on `queue.put`, zer
 tasks, and the all-skipped path.
 
 ```text
-processing_tasks (reports.py:259)
-  └── create worker group           (reports.py:277-280)  — one worker per slot
-  └── reported_started = False      (reports.py:282)
+processing_tasks (reports.py:291)
+  └── create worker group           (reports.py:309-312)  — one worker per slot
+  └── reported_started = False      (reports.py:314)
   └── try:
-        ├── generate_tasks ()       (reports.py:286-288)  — materialise all tasks
-        ├── total == 0 → NoReportFoundError (reports.py:292-298)
-        ├── report_started (total)  (reports.py:300-301)  — flips reported_started=True
-        ├── enqueue loop (put)      (reports.py:304-316)
-        ├── enqueued == 0 → return  (reports.py:318-323)  — all-skipped, early exit
-        └── queue.join ()           (reports.py:325)
-      finally:
-        ├── cancel + gather workers  (reports.py:327-329)  — always runs
-        ├── report_completed (iff reported_started) (reports.py:330-331)
-        └── WorkerFailureError supervision (reports.py:332-342)
+        ├── generate_tasks ()       (reports.py:317-320)  — materialise all tasks
+        ├── total == 0 → NoReportFoundError (reports.py:324-330)
+        ├── _disambiguate_task_names (reports.py:332-335)  — PIPE-014, after zero-check, before report_started
+        ├── report_started (total)  (reports.py:337-338)  — flips reported_started=True
+        ├── enqueue loop (put)      (reports.py:342-353)
+        ├── enqueued == 0 → return  (reports.py:355-360)  — all-skipped, early exit
+        └── queue.join ()           (reports.py:362)
+    finally:
+        ├── cancel + gather workers  (reports.py:363-366)  — always runs
+        ├── report_completed (iff reported_started) (reports.py:367-368)
+        └── WorkerFailureError supervision (reports.py:372-379)
 ```
 
-**Exit-path accounting (ASY-010).** The `try` opens *immediately* after worker-group creation
-(reports.py:277-280) — there is no code between creation and `try:` (reports.py:283).
-This is deliberate: a failure during `generate_tasks()` or a `CancelledError` while a
-worker is blocked on `await task_queue.put()` (queue full) previously escaped *before*
-the old `finally`, which only covered `queue.join()`. The enclosing `finally`
-(reports.py:326-342) always cancels and gathers the worker group, so no worker outlives
-the report.
+**Exit-path accounting (ASY-010).** The `try` opens immediately after worker-group
+creation and the trivial `report_id` / `reported_started = False` initialization
+(reports.py:309-315) — only those non-failing setup lines sit between creation
+and `try:`. This is deliberate: a failure during `generate_tasks()` or a `CancelledError`
+while a worker is blocked on `await task_queue.put()` (queue full) is covered by the
+enclosing `finally` (reports.py:363-379), which always cancels and gathers the worker
+group, so no worker outlives the report. (The earlier `finally` only covered
+`queue.join()`.)
 
 **`report_completed` ordering.** `report_completed` fires only when `report_started`
-already fired, tracked by the `reported_started` flag (reports.py:282), set to `True`
-solely at the `report_started` call site (reports.py:301). The zero-task path raises
+already fired, tracked by the `reported_started` flag (reports.py:314), set to `True`
+solely at the `report_started` call site (reports.py:338). The zero-task path raises
 `NoReportFoundError` *before* `report_started` (flag still `False`), so
 `report_completed` is never signalled for a report that never started — preventing a
-spurious "completed" from masking the original error.
+spurious "completed" from masking the original error. That `NoReportFoundError`
+(and the one raised by `get_period` for an out-of-range period) is caught per entry
+by `AppService.run_report`, which logs a warning and continues to the next entry
+(PIPE-013), so a missing-period report does not abort a multi-entry run.
 
 **`WorkerFailureError` supervision (ASY-008).** The `finally` block first cancels and gathers all
 workers (reports.py:327-329), then calls `report_completed` (only when

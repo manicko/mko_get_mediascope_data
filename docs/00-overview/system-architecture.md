@@ -74,7 +74,7 @@ dependency is the Mediascope HTTP API, reached through the vendor library
 | Task model | `core/tasks.py` | `TVTask`: name, settings, status, error; error-JSON5 serialization | no |
 | Network layer | `core/network.py` | `NetworkClient.call`: semaphore-bounded, thread-offloaded, retrying wrapper around most vendor calls; the `api_call=False` discriminator short-circuits CPU/local calls (`builder`, `result2table`, `get_connection`) to direct `_invoke` (bypassing jitter, semaphore, and retry); the direct `cats.get_tv_region()` catalog read in `TVRegTaskStrategy` bypasses `NetworkClient` entirely | no |
 | Utilities | `core/utils.py` | Date/period math, JSON5/CSV I/O, suffix mapping, slice localization, frequency pivot, file listing | no |
-| Errors | `core/errors.py` | `NoReportFoundError`, `WrongDataSettings` — `NoReportFoundError` is raised by `get_period` for out-of-range periods (`reports.py:327-330`) and by `processing_tasks` for zero enqueued tasks (`reports.py:213-218`); `WrongDataSettings` is declared but unused (reserved for future subtype-default validation) | no |
+| Errors | `core/errors.py` | `NoReportFoundError`, `WrongDataSettings` — `NoReportFoundError` is raised by `get_period` for out-of-range periods (`TVMediaReport.get_period`) and by `processing_tasks` for a zero-task fan-out; since PIPE-013 `AppService.run_report` catches both per entry, logs a warning, and continues to the next entry (unexpected errors are not caught and still abort). `WrongDataSettings` is declared but unused (reserved for future subtype-default validation) | no |
 
 ### Component diagram (call direction)
 
@@ -172,7 +172,7 @@ sequenceDiagram
             NET->>API: HTTP
             API-->>REP: DataFrame
             REP->>REP: data strategy
-            REP->>FS: CSV (mode="w")
+            REP->>FS: CSV (atomic, mode="w" — temp file + os.replace)
         end
     end
     CLI-->>U: success / error line + exit code
@@ -181,8 +181,13 @@ sequenceDiagram
 Error path worth understanding, with the failure classes separated `[code]`:
 
 - **Before the worker pool** (`create_report` → `get_period` →
-  `get_available_period`): a failure aborts the run with a printed error and
-  exit code 1 — visible and loud (`reports.py:220-223`).
+   `get_available_period`): `NoReportFoundError` from `get_period` (out-of-range
+   period) or `processing_tasks` (zero tasks) is caught per entry by
+   `AppService.run_report` since PIPE-013 — it logs a warning, skips that entry,
+   and continues to the next entry (no exit 1). Other pre-pool failures (missing
+   DEFAULT template, credentials, `get_available_period` connection/auth errors)
+   still abort the run with a printed error and exit code 1 — visible and loud
+   (`reports.py:220-223`).
 - **Logical failures inside the pool** (no task key, empty result, missing
   columns): `task.status = False`, error JSON5 written, warning logged, run
   continues — the designed recovery path.
@@ -206,7 +211,7 @@ Error path worth understanding, with the failure classes separated `[code]`:
 | `typer` + `rich` | CLI and console output | `app.py` |
 | `platformdirs` | User settings folder location | `paths.py:4` (import), `:9` (`USER_DIR`) |
 | `json5` | Template/config parsing | `utils.json5_to_dict` |
-| `Unidecode` | ASCII-safe file names for audiences and regions | `reports.py:375`, `:413-421` |
+| `Unidecode` | ASCII-safe file names for audiences and regions; collision-safe disambiguation of names that transliterate identically (`Report._disambiguate_task_names`, PIPE-014) | `reports.py` (`DefaultTVTaskStrategy.generate`, `TVRegTaskStrategy.generate`) |
 | `python-dateutil` | Calendar arithmetic for periods | `utils.get_last_period`, `iter_period_slices` |
 
 Runtime knobs that shape behavior, all hard-coded defaults (no config file
@@ -232,8 +237,8 @@ logged via structured `task_stage_complete`/`task_complete` records
 |---|---|---|
 | Two-layer settings with shallow overlay | Owner decision (D-01); templates stay small and vendor parameters live in one place | A typo in a report JSON5 that is not a `DATA_DEFAULTS` key is silently dropped by the merge; a typo inside a DEFAULT/subtype block reaches the vendor `build_task`, which has no `**kwargs`, and raises `TypeError` (verified against the installed library) |
 | Two-level concurrency (`max_tasks=100` vs HTTP semaphore 5) | Documented as intentional independence in [async-concurrency-architecture.md](async-concurrency-architecture.md) | More knobs to reason about; the worker pool can pin 100 vendor tasks while only 5 HTTP calls fly |
-| Resume via existing file names (`check_done`) | Cheap idempotent re-runs without a state store | The name is the only identity key — rename a file and the task re-runs; the skip is   silent in the TV_REG path (`reports.py:539`) |
-| `mode="w"` (overwrite) | Re-runs overwrite transparently; the `check_done` pre-filter is what prevents re-submission of already-written tasks | A `mode="x"` design would swallow `FileExistsError` and make skipped writes indistinguishable from success — since W-02, `mode="w"` is used and `FileExistsError` is never raised |
+| Resume via existing file names (`check_done`) | Cheap idempotent re-runs without a state store | The name is the only identity key — rename a file and the task re-runs; the skip is   silent in the TV_REG path (`reports.py:539`). Since PIPE-012 `Report.get_done_files` ignores `utils.CSV_TEMP_PREFIX` temp files so a crashed atomic write is never mistaken for published output; since PIPE-014 colliding names are disambiguated with a deterministic `sha256(collision_id)[:8]` suffix so resume matches the same collision-safe filename |
+| `mode="w"` (overwrite) | Re-runs overwrite transparently; the `check_done` pre-filter is what prevents re-submission of already-written tasks; the write itself is atomic (temp file + `os.replace`) so a partial file is never observable on resume | A `mode="x"` design would swallow `FileExistsError` and make skipped writes indistinguishable from success — since W-02, `mode="w"` is used and `FileExistsError` is never raised; atomic publication added in PIPE-012 |
 | Errors as side-car JSON5 files | Keeps the export folder the single place to look | Written with `json5.dump`, producing plain JSON5 that round-trips with `json5.load` (`tasks.py:7, 52-57`); since W-02 the worker catches exceptions and always reaches the error-JSON5 path |
 | `extra="allow"` on settings models | Intended pass-through of template-defined API parameters | No validation of unknown keys; legacy keys (`folder`, `category_name`) are silently ignored (zero references in `core/`) |
 | Lazy singleton `get_app_service()` | Importing the library must not touch the file system (commit `706eed0`; covered by `tests/test_app.py::test_package_import_does_not_bootstrap`, run: passed) | First use pays config loading; a missing user config surfaces at first command, not at import |

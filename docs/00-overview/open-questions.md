@@ -102,7 +102,7 @@ answered on 2026-10-15; the register below reflects the answers.
 
 **Q-03 · answered (D-08) · HIGH impact — behavior when the requested period is outside the available data**
 
-- *Repository state:* the requested period is clipped to the window the API reports (`reports.py:322-325`); an entirely non-overlapping request raises `NoReportFoundError` and exits 1; a partially overlapping request logs `logger.warning()` about the uncovered remainder and exports the overlapping part — both since W-02 (G-01), resolving the original silent-exit behavior.
+- *Repository state:* the requested period is clipped to the window the API reports (`TVMediaReport.get_period`); an entirely non-overlapping request raises `NoReportFoundError` from `get_period` (the clipped period is inverted, `period[0] > period[1]`); since PIPE-013 `AppService.run_report` catches this per entry, logs a warning naming the entry and reason, skips the entry (no export path appended), and continues to the next entry — so a single missing-period entry no longer exits 1 (it warns and the run proceeds). A partially overlapping request logs `logger.warning()` about the uncovered remainder and exports the overlapping part — both since W-02 (G-01), resolving the original silent-exit behavior.
 - *Owner's answer (2026-10-15):* **never interrupt processing** — one report
   failing must not break another. Emit a warning and continue. If the requested
   period partially overlaps the data, export the overlapping part and warn that
@@ -307,7 +307,7 @@ The implementation sequence and agent assignments for all items are tracked in
 
 | Status | ID | Intent (owner decision) | Current code | Impact |
 |---|---|---|---|---|
-| **RESOLVED** — W-02 slice 3 (entirely out-of-range → `NoReportFoundError`, PIPE-005; partial overlap → `logger.warning()` + export overlap, PIPE-003/PIPE-004; zero-interval → warning, not silent exit) | G-01 | Warn on missing/partial period data; never interrupt (D-08) | `get_period` now intersects the requested range with the API window explicitly: entirely out-of-range raises `NoReportFoundError` (PIPE-005); partial overlap logs `logger.warning()` about the uncovered remainder and exports the overlapping part (PIPE-003, PIPE-004); a zero-interval run emits a warning naming the requested range instead of a silent exit-0 success | **RESOLVED** — analysts can now distinguish "no data" (warning) from "done"; the multi-report safety intent of D-08 is implemented |
+| **RESOLVED** — W-02 slice 3 (entirely out-of-range → `NoReportFoundError`, PIPE-005; partial overlap → `logger.warning()` + export overlap, PIPE-003/PIPE-004; zero-interval → warning, not silent exit); per-entry continuation since PIPE-013 | G-01 | Warn on missing/partial period data; never interrupt (D-08) | `get_period` now intersects the requested range with the API window explicitly: entirely out-of-range raises `NoReportFoundError` (PIPE-005); partial overlap logs `logger.warning()` about the uncovered remainder and exports the overlapping part (PIPE-003, PIPE-004); a zero-interval run emits a warning naming the requested range instead of a silent exit-0 success. Since PIPE-013 `AppService.run_report` catches this `NoReportFoundError` per entry (both from `get_period` and from `processing_tasks`'s zero-task check), logs a warning, and continues to the next entry — no export path is appended for the skipped entry, so a missing-period report no longer aborts a multi-entry run | **RESOLVED** — analysts can now distinguish "no data" (warning) from "done"; the multi-report safety intent of D-08 is implemented |
 | **RESOLVED** — W-02 slices 1-2 (worker `try/except/finally` converts exceptions to a failed-task error artifact, PIPE-002/PIPE-007; `log_error` branching distinguishes "no data" warnings from "processing failure" error files, PIPE-009; `json5.dump` makes error JSON5 re-loadable, D-09) | G-02 | A failed task always leaves a persistable description (D-09); network failures must not stop the run | Worker now wraps its body in `try/except Exception` that sets `task.status = False`, reaches `TVTask.to_file`, and calls `task_done()` in `finally` (PIPE-002, PIPE-007); `log_error` is consumed by branching logic: "no data" → `logger.warning()` with no error file (D-15); "processing failure" → error JSON5 written with `json5.dump` so it is re-loadable with `json5.load` (PIPE-009, D-09) | **RESOLVED** — the recovery path works for all failure classes; raised exceptions in workers no longer hang `queue.join()` |
 | OPEN — pending W-03 (R-01 region-selection design) | G-03 | Region selection belongs in the user template, not hard-coded (D-10) | Region id 99 is hard-coded as excluded (`reports.py:539`); no `regions`/exclusion support in any template | Users cannot include 99 or express an exclusion list; the owner requires template-driven region selection (D-10) |
 | OPEN — pending W-04 (R-02 output-conventions design) | G-04 | Per-report overrides of output conventions (D-13, D-14) | Separators/decimal/BOM/compression and the DICT column layout are hard-coded (`utils.py:211-220`, `reports.py:599-652`) | Users cannot adapt output to their downstream consumers |
@@ -348,7 +348,7 @@ hangs (all verified by probe against the real worker):
 
 | Failure | Where it happens | Current outcome |
 |---|---|---|
-| Validation error, missing/malformed template, connection/auth setup failure | **Before** the worker pool (`create_report` → `get_period` → `get_available_period`) | Clean abort: error printed by the CLI, exit code 1 — visible (`reports.py:220-223`) |
+| Validation error, missing/malformed template, connection/auth setup failure | **Before** the worker pool (`create_report` → `get_period` → `get_available_period`) | Clean abort: error printed by the CLI, exit code 1 — visible (`reports.py:220-223`) — **except** `NoReportFoundError` (out-of-range period / zero tasks), which `AppService.run_report` now catches per entry, warns, and continues (PIPE-013) |
 | Logical failure: no task key, empty result, missing columns | **Inside** a worker, but signalled as `status=False`, not an exception | Error JSON5 written via `json5.dump`, warning logged, run continues — the recovery path the owner knows (`reports.py:149-188`) |
 | Raised exception inside a worker: `BadRequestError`, `AuthorizationError`, `RuntimeError("Network retry limit exceeded")`, unexpected `AttributeError` | **Inside** a worker (`send_task` / `wait_task` / `extract_data`) | **Resolved by W-02.** The worker's `try/except/finally` catches the exception, marks the task failed, writes an error JSON5 via `json5.dump`, and calls `task_done()` in `finally` — so `queue.join()` returns and the run continues. The pre-W-02 behavior (hang, no traceback) was probe-verified but is no longer current (`reports.py:149-188`). |
 
@@ -393,6 +393,14 @@ per owner ruling D-05 the audit IDs are lead pointers, not evidence:
 - [Fixed by W-02 (2026-10-16)] Duplicate CSV writes were swallowed; the task was
   still reported as ready (PIPE-001). Now `csv_to_file` uses `mode="w"` and the
   `FileExistsError`-swallow path is removed.
+- [Fixed by PIPE-012] CSV publication is not atomic: a crashed writer could
+  leave a partial file that resume mistook for a completed export. Now
+  `csv_to_file` writes to a sibling temp file (`utils.CSV_TEMP_PREFIX =
+  ".tmp_csv_"`) with the matching format suffix, `fsync`s, then `os.replace`s
+  onto the final path; a partial write is never observable on resume, and a
+  failure leaves any previously published final file intact while removing only
+  the temp artifact. `Report.get_done_files` also excludes temp files from
+  resume discovery.
 - [Fixed by W-02 (2026-10-16)] The poll loop had no deadline; `FAILED`/`CANCELLED`
   statuses still attempted extraction (PIPE-006). Now `wait_task` has
   `max_polls=60` and `poll_deadline=3600.0` guards, and `FAILED`/`CANCELLED` marks

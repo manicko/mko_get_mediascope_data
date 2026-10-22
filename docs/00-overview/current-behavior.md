@@ -165,9 +165,17 @@ to `AppService.run_report` (`services.py:167-233`).
    when `data_lang: ru` (`services.py:130-131`).
    c. A fresh `NetworkClient` is created and the vendor connection
    (`MediaVortexTask`) is built through it (`services.py:175-179`, `:140-154`).
-   d. `ReportFactory` selects the task-generation and data-preparation
-   strategies (`reports.py:30-50`); a `TVMediaReport` is constructed and
-   `create_report()` is awaited (`services.py:181-194`).
+    d. `ReportFactory` selects the task-generation and data-preparation
+    strategies (`reports.py`, `ReportFactory`); a `TVMediaReport` is
+    constructed and `create_report()` is awaited (`services.py`,
+    `AppService.run_report`). A `NoReportFoundError` from `create_report()` —
+    raised by `get_period` for an out-of-range period, or by
+    `processing_tasks` for a zero-task fan-out — is caught here **per entry**:
+    a warning names the entry and reason, no export path is appended for the
+    skipped entry, and the loop continues to the next entry (PIPE-013).
+    `AppService.run_report` also accumulates `attempted` / `exported` /
+    `warned` counters and logs a summary at the end. Unexpected errors are
+    **not** caught and still abort the run.
 3. **Resolve the period** (`reports.py:229` → `TVMediaReport.get_period` at
     `reports.py:295-338`):
     - the available date window for the dataset is fetched from the API
@@ -222,12 +230,15 @@ to `AppService.run_report` (`services.py:167-233`).
     row-count limit** — `resultBody` of any size is passed straight through to
     `result2table`. Converts to a DataFrame via
     `network_client.call(result2table, api_call=False)`
-    (`reports.py:454-457`), applies the data strategy, and writes the CSV via
-    `csv_to_file` with `mode="w"` (`reports.py:471-478`). Structured
-    `task_stage_complete stage=extract` timing log at exit (`reports.py:481-486`).
-6. **Result:** `run_report` returns the list of export directories
-    (`services.py:233`); the CLI prints a success line and exits 0
-   (`app.py:265-266`).
+    (`NetworkClient.call`, `result2table`), applies the data strategy, and writes
+    the CSV via `csv_to_file` with `mode="w"` — atomic publication (temp file +
+    `os.replace`, PIPE-012) in `TVMediaReport.extract_data`. Structured
+    `task_stage_complete stage=extract` timing log at exit.
+ 6. **Result:** `run_report` returns the list of export directories actually
+    produced (`AppService.run_report`); entries skipped for a missing period
+    (`NoReportFoundError`) are **not** in the list — they are warned and the CLI
+    exits 0 (missing-period entries are non-fatal since PIPE-013). The CLI prints
+    a success line and exits 0 (`app.py`).
 
 ### Inputs: the report JSON5 file
 
@@ -287,8 +298,8 @@ the table below is resolved — see G-01.
 
 | Output | Rule | Code |
 |---|---|---|
-| Data CSV | `<export folder>/<relative_path>/<task name>.csv[.gz]`; `task name = <start>_<end>_[<region>_]<ascii audience>` | `reports.py:442-449`, `utils.csv_to_file` `utils.py:192-220` |
-| CSV format | `sep=";"`, `decimal=","`, `index=False`, `encoding="utf-8-sig"`, `compression` from settings, **`mode="w"`** (overwrites; the `check_done` pre-filter prevents re-submission of already-written tasks), no timestamp suffix in the report pipeline | `utils.py:211-220` |
+| Data CSV | `<export folder>/<relative_path>/<task name>.csv[.gz]`; `task name = <start>_<end>_[<region>_]<ascii audience>`; colliding names (distinct audiences that transliterate identically) get a deterministic `"_" + sha256(collision_id)[:8]` suffix (PIPE-014) | `reports.py` (`TVMediaReport.extract_data`); `utils.csv_to_file` |
+| CSV format | `sep=";"`, `decimal=","`, `index=False`, `encoding="utf-8-sig"`, `compression` from settings, **`mode="w"`** (overwrites; the `check_done` pre-filter prevents re-submission of already-written tasks), no timestamp suffix in the report pipeline. Published atomically: `csv_to_file` writes to a sibling temp file (`utils.CSV_TEMP_PREFIX = ".tmp_csv_"`) carrying the same format suffix, `fsync`s, then `os.replace`s onto the final path — a partial write is never observed on resume, and a failure leaves any previously published final file intact while removing only the temp artifact. **Atomic publication since PIPE-012.** | `utils.csv_to_file` |
 | Columns | slices (plus `targetAudience` first when `target_audiences` is set, and `frequencyDistInterval` when frequency distribution is configured) followed by statistics; `prj_name` renamed to `targetAudience` | `reports.py:279-293`, `:581-583` |
 | Frequency distribution | When `frequencyDistInterval` is among the columns, the base row and the per-interval frequencies are pivoted into one row per slice combination | `utils.pivot_df_frequency` `utils.py:236-274`, `reports.py:589` |
 | Dictionary output | Subtypes containing `DICT` produce the melted term-dictionary table instead of the raw columns | `reports.py:599-652` |
@@ -302,15 +313,15 @@ the table below is resolved — see G-01.
 | Report entry fails validation | `ReportSettings` error is logged and re-raised; the whole file aborts; CLI prints the error, exit 1 | `services.py:86-98`, `app.py:258-271` |
 | Missing/malformed DEFAULT template | `FileNotFoundError` / `ParserError` propagates from `json5_to_dict`; run aborts with exit 1 | `utils.py:381-389`, `services.py:100-114` |
 | `date_filter` set, `last_time: null` | Works — `time_unit` is on `PeriodModel` (default `w`), so `get_period` reads it without dereferencing `last_time` | code (`reports.py:295-338`, `models.py:67-84`) |
-| Requested period entirely outside the API window | Period is clipped (`reports.py:322-325`); when the clipped period is inverted (`start > end`), `NoReportFoundError` is raised and the CLI prints `❌ Error: …` and exits 1 — visible, not silent. **Resolved by W-02 (G-01)**. | `reports.py:327-330`; `errors.py:1-9` (lead: audit PIPE-005) |
+| Requested period entirely outside the API window | Period is clipped (`TVMediaReport.get_period`); when the clipped period is inverted (`start > end`), `NoReportFoundError` is raised. Since PIPE-013 this is caught by `AppService.run_report` around `create_report()`: a warning logs the entry and reason, no export path is appended for the skipped entry, and the loop continues to the next entry — the CLI does **not** exit 1 for a single missing-period entry. **Resolved by W-02 (G-01); per-entry continuation since PIPE-013.** | `reports.py` (`get_period`); `services.py` (`AppService.run_report`); `errors.py:1-9` (lead: audit PIPE-005) |
 | Requested period partially overlaps the API window | Period is clipped to the intersection; a `logger.warning()` names the uncovered remainder; the overlapping part is exported. **Resolved by W-02 (G-01)**. | `reports.py:331-336` (lead: audit PIPE-003, PIPE-004) |
-| Zero tasks generated (e.g. `target_audiences: {}` after repair) | `processing_tasks` raises `NoReportFoundError` when `enqueued == 0`; CLI prints the error, exits 1. **Resolved by W-02 (G-01)** — the run is now visible, not a silent empty exit. | `reports.py:213-218` (lead: audit PIPE-004) |
-| Output file already exists | `csv_to_file` uses `mode="w"` (overwrites). In the report pipeline, `check_done=True` pre-filters tasks by name match against existing files *before* submission (`reports.py:75-76`, `:507-509`, `:563-567`), so already-exported tasks are skipped with a warning. `check_done=False` re-runs bypass the pre-filter and overwrite. **Updated 2026-10-16 (W-02): `mode` changed from `"x"` to `"w"`; the old `FileExistsError`-swallow path is gone (`utils.py:214`).** | `utils.py:192-220`; `reports.py:75-76, 507-509, 563-567` (lead: audit PIPE-001 / OUT-003) |
+| Zero tasks generated (e.g. `target_audiences: {}`) | `processing_tasks` raises `NoReportFoundError` when no tasks are generated (`total == 0`); since PIPE-013 this is caught by `AppService.run_report` and the entry is skipped with a warning while later entries continue. (The `enqueued == 0` "all already exported" case, by contrast, warns and returns without raising.) **Resolved by W-02 (G-01) — the run is now visible, not a silent empty exit; per-entry continuation since PIPE-013.** | `reports.py` (`processing_tasks`) (lead: audit PIPE-004) |
+| Output file already exists | `csv_to_file` uses `mode="w"` (overwrites) and publishes atomically (temp file + `os.replace`); a failure leaves any prior final file intact. In the report pipeline, `check_done=True` pre-filters tasks by name match against existing files *before* submission (`Report.get_done_files`, which excludes `utils.CSV_TEMP_PREFIX` temp artifacts so a crashed write is never treated as published output), so already-exported tasks are skipped with a warning. `check_done=False` re-runs bypass the pre-filter and overwrite. **Updated 2026-10-16 (W-02): `mode` changed from `"x"` to `"w"`; the `FileExistsError`-swallow path is gone. Atomic publication and temp-exclusion from resume discovery since PIPE-012.** | `utils.csv_to_file`; `reports.py` (`Report.get_done_files`) (lead: audit PIPE-001 / OUT-003) |
 | Task fails logically (no key, empty result, missing columns) | `task.status = False` → worker checks `log_error`: if `True` (processing failure), writes error JSON5 via `json5.dump` and logs a warning; if `False` (no data), logs a warning only, no error JSON5 (D-15). Run continues. **Updated 2026-10-16 (W-02): worker branching on `log_error` (`reports.py:164-169`).** Updated 2026-10-19 (W-13): oversized `resultBody` (formerly guarded by `max_result_rows`, 10 000) is **no longer rejected** — there is no row-count cap; the full result is always passed to `result2table` (`reports.py:454-457`). | `reports.py:164-169`, `tasks.py:27-57` |
 | Vendor rejects a request (HTTP 4xx / auth / bad request) | Raised immediately by `NetworkClient`, no retry | `network.py:76-118` |
 | Transient network failure | Retried up to 10 attempts with backoff + jitter inside `NetworkClient.call`; then `RuntimeError("Network retry limit exceeded")`. Retry/backoff log messages append `task=<task_name>` for traceability when `call()` is given a `task_name` — all per-task call sites in `reports.py` pass `task_name=task.name`, while the `get_connection` availability-check call in `services.py` passes `None` | `network.py:135-296` (`call` + retry loop), `network.py:143` (`task_name` parameter), `network.py:183` (`task=<name>` context); `reports.py:452, 471, 540, 582, 591, 601` (`task_name=task.name`), `services.py:203` (`task_name=None`); covered by `tests/test_network.py` (run: passed) |
 | Exception raised inside a worker | **Resolved by W-02 (G-02).** The worker now wraps `_process_item` in `try/except/finally`: `TimeoutError` and `Exception` are caught, the task is marked failed, an error JSON5 is written via `json5.dump`, and `task_done()` is always called in `finally` — so `queue.join()` cannot hang. The pre-W-02 behavior (worker death → silent hang, no traceback) is documented as historical context below. | `reports.py:149-188`; `tasks.py:7, 52` (lead: audit PIPE-002 / ASY-001) |
-| Failure before the worker pool | Validation errors, missing/malformed DEFAULT templates, connection and availability-check failures (`create_report` → `get_period` → `get_available_period`) abort the run with a printed error and exit code 1 — visible, no hang | `services.py:86-114`, `app.py:258-271`, `reports.py:220-223, 327-330` |
+| Failure before the worker pool | Validation errors, missing/malformed DEFAULT templates, and connection/auth failures (`create_report` → `get_period` → `get_available_period`) abort the run with a printed error and exit code 1 — visible, no hang — **except** `NoReportFoundError` (out-of-range period or zero tasks), which `AppService.run_report` now catches per entry, warns, and continues (PIPE-013). | `services.py` (`AppService.run_report`); `app.py`; `reports.py` (`get_period`, `get_available_period`, `processing_tasks`) |
 | `wait_task` never terminates | **Resolved by W-02 (G-02, slice 4).** `wait_task` now has two guard deadlines: `max_polls=60` iterations and `poll_deadline=3600.0` seconds (wall-clock). Additionally, the outer worker wraps `_process_item` in `asyncio.wait_for` when a `timeout` is set. A stuck task now marks itself failed and writes an error artifact instead of pinning a worker forever. | `reports.py:363-386, 403-408` (lead: audit PIPE-006) |
 | Task status `FAILED`/`CANCELLED` | Now sets `task.status = False`, `task.log_error = True`, and `task.error = f"Task {terminal}"` before breaking the poll loop — `extract_data` is NOT attempted for a failed task. **Updated 2026-10-16 (W-02).** | `reports.py:403-408` (lead: audit PIPE-006) |
 | Error JSON5 round-trip | Written with `json5.dump` (not `yaml.dump`), so tuples render as plain JSON5 and `json5.load` round-trips correctly. **Updated 2026-10-16 (W-02).** | `tasks.py:7, 52-57`; probe (lead: audit OUT-001) |
@@ -344,15 +355,16 @@ a swallowed `FileExistsError`. All of these have been **resolved by W-02**.
 
 ### Tests
 
-The suite was executed: **152 passed** (`uv run pytest`, all mocked
-— no network, no Mediascope credentials). All tests pass at HEAD,
-including `test_create_report_skips_done_files` — the W-02 change that
-raises `NoReportFoundError` when zero tasks are enqueued is now accounted
-for in the test (which sets up existing files and verifies the
-`check_done` warning path at `reports.py:204-208` rather than expecting a
-silent pass). One test, `test_run_report_with_real_models`, carries the
+The suite was executed: **189 passed** (`uv run pytest`, all mocked — no
+network, no Mediascope credentials). All tests pass at HEAD, including
+`test_create_report_skips_done_files` and the PIPE-012/013/014 tests
+(`test_csv_to_file_atomic_*`, `test_done_files_excludes_temp_csv`,
+`test_distinct_audience_names_cannot_collide_after_transliteration`,
+`test_non_colliding_names_preserved_without_hash`, and
+`test_run_report_skips_missing_period_entry`). One test,
+`test_run_report_with_real_models`, carries the
 `@pytest.mark.slow` marker and can be excluded with
-`uv run pytest -m "not slow"` (145 passed, 1 deselected). Coverage is
+`uv run pytest -m "not slow"` (188 passed, 1 deselected). Coverage is
 reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-missing`
 (configured in `pyproject.toml`).
 
@@ -363,9 +375,9 @@ reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-mis
 | `tests/test_models.py` | `ReportSettings` validation with the current field names; `PeriodModel` exclusivity rules; `merge_data_settings` does not call `en_to_ru` when `data_lang="en"`; all 32 bundled entries pass `ReportSettings` validation; all 6 `ReportSubtype` values have matching DEFAULT keys |
 | `tests/test_network.py` | Retry exhaustion raises `MaxRetriesExceeded("Network retry limit exceeded")` (subclasses `RuntimeError`); `mock_network_client` fixture retries on retryable errors; success returns the function result; `BadRequestError` (4xx) and `AuthorizationError` (401) are re-raised without retry; HTTP 429 (`TooManyRequestsError`) is retried with backoff; `TimeoutError` from `asyncio.wait_for` (`call_timeout` ceiling) is retryable; `retryable=False` makes the task-submission POST non-retried (EXT-001); `call_timeout` caps wall-clock via `asyncio.wait_for` (EXT-002); `retry_5xx` toggle controls 5xx retry (EXT-005); `log_errors_detail` redacts PII (args/kwargs) from error logs (EXT-008); semaphore limits concurrent in-flight calls; default `max_attempts=10`; PERF-001: `api_call=False` short-circuits `NetworkClient.call` to direct `_invoke` (no jitter, no semaphore, no retry, timeout-bounded) — verified by `test_cpu_local_calls_bypass_semaphore_and_jitter` |
 | `tests/test_reports.py` | `DefaultTVTaskStrategy` task naming; `DictDataStrategy` output columns |
-| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5; `test_large_result_is_processed` verifies there is **no** row-count cap — an oversized `resultBody` (> 10 000 rows) is processed through `result2table` and produces a CSV with no error artifact; PERF-003: `test_worker_emits_per_task_duration` verifies structured `task_stage_complete`/`task_complete` timing logs |
-| `tests/test_services.py` | Full `run_report` pipeline end-to-end (slow; doubled `MediaVortexTask`, real `AppService`); `app_config` caching; `reload_config()` invalidates cache, is safe before first access, reapplies logging, and re-resolves `export_folder`; missing credentials raise `FileNotFoundError` |
-| `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; gzip CSV writing; suffix mapping; `csv_to_file` writes into the report directory (`tmp_report_dir` fixture) |
+| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5; `test_large_result_is_processed` verifies there is **no** row-count cap — an oversized `resultBody` (> 10 000 rows) is processed through `result2table` and produces a CSV with no error artifact; PERF-003: `test_worker_emits_per_task_duration` verifies structured `task_stage_complete`/`task_complete` timing logs; **temp CSV files are excluded from resume discovery via `get_done_files` (PIPE-012); collision-safe task identity via `Report._disambiguate_task_names` — unique names stay verbatim, colliding names gain a deterministic `sha256(collision_id)[:8]` suffix (PIPE-014)** |
+| `tests/test_services.py` | Full `run_report` pipeline end-to-end (slow; doubled `MediaVortexTask`, real `AppService`); `app_config` caching; `reload_config()` invalidates cache, is safe before first access, reapplies logging, and re-resolves `export_folder`; missing credentials raise `FileNotFoundError`; **a no-overlap entry is warned and skipped while later entries still export (`test_run_report_skips_missing_period_entry`, PIPE-013)** |
+| `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; gzip CSV writing; suffix mapping; `csv_to_file` writes into the report directory (`tmp_report_dir` fixture); **atomic publication** — final-file publication + temp-artifact cleanup/preservation on failure (`test_csv_to_file_atomic_success_publishes_final`, `test_csv_to_file_atomic_failure_preserves_prior_final`, PIPE-012) |
 | `tests/test_progress.py` | `NullProgressReporter` no-op semantics (all methods complete without raising); `ProgressReporter` protocol `isinstance` check (runtime_checkable); `TVTask.task_status` default is `QUEUED` |
 | `tests/test_verbosity.py` | `VerbosityMode.to_logging_level()` mapping (QUIET→WARNING, DEFAULT→WARNING, VERBOSE→INFO, DEBUG→DEBUG, SILENT→CRITICAL); `AppSettings.verbosity_mode` default and Pydantic string/enum coercion; `configure_logging_level()` sets root logger and all handlers; CLI `--verbosity` flag integration via `CliRunner` |
 | `tests/test_reports_progress.py` | `ProgressReporter` interaction at send→extract boundaries — `send_task` emits QUEUED→SENT, `extract_data` emits SENT→COMPLETED; failure path emits SENT→FAILED; `TVMediaReport` defaults to `NullProgressReporter` when no reporter is passed |
@@ -410,6 +422,30 @@ PERF-003:
 defaults, and progress-reporter interactions at the send/extract task-status
 boundaries.
 
+**Updated 2026-10-22:** Data-pipeline hardening (PIPE-012/013/014) and tests:
+- PIPE-012 — `csv_to_file` now publishes atomically: a sibling temp file
+  (`utils.CSV_TEMP_PREFIX = ".tmp_csv_"`) is `fsync`'d then `os.replace`'d onto the
+  final path; a partial write is never observable on resume and a failure leaves
+  any previously published final file intact while removing only the temp
+  artifact. `Report.get_done_files` excludes temp files from resume discovery.
+  Tests: `test_csv_to_file_atomic_success_publishes_final`,
+  `test_csv_to_file_atomic_failure_preserves_prior_final`,
+  `test_done_files_excludes_temp_csv`.
+- PIPE-013 — `AppService.run_report` catches `NoReportFoundError` from
+  `create_report()` per entry, logs a warning naming the entry and reason, skips
+  the entry (no export path appended), and continues to the next entry; the
+  function accumulates `attempted`/`exported`/`warned` counters and logs a
+  summary. Unexpected errors still abort. Test:
+  `test_run_report_skips_missing_period_entry`.
+- PIPE-014 — collision-safe task identity: each strategy records the original
+  pre-transliteration identity as `TVTask._collision_id`, and
+  `Report._disambiguate_task_names` (called in `processing_tasks` after the
+  zero-task check, before `report_started`) appends a deterministic
+  `"_" + sha256(collision_id)[:8]` to colliding names; non-colliding legacy names
+  stay verbatim (resume unchanged). Tests:
+  `test_distinct_audience_names_cannot_collide_after_transliteration`,
+  `test_non_colliding_names_preserved_without_hash`.
+
 Behaviors with **no test coverage** — these code paths were therefore never
 executed during this investigation: `TVRegTaskStrategy` (tests use `media=TV`
 only), the `run` CLI happy path (actual report execution against the API — the
@@ -437,9 +473,9 @@ background reading, not evidence.
 |---|---|---|
 | 30 of 32 bundled report entries fail `ReportSettings` validation (stale `period_type`/`period_num`, stale `report_type` values such as `TV_CROSSTAB`, missing `media`/`relative_path`) — verified by probe | A user following the README's example (`nat_tv_brands_last.json5`) cannot run it; the owner requires all bundled templates to be runnable (D-06) | **RESOLVED — W-01 (2026-10-16):** all 32 entries now pass validation; all 6 DEFAULT templates ship; both crosstab defaults parse correctly. audit TPL-001 / CFG-001 leads; gap G-05 → CLOSED |
 | Both bundled crosstab DEFAULT templates were malformed YAML [pre-JSON5 migration] — verified by probe; the TV regression entered with commit `b04d177` | Fixed at HEAD — templates now parse at HEAD | audit TPL-004 (+ DISC-07); **RESOLVED — W-01 (2026-10-16)** |
-| CSV write collision is swallowed and the task reports "ready" — verified by probe at the audit baseline (`mode="x"`, `FileExistsError` swallowed) | A re-run without `check_done` silently produces no file. **Resolved by W-02 (2026-10-16):** `csv_to_file` now uses `mode="w"` (overwrites); the `FileExistsError`-swallow path is removed (`utils.py:214`). | audit PIPE-001 / OUT-003 |
+| CSV write collision is swallowed and the task reports "ready" — verified by probe at the audit baseline (`mode="x"`, `FileExistsError` swallowed) | A re-run without `check_done` silently produces no file. **Resolved by W-02 (2026-10-16):** `csv_to_file` now uses `mode="w"` (overwrites); the `FileExistsError`-swallow path is removed. **Resolved by PIPE-012:** publication is now atomic — `csv_to_file` writes to a sibling temp file (`utils.CSV_TEMP_PREFIX = ".tmp_csv_"`) with the matching format suffix, `fsync`s, then `os.replace`s onto the final path; a partial write is never observed on resume (`Report.get_done_files` also excludes temp files), and a failure leaves any previously published final file intact while removing only the temp artifact. | audit PIPE-001 / OUT-003; PIPE-012 |
 | Worker has no exception isolation; `queue.join()` hangs on any raise — verified by probe at the audit baseline | A single transient failure can stall the whole run instead of failing it. **Resolved by W-02 (2026-10-16):** the worker now wraps `_process_item` in `try/except/finally` with `task_done()` in `finally`; exceptions are caught, the task is marked failed, and an error JSON5 is written (`reports.py:149-188`). | audit PIPE-002 / ASY-001; gap G-02 → RESOLVED |
-| Zero-task and out-of-window periods exit 0 with a success message — verified by probe at the audit baseline | An analyst cannot distinguish "no data" from "done". **Resolved by W-02 (2026-10-16):** `get_period` raises `NoReportFoundError` for entirely out-of-range periods; `processing_tasks` raises `NoReportFoundError` when zero tasks are enqueued; partial overlap emits a `logger.warning` (`reports.py:327-330, 213-218`). | audit PIPE-004 / PIPE-005; gap G-01 → RESOLVED |
+| Zero-task and out-of-window periods exit 0 with a success message — verified by probe at the audit baseline | An analyst cannot distinguish "no data" from "done". **Resolved by W-02 (2026-10-16):** `get_period` raises `NoReportFoundError` for entirely out-of-range periods; `processing_tasks` raises `NoReportFoundError` when zero tasks are enqueued; partial overlap emits a `logger.warning` (`reports.py:327-330, 213-218`). **Refined by PIPE-013:** that `NoReportFoundError` is now caught per entry by `AppService.run_report`, which warns and continues to the next entry instead of aborting the run. | audit PIPE-004 / PIPE-005; gap G-01 → RESOLVED |
 | Poll loop has no deadline — verified by reading `wait_task` at the audit baseline | A stuck vendor task pins a worker forever. **Resolved by W-02 (2026-10-16):** `wait_task` now has `max_polls=60` and `poll_deadline=3600.0` guards (`reports.py:363`, `373-386`). | audit PIPE-006; gap G-02 slice 4 → RESOLVED |
 | `log_error` is write-only — verified by grep (5 writes, 0 reads) at the audit baseline | "Empty result" and "error" are indistinguishable downstream. **Resolved by W-02 (2026-10-16):** `log_error` is now read in the worker branching at `reports.py:165`; `log_error=True` → error JSON5, `log_error=False` → warning only. | audit PIPE-009; gap G-01/G-02 → RESOLVED |
 | Region id 99 is hard-coded as excluded — verified by reading `reports.py:539` | Users cannot include 99 or express an exclusion list; the owner requires template-driven region selection (D-10) | gap G-03; DISC-09 |
@@ -489,7 +525,7 @@ Read-only probes executed for this document (scripts kept for reproduction in
 | `.ai/tmp/doc_probe_options_none.py` | A subtype with no defaults block leaves `slices`/`statistics`/`options` as `None`; `Data(**merged)` then raises a Pydantic `ValidationError` for `data_lang: en` (the `data_lang: ru` path crashes earlier in `en_to_ru`) |
 | `.ai/tmp/doc_probe_vendor_build_task.py` + reading `.venv/Lib/site-packages/mediascope_api/` | Vendor `build_task` has no `**kwargs` (unknown key → `TypeError`); one `requests.Session` per `MediaVortexTask` (`core/net.py:73`) |
 | `.ai/tmp/doc_probe_links.py` | All relative links and heading anchors in the documentation resolve |
-| `uv run pytest` | **146 passed** (full suite, mocked — no network, no Mediascope credentials; coverage reported via `--cov`) |
+| `uv run pytest` | **189 passed** (full suite, mocked — no network, no Mediascope credentials; 188 passed with the `@slow` `test_run_report_with_real_models` deselected; coverage reported via `--cov`) |
 | `uv run mypy` | **0 errors** (`uv run mypy src tests` passes with zero errors; mypy checks both `src` and `tests` per `pyproject.toml` `files = ["src", "tests"]`) |
 | Inspection of the machine's `output/` folder | Confirms the file naming convention `<start>_<end>_<audience>.csv.gz` and that real report runs happened historically; the files predate the current column-selection code |
 
