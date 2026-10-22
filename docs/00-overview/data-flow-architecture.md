@@ -183,7 +183,10 @@ short-circuit this path via `api_call=False` (`build_task` at `reports.py:365-36
 offloaded + timeout-bounded) but skip the jitter sleep, semaphore, and retry loop
 (`network.py:101-102`). Additionally, `TVRegTaskStrategy` calls
 `catalogs.get_tv_region()` directly (`reports.py:578-580`), so that catalog read
-gets no retry, no semaphore, and no thread offloading `[code]`.
+gets no retry, no semaphore, and no thread offloading `[code]`. The
+`get_connection` constructor is **not** a local call — it performs authenticated
+catalog I/O during construction, so `AppService.run_report` routes it through
+`NetworkClient.call` with the normal retry path (transport-only `retry_on`).
 
 ### DataFrame preparation rules
 

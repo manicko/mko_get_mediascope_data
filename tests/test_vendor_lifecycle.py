@@ -14,15 +14,17 @@ import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 import requests
+from mediascope_api.core.errors import AuthorizationError
 from mediascope_api.mediavortex.catalogs import MediaVortexCats
 from mediascope_api.mediavortex.tasks import MediaVortexTask
 
 from mko_get_mediascope_data.core import reports as reports_module
 from mko_get_mediascope_data.core import services as services_module
-from mko_get_mediascope_data.core.errors import CallTimeoutError
+from mko_get_mediascope_data.core.errors import CallTimeoutError, MaxRetriesExceeded
 from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.paths import AppPaths
 from mko_get_mediascope_data.core.services import AppService
@@ -284,3 +286,142 @@ def _assert_all_closed_once(
         assert calls == expected, (
             f"session {session!r} closed {calls} times, expected {expected}"
         )
+
+
+def _assert_attempt_pairs(
+    sessions: list[InstrumentedSession], *, open_pairs: int
+) -> None:
+    """Assert each constructor attempt's session pair has the expected close state.
+
+    ``MediaVortexTask.__init__`` allocates the task session and then the catalog
+    session per attempt, so ``sessions`` is ordered in consecutive pairs.  Every
+    pair except the last ``open_pairs`` must have been closed exactly once by the
+    per-attempt cleanup; the trailing pairs stay open (owned by the singleton).
+    """
+    assert len(sessions) % 2 == 0, "sessions must form whole attempt pairs"
+    pairs = [sessions[i : i + 2] for i in range(0, len(sessions), 2)]
+    closed_pairs = pairs[: len(pairs) - open_pairs]
+    open_pair_list = pairs[len(pairs) - open_pairs :]
+    for pair in closed_pairs:
+        _assert_all_closed_once(pair, expected=1)
+    for pair in open_pair_list:
+        _assert_all_closed_once(pair, expected=0)
+
+
+# ---------------------------------------------------------------------------
+# EXT-011: the constructor dependency call honors the declared retry contract
+# ---------------------------------------------------------------------------
+
+
+def _inject_retry_client(mocker, *, max_attempts: int = 3) -> NetworkClient:
+    """Replace the real ``NetworkClient`` in ``run_report`` with a fast one.
+
+    Keeps the *real* ``NetworkClient`` retry loop (only the timing is made
+    deterministic: ``call_timeout=None`` disables the thread timeout so the
+    constructor thread cannot outlive the awaited call) while removing config
+    coupling to ``max_attempts``/``sleep_time``.
+    """
+    client = NetworkClient(max_attempts=max_attempts, sleep_time=0, call_timeout=None)
+    mocker.patch.object(services_module, "NetworkClient", return_value=client)
+    return client
+
+
+async def test_constructor_dependency_calls_honor_declared_retry_contract(
+    tmp_path: Path,
+    mocker,
+    vendor_seam: None,
+    hermetic_app_service: AppService,
+) -> None:
+    """The ``get_connection`` constructor call uses the normal retry contract.
+
+    Exercises the *real* vendor constructor seam via ``AppService.run_report``
+    (``vendor_seam`` instruments ``Session`` allocation and stubs only the
+    catalog I/O), so the singleton ``__init__`` re-run, session allocation, the
+    per-attempt cleanup inside ``run_report`` and the entry-level release are
+    all real.  ``create_report`` is stubbed so the entry isolates the
+    constructor path.  Four scenarios:
+
+    1. transient catalog failure → retried through the normal path; on
+       exhaustion ``MaxRetriesExceeded``; intermediate-attempt sessions are
+       closed (per-attempt cleanup), leaving only the last attempt's pair.
+    2. permanent ``AuthorizationError`` → re-raised after a single attempt.
+    3. partial-init cleanup between attempts → session count stays bounded.
+    4. ordinary-call parity → retry/backoff matches ``NetworkClient.call``.
+    """
+    _write_credentials(hermetic_app_service.app_paths)
+    config_file = _write_report_config(tmp_path)
+    mocker.patch.object(reports_module.TVMediaReport, "create_report", return_value=None)
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)  # no real backoff wait
+
+    # --- (1) transient failure → retried, exhausted, cleaned up ------------
+    _inject_retry_client(mocker, max_attempts=3)
+    attempts = [0]
+
+    def flaky_get_units() -> dict[str, object]:
+        attempts[0] += 1
+        raise requests.exceptions.ConnectTimeout("transient catalog outage")
+
+    mocker.patch.object(MediaVortexCats, "get_units", side_effect=flaky_get_units)
+    with pytest.raises(MaxRetriesExceeded, match="Network retry limit exceeded"):
+        await hermetic_app_service.run_report(config_file)
+    assert attempts[0] == 3  # retried up to max_attempts
+    # Two sessions are allocated per attempt (task + catalog).  Each failed
+    # attempt's pair is released between attempts (per-attempt cleanup), so the
+    # entry-level release sees only the last attempt's open pair.  As the
+    # constructor never returned, that final pair is released from the
+    # partially-initialized singletons, so every pair is closed exactly once.
+    sessions = InstrumentedSession.instances
+    assert len(sessions) == 6  # 3 attempts × 2 sessions — bounded, not unbounded
+    _assert_attempt_pairs(sessions, open_pairs=0)
+    _clear_vendor_singletons()
+
+    # --- (2) permanent auth error → single attempt, no retry ---------------
+    InstrumentedSession.instances.clear()
+    _inject_retry_client(mocker, max_attempts=3)
+    auth_attempts = [0]
+
+    def auth_failing_get_units() -> dict[str, object]:
+        auth_attempts[0] += 1
+        raise AuthorizationError("token invalid")
+
+    mocker.patch.object(
+        MediaVortexCats, "get_units", side_effect=auth_failing_get_units
+    )
+    with pytest.raises(AuthorizationError, match="token invalid"):
+        await hermetic_app_service.run_report(config_file)
+    assert auth_attempts[0] == 1  # permanent error: no retry
+    # One attempt allocates one pair; it is closed, never retried.
+    assert len(InstrumentedSession.instances) == 2
+    _assert_attempt_pairs(InstrumentedSession.instances, open_pairs=0)
+    _clear_vendor_singletons()
+
+    # --- (3)/(4) partial-init cleanup + ordinary-call parity ---------------
+    InstrumentedSession.instances.clear()
+    _inject_retry_client(mocker, max_attempts=3)
+    parity_attempts = [0]
+
+    def fail_twice_then_succeed() -> dict[str, object]:
+        parity_attempts[0] += 1
+        if parity_attempts[0] < 3:
+            raise requests.exceptions.ConnectTimeout("transient")
+        return {}
+
+    mocker.patch.object(
+        MediaVortexCats, "get_units", side_effect=fail_twice_then_succeed
+    )
+    export_paths = await hermetic_app_service.run_report(config_file)
+
+    # Parity with NetworkClient.call: success on the third attempt (two
+    # transient retries), exactly like test_success_after_transient_retry.
+    assert parity_attempts[0] == 3
+    assert export_paths == [hermetic_app_service.export_folder / "tv" / "release_probe"]
+
+    # Partial-init cleanup between attempts: the two failed attempts' pairs are
+    # closed, and the successful attempt's pair is closed by the entry-level
+    # release — every pair closed exactly once, none left dangling.  Session
+    # count is bounded by the attempt count.
+    sessions = InstrumentedSession.instances
+    assert len(sessions) == 6
+    _assert_attempt_pairs(sessions, open_pairs=0)
+    _clear_vendor_singletons()
+

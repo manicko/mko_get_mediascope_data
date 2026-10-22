@@ -96,9 +96,12 @@ exception and re-raises, so the caller still observes a `TimeoutError` without a
 unretrieved-exception warning (network.py:229-232). They skip all concurrency-limiting
 and retry machinery.
 This discriminator exists because some vendor calls are pure CPU (e.g. `build_task`,
-`result2table`) or local constructor calls (e.g. `get_connection`); they never hit the
-network and would only add spurious semaphore contention, so they are short-circuited
-to `_invoke`'s thread offload + timeout.
+`result2table`); they never hit the network and would only add spurious semaphore
+contention, so they are short-circuited to `_invoke`'s thread offload + timeout.
+The `get_connection` constructor call is **not** local: the vendor
+`MediaVortexTask`/`MediaVortexCats` constructor performs authenticated catalog I/O
+during construction, so it now uses the normal API classification (retry loop
+enabled) instead of `api_call=False`.
 
 The smoothing sleep `await asyncio.sleep(uniform(_sleep_time * 0.5, _sleep_time * 2))`
 (network.py:238) runs **before** the permit is acquired, so a polling worker holds
@@ -242,7 +245,7 @@ error-artifact write (ASY-008) nor an unexpected worker exit (ASY-008
 | `get_status` (poll) | reports.py:568-570 | 30 (`self.poll.sleep_time`) | default (True) | uniform 15–60 s |
 | `get_result` | reports.py:611-613 | default (2) | default (True) | uniform 1–4 s |
 | `result2table` | reports.py:619-622 | default (2) | **False** | bypassed (no jitter, no semaphore) |
-| `get_connection` | services.py:199-203 | — | **False** | bypassed (no jitter, no semaphore) |
+| `get_connection` | services.py:199-203 | default (2), transport-only `retry_on` | default (True) | uniform 1–4 s |
 | `get_availability_period` | reports.py:398-400 | default (2) | default (True) | uniform 1–4 s |
 | `get_tv_region` | reports.py:720-722 | default (2) | default (True) | uniform 1–4 s |
 
@@ -251,10 +254,16 @@ function to a thread and bounds it with `asyncio.wait_for(asyncio.shield(inner),
 timeout=self._call_timeout)` (default 300 s, network.py:113). A timeout raises
 `CallTimeoutError` (a `TimeoutError` subclass, so it is classified as retryable by
 `RETRIABLE_EXCEPTIONS`) and retains the inner thread task so the permit can be released
-on actual completion (network.py:127-134). Calls with `api_call=False` (`builder`, `result2table`,
-`get_connection`) still route through `_invoke` (so they remain thread-offloaded and
+on actual completion (network.py:127-134). Calls with `api_call=False` (`builder`, `result2table`)
+still route through `_invoke` (so they remain thread-offloaded and
 timeout-bounded) but skip the initial jitter sleep, the `asyncio.Semaphore`, and the
-retry loop entirely (network.py:226-228). The task-submission POST (`sender`,
+retry loop entirely (network.py:226-228). `get_connection` is a constructor but not a
+local call — it performs authenticated catalog I/O during construction, so it now enters
+the normal retry path with a transport-only `retry_on` tuple (`_CONSTRUCTOR_RETRIABLE`,
+`RETRIABLE_EXCEPTIONS` minus `TimeoutError` subclasses). Transient transport errors during
+constructor catalog startup are retried (bounded by `max_attempts`); permanent errors
+(`BadRequestError`/`AuthorizationError`/`FileNotFoundError`) re-raise immediately, and
+`CallTimeoutError`, HTTP 429, and 5xx are not retried. The task-submission POST (`sender`,
 reports.py:499) is config-driven via `SendTaskSettings` — it is **not** `api_call=False`;
 by default it enters the application retry loop for `RETRIABLE_EXCEPTIONS`
 (`ConnectionError`, `Timeout` including `ReadTimeout`) while HTTP 429/5xx are

@@ -18,7 +18,7 @@ from mko_get_mediascope_data.core.models import (
     ReportSettings,
 )
 from mko_get_mediascope_data.core.errors import NoReportFoundError, WrongDataSettings
-from mko_get_mediascope_data.core.network import NetworkClient
+from mko_get_mediascope_data.core.network import RETRIABLE_EXCEPTIONS, NetworkClient
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
 from mko_get_mediascope_data.core.progress import NullProgressReporter, ProgressReporter
 from mko_get_mediascope_data.core.reports import ReportFactory, TVMediaReport
@@ -36,11 +36,30 @@ _CONNECTION_MAP: dict[MediaType, type[MediaVortexTask]] = {
     MediaType.TV_REG: MediaVortexTask,
 }
 
+# Retry classification for the vendor constructor request (EXT-011).
+#
+# ``RETRIABLE_EXCEPTIONS`` includes ``TimeoutError``, and ``CallTimeoutError``
+# subclasses ``TimeoutError`` (``core/errors.py``).  Retrying such a timeout
+# would re-enter the singleton ``__init__`` while the timed-out thread is still
+# running it — two concurrent constructions racing on ``self.network_module``
+# and ``self.cats``.  Excluding ``TimeoutError`` subclasses keeps only genuine
+# transport errors (connection/DNS/reset/protocol) retryable; a constructor
+# ``CallTimeoutError``, HTTP 429, and 5xx all re-raise immediately (the
+# deferred behavior B010's release guard relies on).  Derived programmatically
+# so it stays in sync with ``RETRIABLE_EXCEPTIONS`` rather than hardcoding the
+# members.
+_CONSTRUCTOR_RETRIABLE: tuple[type[BaseException], ...] = tuple(
+    exc for exc in RETRIABLE_EXCEPTIONS if not issubclass(exc, TimeoutError)
+)
+
 
 class AppService:
     def __init__(self, app_paths: AppPaths, resolver: PathResolver):
         self.app_paths = app_paths
         self.resolver = resolver
+        # Set per report entry to the entry's NetworkClient so the retry-attempt
+        # cleanup wrapper can consult the deferred-work guard (EXT-011).
+        self._attempt_client: NetworkClient | None = None
         self.prepare_app()
 
     @cached_property
@@ -155,6 +174,22 @@ class AppService:
         return Data(**data_settings)
 
     def get_connection(self, media_type: MediaType) -> MediaVortexTask:
+        """Build the vendor ``MediaVortexTask`` for a media type.
+
+        Despite being a constructor, this performs authenticated catalog I/O:
+        ``MediaVortexCats.__init__`` initializes ``MediascopeApiNetwork`` and
+        loads the catalog (``load_tv_property``/``get_units``) over HTTP during
+        construction.  ``check_version=False`` only suppresses the version
+        check, not catalog/authentication initialization.
+
+        It is therefore classified as an API call in ``run_report`` and retried
+        through ``NetworkClient``'s retry loop with the transport-only
+        ``retry_on`` set (``_CONSTRUCTOR_RETRIABLE``): transient transport
+        errors during constructor catalog startup are retried (bounded by
+        ``max_attempts``), while permanent errors
+        (``BadRequestError``/``AuthorizationError``/``FileNotFoundError``)
+        re-raise immediately and ``CallTimeoutError``/5xx/429 are not retried.
+        """
         try:
             connection_service = _CONNECTION_MAP[media_type]
         except KeyError as err:
@@ -169,6 +204,38 @@ class AppService:
             settings_filename=cred_path,
             check_version=False,
         )
+
+    def _get_connection_with_attempt_cleanup(
+        self, media_type: MediaType
+    ) -> MediaVortexTask:
+        """Run :meth:`get_connection` for one retry attempt, cleaning up on failure.
+
+        Wrapped into ``run_report``'s ``NetworkClient.call`` so each retried
+        attempt is isolated: the vendor singleton ``__init__`` re-runs per call
+        and allocates two fresh ``requests.Session`` objects before it can fail
+        mid-way through catalog I/O.  Without this, the sessions allocated by a
+        failed intermediate attempt would be orphaned on the singleton (replaced
+        by the next attempt) and left to garbage collection.
+
+        On a failed attempt the current singleton sessions are captured with the
+        existing :func:`capture_singleton_sessions` and released with
+        :func:`release_sessions`.  The deferred-work guard
+        (``network_client.has_outstanding_deferred()``) is respected: a session
+        whose constructor thread may still be running is never closed beneath
+        in-flight work (ASY-009).  The original exception is always re-raised so
+        ``NetworkClient`` keeps its normal retry/permanent-error classification.
+        """
+        try:
+            return self.get_connection(media_type)
+        except Exception:
+            client = self._attempt_client
+            release_sessions(
+                capture_singleton_sessions(),
+                has_outstanding_work=(
+                    client is not None and client.has_outstanding_deferred()
+                ),
+            )
+            raise
 
     async def run_report(
         self,
@@ -208,10 +275,13 @@ class AppService:
             )
             captured: CapturedSessions | None = None
             try:
+                # The wrapper needs this entry's client to consult the deferred
+                # guard while releasing intermediate-attempt sessions.
+                self._attempt_client = network_client
                 report_service: MediaVortexTask = await network_client.call(
-                    self.get_connection,
+                    self._get_connection_with_attempt_cleanup,
                     report_settings.media,
-                    api_call=False,
+                    retry_on=_CONSTRUCTOR_RETRIABLE,
                     task_name=None,
                 )
                 captured = capture_sessions(report_service)
@@ -263,6 +333,7 @@ class AppService:
                     captured,
                     has_outstanding_work=network_client.has_outstanding_deferred(),
                 )
+                self._attempt_client = None
 
         end_time = datetime.now().replace(microsecond=0)
         logger.info(

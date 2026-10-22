@@ -72,7 +72,7 @@ dependency is the Mediascope HTTP API, reached through the vendor library
 | Orchestrator | `core/services.py` | `AppService`: config loading and caching, settings merge, connection creation, per-report loop; process-wide lazy singleton | no (`get_app_service` is the internal accessor) |
 | Report engine | `core/reports.py` | `ReportFactory` + strategies; `TVMediaReport` lifecycle: period resolution, task generation, submit/poll/extract, worker pool | no |
 | Task model | `core/tasks.py` | `TVTask`: name, settings, status, error; error-JSON5 serialization | no |
-| Network layer | `core/network.py` | `NetworkClient.call`: semaphore-bounded, thread-offloaded, retrying wrapper around most vendor calls; the `api_call=False` discriminator short-circuits CPU/local calls (`builder`, `result2table`, `get_connection`) to direct `_invoke` (bypassing jitter, semaphore, and retry); the direct `cats.get_tv_region()` catalog read in `TVRegTaskStrategy` bypasses `NetworkClient` entirely | no |
+| Network layer | `core/network.py` | `NetworkClient.call`: semaphore-bounded, thread-offloaded, retrying wrapper around most vendor calls; the `api_call=False` discriminator short-circuits CPU/local calls (`builder`, `result2table`) to direct `_invoke` (bypassing jitter, semaphore, and retry); the `get_connection` constructor performs authenticated catalog I/O and uses the normal retry path (transport-only `retry_on`); the direct `cats.get_tv_region()` catalog read in `TVRegTaskStrategy` bypasses `NetworkClient` entirely | no |
 | Utilities | `core/utils.py` | Date/period math, JSON5/CSV I/O, suffix mapping, slice localization, frequency pivot, file listing | no |
 | Errors | `core/errors.py` | `NoReportFoundError`, `WrongDataSettings` — `NoReportFoundError` is raised by `get_period` for out-of-range periods (`TVMediaReport.get_period`) and by `processing_tasks` for a zero-task fan-out; since PIPE-013 `AppService.run_report` catches both per entry, logs a warning, and continues to the next entry (unexpected errors are not caught and still abort). `WrongDataSettings` is declared but unused (reserved for future subtype-default validation) | no |
 
@@ -101,7 +101,7 @@ Verified call directions (not inferred from names) `[code]`:
 - `AppService.run_report` → `get_report_settings` → `ReportSettings`
   (`services.py:85-98`); → `get_data_settings` → `get_default_data_settings` +
   `merge_data_settings` → `Data` (`services.py:135-138`); → `NetworkClient.call(
-  self.get_connection, media, api_call=False)` (`services.py:186-190`); → `ReportFactory(...)` →
+  self.get_connection, media, retry_on=_CONSTRUCTOR_RETRIABLE)` (`services.py:186-190`); → `ReportFactory(...)` →
   `TVMediaReport(...)` → `create_report()` (`services.py:194`).
 - `TVMediaReport.create_report` → `get_period()` → `get_available_period()` →
   `network_client.call(catalogs.get_availability_period)` (`reports.py:236-295`,
@@ -151,7 +151,7 @@ sequenceDiagram
     SVC->>SVC: validate entries (ReportSettings)
     loop for each report entry
         SVC->>SVC: merge defaults + entry → Data
-        SVC->>NET: get_connection(media) [api_call=False]
+        SVC->>NET: get_connection(media) [retry_on=transport-only]
         NET->>API: auth / session (vendor lib)
         SVC->>REP: create_report()
         REP->>NET: get_availability_period(kitId)
@@ -218,8 +218,8 @@ Runtime knobs that shape behavior, all hard-coded defaults (no config file
 maps to them): `max_tasks = 100` (`reports.py:113`), `NetworkClient`
 (`max_concurrent_requests=5`, configurable via `app_config.json5`, `sleep_time=2`, `max_attempts=10`,
 `call_timeout=300.0`, `retry_5xx=True`, `log_errors_detail=False`,
-`network.py:101-110`), `api_call=False` discriminator on `builder`/`result2table`/
-`get_connection` short-circuits `NetworkClient.call` to direct `_invoke`
+`network.py:101-110`), `api_call=False` discriminator on `builder`/`result2table`
+short-circuits `NetworkClient.call` to direct `_invoke`
 (network.py:174-175), task-submission POST is config-driven via `SendTaskSettings`
 (reports.py:465-467), poll cadence starts at 30 s and ramps to 60 s (increasing:
 30 → 50 → 60) (`reports.py:517, 557`), with `get_status(sleep_time=30)`

@@ -19,6 +19,35 @@ from mko_get_mediascope_data.core.models import (
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
 from mko_get_mediascope_data.core.services import AppService
 
+# Control kwargs consumed by ``NetworkClient.call`` itself (not by the wrapped
+# callable).  The test doubles replace ``NetworkClient.call`` and delegate to the
+# real callable, so these must be stripped before invocation.
+_CALL_CONTROL_KWARGS = frozenset(
+    {"api_call", "retryable", "retry_on", "task_name", "sleep_time"}
+)
+
+
+def _delegating_call_effect(report_service: MagicMock):
+    """Build a ``NetworkClient.call`` side effect doubling the constructor only.
+
+    The constructor call (``get_connection`` / its retry-attempt wrapper) returns
+    the doubled report service; every other wrapped callable is invoked with the
+    control kwargs removed.
+    """
+
+    async def side_effect(func, *args, **kwargs):
+        if getattr(func, "__name__", None) in {
+            "get_connection",
+            "_get_connection_with_attempt_cleanup",
+        }:
+            return report_service
+        forwarded = {
+            k: v for k, v in kwargs.items() if k not in _CALL_CONTROL_KWARGS
+        }
+        return func(*args, **forwarded)
+
+    return side_effect
+
 _LOG_CONFIG = """
 {
   "version": 1,
@@ -108,12 +137,9 @@ async def test_run_report_with_real_models(
     # NetworkClient() internally) receives our double instead of a real client.
     mock_network_client = MagicMock()
 
-    async def mock_call_side_effect(func, *args, **kwargs):
-        if getattr(func, "__name__", None) == "get_connection":
-            return mock_report_service
-        return func(*args, **kwargs)
-
-    mock_network_client.call = AsyncMock(side_effect=mock_call_side_effect)
+    mock_network_client.call = AsyncMock(
+        side_effect=_delegating_call_effect(mock_report_service)
+    )
     mocker.patch(
         "mko_get_mediascope_data.core.services.NetworkClient",
         return_value=mock_network_client,
@@ -516,12 +542,9 @@ async def test_run_report_multi_entry_yields_multiple_paths(
 
     mock_network_client = MagicMock()
 
-    async def mock_call_side_effect(func, *args, **kwargs):
-        if getattr(func, "__name__", None) == "get_connection":
-            return mock_report_service
-        return func(*args, **kwargs)
-
-    mock_network_client.call = AsyncMock(side_effect=mock_call_side_effect)
+    mock_network_client.call = AsyncMock(
+        side_effect=_delegating_call_effect(mock_report_service)
+    )
     mocker.patch(
         "mko_get_mediascope_data.core.services.NetworkClient",
         return_value=mock_network_client,
@@ -587,12 +610,9 @@ async def test_no_overlap_entry_warns_and_continues_later_entries(
 
     mock_network_client = MagicMock()
 
-    async def mock_call_side_effect(func, *args, **kwargs):
-        if getattr(func, "__name__", None) == "get_connection":
-            return mock_report_service
-        return func(*args, **kwargs)
-
-    mock_network_client.call = AsyncMock(side_effect=mock_call_side_effect)
+    mock_network_client.call = AsyncMock(
+        side_effect=_delegating_call_effect(mock_report_service)
+    )
     mocker.patch(
         "mko_get_mediascope_data.core.services.NetworkClient",
         return_value=mock_network_client,

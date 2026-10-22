@@ -18,12 +18,20 @@ timed-out thread still holds it (ASY-009).
 
 import logging
 from dataclasses import dataclass
+from weakref import WeakSet
 
 from mediascope_api.mediavortex.catalogs import MediaVortexCats
 from mediascope_api.mediavortex.tasks import MediaVortexTask
 from requests import Session
 
 logger = logging.getLogger(__name__)
+
+# Sessions already handed to :func:`release_sessions`, so the two release paths
+# (per-retry-attempt cleanup in ``AppService`` and the per-entry ``finally``)
+# compose without double-closing the same session.  A ``WeakSet`` never keeps a
+# session alive and cannot collide on a re-used ``id()``; a fresh entry always
+# allocates new ``Session`` objects, so a closed session is never re-released.
+_released_sessions: "WeakSet[Session]" = WeakSet()
 
 
 @dataclass(frozen=True)
@@ -157,7 +165,15 @@ def _current_cats_owner() -> object | None:
 
 
 def _close_quietly(session: Session, label: str) -> None:
-    """Close ``session``, logging (never raising) on failure."""
+    """Close ``session``, logging (never raising) on failure.
+
+    Idempotent across the two release paths: a session already released by an
+    intermediate retry attempt (EXT-011) is skipped so the per-entry ``finally``
+    does not close it a second time.
+    """
+    if session in _released_sessions:
+        return
+    _released_sessions.add(session)
     try:
         session.close()
     except Exception:  # noqa: BLE001 — release must not mask the original error
