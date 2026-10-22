@@ -524,14 +524,21 @@ class TVMediaReport(MediaReport):
         )
         if task_json is not False:
             task.key = {}
-            # Selective retry: retry only on connection-level errors (SSL,
-            # timeout, connection reset) that occur BEFORE the POST is committed.
-            # HTTP-level errors (429, 5xx, MediascopeApiError) are re-raised
-            # immediately to avoid duplicate task creation.
+            # Config-driven submission retry. The exception set selected by
+            # retry_on (RETRIABLE_EXCEPTIONS) contains transport-level errors
+            # such as ConnectionError and Timeout — the latter also covers
+            # ReadTimeout, whose class does not establish that the remote
+            # write was unapplied. A retried lost-response failure may thus
+            # replay a possibly-committed POST; submission is best-effort
+            # (owner decision D-16), and disabling app retries does not
+            # disable the vendor's independent urllib3.Retry transport layer.
+            # ConnectTimeout (connection not established) remains safe to
+            # retry. HTTP-level errors (429, 5xx, MediascopeApiError) are
+            # re-raised immediately so the application does not replay them.
             cfg = self.send_task_settings
-            # retryable=False forces a single attempt (retry_on must be None so the
-            # early-return path at network.py:182 is taken); otherwise retry_on_connection_error
-            # selects selective (transport-only) vs default-unrestricted retry scope.
+            # retryable=False disables the application retry loop (single
+            # attempt); retry_on_connection_error then selects selective
+            # (transport-only) vs default-unrestricted retry scope.
             retryable: bool = cfg.retryable
             retry_on: tuple[type[BaseException], ...] | None = (
                 RETRIABLE_EXCEPTIONS if cfg.retry_on_connection_error else None

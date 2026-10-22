@@ -216,8 +216,14 @@ to `AppService.run_report` (`services.py:167-233`).
     builds the API request via `network_client.call(builder, api_call=False)`
     (`reports.py:365-367`) — bypassing the semaphore/jitter/retry path since
     `build_task` is a pure CPU call; if no task key comes back, the task is marked
-    failed (`reports.py:378-381`). The task-submission POST (`sender`) passes
-    `retryable=False` (`reports.py:370`), keeping the semaphore + jitter but no retry.
+    failed (`reports.py:378-381`). The task-submission POST (`sender`) is
+    config-driven via `SendTaskSettings`, keeping the semaphore + jitter: by
+    default it enters the application retry loop for `RETRIABLE_EXCEPTIONS`
+    (`ConnectionError`, `Timeout` including `ReadTimeout`) while HTTP 429/5xx
+    are re-raised, and `retryable=False` makes it a single attempt. Retrying a
+    selected transport error does not prove the request body was unapplied, and
+    the vendor's independent `urllib3.Retry` layer can replay a POST regardless
+    of application retries — unique task creation is best-effort (D-16).
     Structured `task_stage_complete stage=send` timing log replaces the prior
     `logger.info("=")` placeholder (`reports.py:372-377`). `wait_task`
     (`reports.py:383-440`): polls `get_status` every ~30 s (first poll), ramping to 50 s then 60 s (capped), with exponential backoff up to 60 s, until `DONE` / `FAILED` / `CANCELLED`, a poll deadline

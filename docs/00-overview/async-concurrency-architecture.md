@@ -139,7 +139,7 @@ worker loop (reports.py:207)
   └── _process_item                  (reports.py:177)
       ├── send_task                  (reports.py:168)
       │   ├── builder call           (reports.py:480, api_call=False)
-      │   └── sender call            (reports.py:499, retryable=False)
+      │   └── sender call            (reports.py:499, config-driven retry)
       │   [task_stage_complete stage=send, reports.py:504-513]
       ├── wait_task (poll loop)      (reports.py:171)
       │   ├── get_status poll call   (reports.py:568, sleep_time=self.poll.sleep_time=30)
@@ -238,7 +238,7 @@ error-artifact write (ASY-008) nor an unexpected worker exit (ASY-008
 | Call | Source location | `sleep_time` param | `api_call` | Effective pre-call smoothing |
 |---|---|---|---|---|
 | `builder` | reports.py:480-482 | default (2) | **False** | bypassed (no jitter, no semaphore) |
-| `sender` | reports.py:499-502 | default (2), `retryable=False` | default (True) | uniform 1–4 s |
+| `sender` | reports.py:499-502 | default (2), config-driven retry | default (True) | uniform 1–4 s |
 | `get_status` (poll) | reports.py:568-570 | 30 (`self.poll.sleep_time`) | default (True) | uniform 15–60 s |
 | `get_result` | reports.py:611-613 | default (2) | default (True) | uniform 1–4 s |
 | `result2table` | reports.py:619-622 | default (2) | **False** | bypassed (no jitter, no semaphore) |
@@ -255,9 +255,13 @@ on actual completion (network.py:127-134). Calls with `api_call=False` (`builder
 `get_connection`) still route through `_invoke` (so they remain thread-offloaded and
 timeout-bounded) but skip the initial jitter sleep, the `asyncio.Semaphore`, and the
 retry loop entirely (network.py:226-228). The task-submission POST (`sender`,
-reports.py:499) passes `retryable=False` — it is **not** `api_call=False`; it keeps
-the semaphore + jitter but executes exactly once with no retries to prevent duplicate
-task creation.
+reports.py:499) is config-driven via `SendTaskSettings` — it is **not** `api_call=False`;
+by default it enters the application retry loop for `RETRIABLE_EXCEPTIONS`
+(`ConnectionError`, `Timeout` including `ReadTimeout`) while HTTP 429/5xx are
+re-raised, and `retryable=False` makes it a single attempt. Retrying a selected
+transport error does not prove the request body was unapplied, and the vendor's
+independent `urllib3.Retry` layer can replay a POST regardless of the application
+retry settings, so unique task creation is best-effort (D-16).
 
 ### Retry and backoff
 
@@ -301,9 +305,14 @@ retried instead of raised immediately (network.py:314–325). HTTP 429 is always
 retried with exponential backoff — the vendor does not expose the `Retry-After`
 header (network.py:286–300).
 
-The task-submission POST (`sender`, reports.py:499) passes `retryable=False`, so it
-executes exactly once with no retries. Separately, `builder` (reports.py:480-482) and
-`result2table` (reports.py:619-622) pass `api_call=False`, which bypasses the entire
+The task-submission POST (`sender`, reports.py:499) is config-driven via
+`SendTaskSettings`: by default it enters the application retry loop for
+`RETRIABLE_EXCEPTIONS` (`ConnectionError`, `Timeout` including `ReadTimeout`),
+while HTTP 429/5xx are re-raised; `retryable=False` makes it a single attempt.
+Because a selected transport error does not prove the request body was
+unapplied, and the vendor's independent `urllib3.Retry` layer can replay a POST
+regardless of application retries, unique task creation is best-effort (D-16).
+Separately, `builder` (reports.py:480-482) and `result2table` (reports.py:619-622) pass `api_call=False`, which bypasses the entire
 `call` wrapper — jitter, semaphore, and retry loop — returning through `_invoke`
 directly (network.py:226-228).
 

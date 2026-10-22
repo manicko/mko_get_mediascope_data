@@ -31,6 +31,12 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 # All errors considered transient and worthy of retries
+#
+# Membership describes exception *type*, not remote write state. ``Timeout``
+# also covers ``ReadTimeout``, which only means the response was not received;
+# it does not establish that the remote write was unapplied. Retrying such an
+# exception may therefore replay a request whose body was already committed
+# (see ``SendTaskSettings`` and ``TVMediaReport.send_task``).
 RETRIABLE_EXCEPTIONS = (
     ConnectTimeout,
     ConnectionError,
@@ -209,10 +215,13 @@ class NetworkClient:
             When provided, only exception types in this tuple are retried.
             All other exceptions are re-raised immediately.  This overrides
             ``retryable=False`` for the specified exception types, allowing
-            selective retry on transport-level errors (SSL, timeout, connection
-            reset) even for POST calls where HTTP-level errors should not be
-            retried (to avoid duplicate task creation).  When ``None``, all
-            ``RETRIABLE_EXCEPTIONS`` and 429/5xx errors are retried.
+            selective retry on a type subset (e.g. transport-level errors)
+            for POST calls where HTTP-level errors should not be retried.
+            Note that retrying a type subset does not prove the remote write
+            was unapplied — ``ReadTimeout`` may follow a committed request
+            body — so ensuring unique task creation is best-effort, not a
+            guarantee.  When ``None``, all ``RETRIABLE_EXCEPTIONS`` and
+            429/5xx errors are retried.
         task_name
             Optional task name appended to log messages (``task=<name>``)
             for correlation when hundreds of concurrent tasks are running.
@@ -269,9 +278,11 @@ class NetworkClient:
             except RETRIABLE_EXCEPTIONS as err:
                 # When retry_on is specified, only retry the named exception types.
                 # Others (even if technically retryable) are re-raised immediately.
-                # This is used for POST calls (send_task) where HTTP-level errors
-                # indicate the request may have been committed and should not be
-                # retried to avoid duplicate task creation.
+                # This is used for POST calls (send_task) to limit replay to a
+                # selected transport-error subset.  Retrying that subset does not
+                # establish that a prior request body was unapplied (a lost-response
+                # timeout may follow a committed write), so unique task creation
+                # remains best-effort rather than guaranteed.
                 if retry_on is not None and not isinstance(err, retry_on):
                     logger.error(
                         f'Rejected error type "{type(err).__name__}" '
@@ -287,11 +298,12 @@ class NetworkClient:
                 # 429 — vendor does not expose Retry-After header on the
                 # exception (verified); falls back to exponential backoff below.
                 # When retry_on is specified (e.g. send_task), 429 is an HTTP-level
-                # response that may have been committed — re-raise immediately.
+                # response that is re-raised immediately rather than replayed by
+                # the application.
                 if retry_on is not None:
                     logger.error(
                         f"HTTP 429 on retry_on-limited call to "
-                        f'"{func.__name__}" — re-raising (may have been committed){_task_ctx}'
+                        f'"{func.__name__}" — re-raising (HTTP response, not retried){_task_ctx}'
                     )
                     raise
                 logger.warning(
@@ -302,13 +314,13 @@ class NetworkClient:
             except MediascopeApiError as err:
                 # Unhandled HTTP status (403, 404, 204, 500, 502, etc.).
                 # When retry_on is specified (e.g. send_task), ALL HTTP-level errors
-                # are re-raised immediately because the POST may have been committed
-                # and retrying risks duplicate task creation.
+                # are re-raised immediately so the application does not replay a
+                # response it already received.
                 if retry_on is not None:
                     code = getattr(err, "code", None)
                     logger.error(
                         f"HTTP error ({code}) on retry_on-limited call to "
-                        f'"{func.__name__}" — re-raising (may have been committed){_task_ctx}'
+                        f'"{func.__name__}" — re-raising (HTTP response, not retried){_task_ctx}'
                     )
                     raise
                 # 5xx is retried when retry_5xx=True; all others re-raise.

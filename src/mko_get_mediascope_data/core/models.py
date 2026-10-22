@@ -42,15 +42,23 @@ class PollSettings(BaseModel):
 class SendTaskSettings(BaseModel):
     """Configuration for the task-submission POST call.
 
-    ``retryable`` enables app-level retry on connection-level errors
-    (SSL handshake failure, timeout, connection reset) that occur BEFORE
-    the HTTP request body is committed — where retrying is safe and does
-    not risk duplicate task creation.
+    ``retryable=True`` (the default) enters the application retry loop;
+    ``False`` makes the submission a single attempt.  The retried exception
+    set is ``RETRIABLE_EXCEPTIONS`` (transport-level errors such as
+    ``ConnectionError``, ``Timeout`` — which also covers ``ReadTimeout`` —
+    and SSL handshake failures).  Exception membership does **not** prove
+    that the remote write was unapplied: a retried failure may be a
+    lost-response timeout whose request body was already committed.  A later
+    transport replay can therefore not be ruled out, and submission is
+    best-effort (owner decision D-16).  ``ConnectTimeout`` (connection not
+    established) remains safe to retry.
 
     ``retry_on_connection_error`` controls whether ``RETRIABLE_EXCEPTIONS``
-    (transport-level errors) are retried.  This is separate from
-    ``retryable`` because some deployments may want to disable retries
-    entirely (e.g., behind a proxy that handles retry).
+    are retried (``True``, the default) or whether the submission falls back
+    to the unrestricted retry scope (``False``).  It is separate from
+    ``retryable`` because some deployments may want to disable app retries
+    entirely (e.g., behind a proxy that handles retry) — note that this does
+    not disable the vendor's independent ``urllib3.Retry`` transport layer.
     """
 
     retryable: bool = True
