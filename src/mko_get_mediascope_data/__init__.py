@@ -33,10 +33,16 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str) -> Any:
-    """Lazily re-export public API names from the ``app`` submodule.
+    """Lazily re-export public API names from the ``app`` submodule (PEP 562).
 
-    Uses PEP 562 so that importing the package or accessing any single
-    name does not eagerly execute ``app.py``'s module body.
+    Bare package import does **not** import ``mko_get_mediascope_data.app``: the
+    package module body only defines ``__version__``, ``__all__``, ``__getattr__``
+    and ``__dir__``. The first access of a supported public name (any entry in
+    ``__all__``) triggers ``importlib.import_module("mko_get_mediascope_data.app")``,
+    which executes ``app.py``'s module body (importing ``.core.*`` and constructing
+    the Typer app); the resolved object is cached in this package's ``globals()`` so
+    subsequent accesses bypass ``__getattr__``. Accessing a name not in ``__all__``
+    raises ``AttributeError``.
     """
     if name in __all__:
         import importlib

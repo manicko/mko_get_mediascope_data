@@ -248,6 +248,43 @@ def test_public_package_exports_preserve_static_function_signatures():
         assert typing.get_type_hints(pkg_fn) == typing.get_type_hints(app_fn)
 
 
+def test_first_public_name_access_loads_app_module():
+    """First public-name access loads ``.app`` without bootstrapping services.
+
+    Runs in an isolated subprocess so the warm test interpreter's already
+    imported ``.app`` (and any prior access) cannot mask the lazy-load
+    boundary. A fresh interpreter importing only the package must have
+    ``mko_get_mediascope_data.app`` absent from ``sys.modules``; the first
+    access of a supported public name must load it, while
+    ``core.services._app_service`` stays ``None`` (no ``dictConfig`` / JSON5
+    / ``AppService`` bootstrap).
+    """
+    import subprocess
+
+    script = (
+        "import sys\n"
+        "import mko_get_mediascope_data\n"
+        "assert 'mko_get_mediascope_data.app' not in sys.modules, 'app loaded on bare import'\n"
+        "value = mko_get_mediascope_data.run_report\n"
+        "assert callable(value), 'public name did not resolve to a callable'\n"
+        "assert 'mko_get_mediascope_data.app' in sys.modules, 'app not loaded on access'\n"
+        "import mko_get_mediascope_data.core.services as services\n"
+        "assert services._app_service is None, 'service bootstrap occurred on name access'\n"
+        "print('OK')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, (
+        f"subprocess failed: rc={result.returncode}\n"
+        f"stdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert "OK" in result.stdout
+
+
 def test_cli_missing_settings_explains_init_recovery(mocker, tmp_path):
     """`run` with missing settings exits nonzero and shows init recovery hint."""
     report_file = tmp_path / "report.json5"
