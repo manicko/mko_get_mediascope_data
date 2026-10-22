@@ -112,6 +112,11 @@ class RichProgressReporter(ProgressReporter):
             status: self._progress.add_task(status.value, total=total_tasks)
             for status in TaskStatus
         }
+        # Initialize the derived QUEUED count from the known total before
+        # starting Live, so the first rendered frame shows the correct pending
+        # count instead of zero.  At this reporting boundary all generated tasks
+        # are in the QUEUED lifecycle state (NUM-005).
+        self._refresh_bars()
         self._start_live()
 
     def task_status_changed(

@@ -1,16 +1,18 @@
 """Tests for the ProgressReporter protocol, NullProgressReporter, TVTask defaults,
-and RichProgressReporter log-handler redirect (Phase 4).
+and RichProgressReporter log-handler redirect and enqueued-count rendering.
 
 Covers the no-op semantics of :class:`NullProgressReporter`, the runtime
 ``isinstance`` check against the ``runtime_checkable`` :class:`ProgressReporter`
-protocol, the ``TVTask.task_status`` default of ``QUEUED``, and the
-``RichProgressReporter`` handler-stream redirect through the ``Live`` region.
+protocol, the ``TVTask.task_status`` default of ``QUEUED``, the
+``RichProgressReporter`` handler-stream redirect through the ``Live`` region,
+and NUM-005: the initial enqueued-pending count must render correctly.
 """
 
 import io
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 from mko_get_mediascope_data.core.models import TaskStatus
 from mko_get_mediascope_data.core.progress import NullProgressReporter, ProgressReporter
@@ -161,3 +163,103 @@ class TestRichProgressReporterHandlerRedirect:
         finally:
             root.handlers.clear()
             root.handlers.extend(saved_handlers)
+
+
+# ---------------------------------------------------------------------------
+# NUM-005: initial display must show correct enqueued pending count
+# ---------------------------------------------------------------------------
+
+
+class TestRichProgressReporterEnqueuedCounts:
+    """The initial render after report_started must show the real pending count.
+
+    Before the fix, all bars showed 0/total because _refresh_bars only ran
+    inside task_status_changed (i.e. after a transition).  Now _refresh_bars
+    runs at startup, so the derived QUEUED bar correctly shows total/total.
+    """
+
+    @staticmethod
+    def _bar_completed(reporter: Any, status: TaskStatus) -> int:
+        """Read the actual completed value from the rendered Rich bar."""
+        bar_id = reporter._bars[status]
+        return int(reporter._progress._tasks[bar_id].completed)
+
+    @staticmethod
+    def _rendered_counts(reporter: Any) -> dict[TaskStatus, int]:
+        """Aggregate the actual rendered bar values for every status."""
+        return {s: TestRichProgressReporterEnqueuedCounts._bar_completed(reporter, s)
+                for s in TaskStatus}
+
+    def test_zero_total_shows_zero_queued(self) -> None:
+        """With no tasks, the QUEUED bar must render 0/0 (not crash)."""
+        from mko_get_mediascope_data.app import RichProgressReporter
+
+        reporter = RichProgressReporter()
+        try:
+            reporter.report_started("empty", total_tasks=0)
+            assert self._bar_completed(reporter, TaskStatus.QUEUED) == 0
+            assert sum(self._rendered_counts(reporter).values()) == 0
+        finally:
+            reporter.report_completed("empty")
+
+    def test_enqueued_pending_tasks_render_correct_count_before_first_transition(
+        self,
+    ) -> None:
+        """After report_started(total=6), the QUEUED bar must show 6/6.
+
+        Six tasks are all in the QUEUED lifecycle state at the report_started
+        boundary.  The derived QUEUED bar (total - sent - completed - failed)
+        must therefore show the full count immediately — not zero, which was
+        the bug (NUM-005): the display stayed at 0/6 until the first transition.
+        """
+        from mko_get_mediascope_data.app import RichProgressReporter
+
+        reporter = RichProgressReporter()
+        try:
+            reporter.report_started("test_report", total_tasks=6)
+
+            # Rendered QUEUED bar must reflect 6 enqueued tasks, not 0.
+            assert self._bar_completed(reporter, TaskStatus.QUEUED) == 6
+            counts = self._rendered_counts(reporter)
+            assert counts == {
+                TaskStatus.QUEUED: 6,
+                TaskStatus.SENT: 0,
+                TaskStatus.COMPLETED: 0,
+                TaskStatus.FAILED: 0,
+            }
+            assert sum(counts.values()) == 6
+
+            # ---- Two skipped completions (QUEUED → COMPLETED) ---------------
+            skip1 = TVTask("skip1", {}, "crosstab", "TV")
+            skip2 = TVTask("skip2", {}, "crosstab", "TV")
+            reporter.task_status_changed(skip1, TaskStatus.QUEUED, TaskStatus.COMPLETED)
+            reporter.task_status_changed(skip2, TaskStatus.QUEUED, TaskStatus.COMPLETED)
+
+            counts = self._rendered_counts(reporter)
+            assert counts[TaskStatus.QUEUED] == 4  # 6 - 2 completed
+            assert counts[TaskStatus.COMPLETED] == 2
+            assert sum(counts.values()) == 6  # total conserved
+            assert all(v >= 0 for v in counts.values())
+
+            # ---- Send transition (QUEUED → SENT) -------------------------------
+            send1 = TVTask("send1", {}, "crosstab", "TV")
+            reporter.task_status_changed(send1, TaskStatus.QUEUED, TaskStatus.SENT)
+
+            counts = self._rendered_counts(reporter)
+            assert counts[TaskStatus.QUEUED] == 3  # 6 - 2 completed - 1 sent
+            assert counts[TaskStatus.SENT] == 1
+            assert sum(counts.values()) == 6
+            assert all(v >= 0 for v in counts.values())
+
+            # ---- Failure transition (SENT → FAILED) ----------------------------
+            reporter.task_status_changed(send1, TaskStatus.SENT, TaskStatus.FAILED)
+
+            counts = self._rendered_counts(reporter)
+            assert counts[TaskStatus.QUEUED] == 3
+            assert counts[TaskStatus.SENT] == 0
+            assert counts[TaskStatus.FAILED] == 1
+            assert counts[TaskStatus.COMPLETED] == 2
+            assert sum(counts.values()) == 6  # total still conserved
+            assert all(v >= 0 for v in counts.values())  # no negative counts
+        finally:
+            reporter.report_completed("test_report")
