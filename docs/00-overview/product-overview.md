@@ -217,7 +217,12 @@ Confirmed by the project's own rules and dependencies `[code, owner-doc]`:
 - **Fixed value sets are enums** (`MediaType`, `ReportType`, `ReportSubtype`),
   so adding a report kind is a code change, not a config change
   (`AGENTS.md` rule 10).
-- **No PyPI publication** (D-19); releases are manual.
+- **No PyPI publication** (D-19); releases are cut manually by pushing a `v*`
+  tag, which runs the release workflow (`.github/workflows/release.yml`). The
+  workflow builds the wheel + sdist, verifies the built artifact `Version`
+  (wheel `dist-info/METADATA` + sdist top-level `PKG-INFO`, exact match to the
+  tag with a single leading `v` stripped) via `ci/check_release_version.py`, and
+  only then creates the GitHub Release from `dist/*`.
 
 ### Success criteria
 

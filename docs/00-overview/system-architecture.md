@@ -246,6 +246,31 @@ logged via structured `task_stage_complete`/`task_complete` records
 | `extra="allow"` on settings models | Intended pass-through of template-defined API parameters | No validation of unknown keys; legacy keys (`folder`, `category_name`) are silently ignored (zero references in `core/`) |
 | Lazy singleton `get_app_service()` | Importing the library must not touch the file system (commit `706eed0`; covered by `tests/test_app.py::test_package_import_does_not_bootstrap`, run: passed) | First use pays config loading; a missing user config surfaces at first command, not at import |
 
+### Packaging, versioning, and release
+
+The distribution is built with the `setuptools` backend plus `setuptools-scm`
+(`pyproject.toml` `[build-system]`). The version is **dynamic** —
+`[project] dynamic = ["version"]`, derived from git tags by `setuptools-scm`
+(`[tool.setuptools_scm]` `tag.prefix = "v"`, `tag.strict = true`,
+`fallback_version = "0.0.0"`). There is **no static `project.version`**: the
+authored version lives only in the built-artifact metadata.
+
+| Artifact | Version source |
+|---|---|
+| Wheel | `*.dist-info/METADATA` (`Version:` field) |
+| sdist | top-level `PKG-INFO` (`Version:` field; a nested `*.egg-info/PKG-INFO` is also emitted and ignored) |
+
+The release workflow (`.github/workflows/release.yml`) triggers on a `push` of a
+`v*` tag, builds the distributions with `uv build`, verifies the tag against the
+artifact metadata, and then creates a GitHub Release from `dist/*` (wheel +
+sdist). The wheel/sdist are not published to PyPI (D-19). Both the release and CI
+workflows check out with `fetch-depth: 0`, which `setuptools-scm` requires to
+derive a version from the full tag history.
+
+| Component | File | Responsibility |
+|---|---|---|
+| Release version guard | `ci/check_release_version.py` | Stdlib-only check: reads `Version` from the built wheel `*.dist-info/METADATA` and the sdist top-level `PKG-INFO`, requires the two to agree, and compares the exact string to the release tag with a single leading `v` stripped. Fails closed on missing/ambiguous metadata or mismatch. Run by the release workflow as `uv run python ci/check_release_version.py --tag "$GITHUB_REF_NAME"` (this replaces reading `pyproject.toml['project']['version']`, which is absent under dynamic versioning). |
+
 ### Risks and known technical limitations
 
 Every row below was verified against the code by this investigation. The audit
@@ -258,7 +283,7 @@ are pointers, not evidence, and several audit entries do not match HEAD.
 | **RESOLVED (W-02):** A single network raise could hang the whole run (no worker exception isolation) | `reports.py:149-188` (try/except/finally with `task_done()` in `finally`) | audit PIPE-002 / ASY-001 leads |
 | **RESOLVED (W-02):** Zero-task and out-of-window periods exited 0 silently | `reports.py:327-330` (NoReportFoundError for out-of-range), `:213-218` (NoReportFoundError for zero tasks) | audit PIPE-004 / PIPE-005 leads |
 | **RESOLVED (W-02):** Poll loop had no deadline | `reports.py:363` (`max_polls=60`, `poll_deadline=3600.0` params), `reports.py:373-386` (guard checks) | audit PIPE-006 lead |
-| **RESOLVED:** Type safety unenforced: mypy red, no CI | `pyproject.toml:137` (`mypy` files = src + tests); `.github/workflows/ci.yml` runs `ruff check src tests` + `pytest`; `uv run mypy src tests` → **0 errors** (verified 22 source files) | audit OPS-001 lead |
+| **RESOLVED:** Type safety unenforced: mypy red, no CI | `pyproject.toml` `[tool.mypy]` `files = ["src", "tests", "ci"]`; `.github/workflows/ci.yml` runs `ruff check src tests ci`, `mypy src tests ci`, and `pytest`; `uv run mypy src tests ci` → **0 errors** (verified 22 source files) | audit OPS-001 lead |
 | Named loggers in `log_config.json5` never fire; root handler applies | `services.py:58-65` vs module logger names | audit OPS-003 lead |
 | Test suite covers utils/models/strategy selection only; no coverage of the period, worker, and CLI happy paths | `tests/` (42 collected, 42 pass, verified `test_create_report_skips_done_files` + `test_create_report_timeout_does_not_hang`) | audit TST-* leads |
 | **RESOLVED (W-02):** `errors.py` exceptions were dead code | `errors.py:1-9`; `NoReportFoundError` now raised at `reports.py:327-330` and `:213-218` | — |

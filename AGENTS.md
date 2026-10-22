@@ -21,7 +21,7 @@ alwaysApply: true
 On Windows, `Makefile.ps1` wraps the same toolchains:
 `.\Makefile.ps1 test` · `.\Makefile.ps1 lint` · `.\Makefile.ps1 typecheck` · `.\Makefile.ps1 format` · `.\Makefile.ps1 all` (lint + test).
 
-**CI:** every push and PR runs `uv run ruff check src tests` then `uv run pytest` (`.github/workflows/ci.yml`).
+**CI:** every push and PR runs `uv run ruff check src tests ci`, `uv run mypy src tests ci`, then `uv run pytest` (`.github/workflows/ci.yml`).
 
 ## Core Context
 
@@ -115,7 +115,7 @@ provides a hermetic `AppService` backed by `tmp_path`.
 ## Toolchain Details
 
 - Windows 11: use PowerShell and `uv`; `make` requires an additional GNU Make/WSL installation. `.\Makefile.ps1` defaults to `all` (lint, then tests); it also accepts `test`, `lint`, `typecheck`, and `format`.
-- Lint: `uv run ruff check src tests`; types: `uv run mypy src tests`; tests: `uv run pytest`. CI runs lint and tests on every push/PR. Pytest enforces `--cov-fail-under=70` and includes slow tests by default.
+- Lint: `uv run ruff check src tests ci`; types: `uv run mypy src tests ci`; tests: `uv run pytest`. CI runs lint, typecheck, and tests on every push/PR. Pytest enforces `--cov-fail-under=70` and includes slow tests by default. Release version guard: `ci/check_release_version.py` (verified against the built wheel/sdist by the release workflow).
 - `ruff check --fix` is the fix/import-sorting command (subject to the actual enabled rules); `ruff format` changes formatting only. `.\Makefile.ps1 format` currently calls `ruff check --fix src tests`. Do not auto-fix application code during configuration-only work.
 - Add dependencies through `uv add <package>` or `uv add --dev <package>` only within an authorized dependency-change task. Do not install unrelated Docker, database, or frontend tooling for this package.
 

@@ -516,10 +516,11 @@ Further limitations observed during this investigation, each traceable to code:
   `release_sessions` (`services.py:330-335`), guarded by
   `NetworkClient.has_outstanding_deferred()` so a session is never closed beneath
   in-flight deferred work (EXT-010, EXT-011).
-- Type safety is now enforced: `uv run mypy src tests` passes with **0 errors**
+- Type safety is now enforced: `uv run mypy src tests ci` passes with **0 errors**
   at HEAD (verified on the investigation machine; down from 56 errors in 7 files
-  at the audit baseline). mypy checks both `src` and `tests` per
-  `pyproject.toml`. CI runs `ruff check src tests` + `pytest`
+  at the audit baseline). mypy checks `src`, `tests`, and `ci` per
+  `pyproject.toml` (`files = ["src", "tests", "ci"]`). CI runs
+  `ruff check src tests ci`, `mypy src tests ci`, and `pytest`
   (`.github/workflows/ci.yml`).
 
 ## Verification
@@ -540,7 +541,7 @@ Read-only probes executed for this document (scripts kept for reproduction in
 | `.ai/tmp/doc_probe_vendor_build_task.py` + reading `.venv/Lib/site-packages/mediascope_api/` | Vendor `build_task` has no `**kwargs` (unknown key → `TypeError`); one `requests.Session` per `MediaVortexTask` (`core/net.py:73`) |
 | `.ai/tmp/doc_probe_links.py` | All relative links and heading anchors in the documentation resolve |
 | `uv run pytest` | **189 passed** (full suite, mocked — no network, no Mediascope credentials; 188 passed with the `@slow` `test_run_report_with_real_models` deselected; coverage reported via `--cov`) |
-| `uv run mypy` | **0 errors** (`uv run mypy src tests` passes with zero errors; mypy checks both `src` and `tests` per `pyproject.toml` `files = ["src", "tests"]`) |
+| `uv run mypy` | **0 errors** (`uv run mypy src tests ci` passes with zero errors; mypy checks `src`, `tests`, and `ci` per `pyproject.toml` `files = ["src", "tests", "ci"]`) |
 | Inspection of the machine's `output/` folder | Confirms the file naming convention `<start>_<end>_<audience>.csv.gz` and that real report runs happened historically; the files predate the current column-selection code |
 
 Side effect of probing, disclosed for completeness: constructing `AppService`

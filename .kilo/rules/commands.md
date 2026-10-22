@@ -35,10 +35,10 @@ CLI commands: `init`, `run`, `list-reports`.
 
 | Task | Command |
 |---|---|
-| Lint | `uv run ruff check src tests` |
+| Lint | `uv run ruff check src tests ci` |
 | Auto-fix (incl. import sorting, I001) | `uv run ruff check --fix src tests` |
 | Format | `uv run ruff format src tests` |
-| Typecheck | `uv run mypy src tests` |
+| Typecheck | `uv run mypy src tests ci` |
 | Add dep | `uv add <pkg>` / `uv add --dev <pkg>`
 | Run tests | `uv run pytest` |
 | Run slow tests only | `uv run pytest -m slow` |
@@ -61,7 +61,7 @@ The project uses `pytest` with `pytest-asyncio` (mode `auto`) and `pytest-mock`.
 | Skip slow tests | `uv run pytest -m "not slow"` | Fast feedback |
 | Run a single test / file | `uv run pytest tests/test_utils.py` | Targeted debugging |
 | Run a single test by name | `uv run pytest -k test_str_to_date` | Targeted debugging |
-| Typecheck | `uv run mypy src tests` | Type errors in src and tests |
+| Typecheck | `uv run mypy src tests ci` | Type errors in src, tests, and ci |
 
 **Test fixtures** — source of truth: `tests/conftest.py` (`mock_network_client`, `dummy_df`,
 `tv_json5_content`, `tmp_report_dir`). `tests/test_services.py` defines the
@@ -69,4 +69,4 @@ The project uses `pytest` with `pytest-asyncio` (mode `auto`) and `pytest-mock`.
 
 ## CI
 
-Every push and PR runs `uv run ruff check src tests` then `uv run pytest`.
+Every push and PR runs `uv run ruff check src tests ci`, `uv run mypy src tests ci`, then `uv run pytest`.
