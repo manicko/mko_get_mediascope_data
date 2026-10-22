@@ -19,6 +19,7 @@ import json5
 from unidecode import unidecode
 
 from tests.conftest import MOCK_TASK_KEY, expected_output_columns
+from mko_get_mediascope_data.core import utils
 from mko_get_mediascope_data.core.errors import NoReportFoundError
 from mko_get_mediascope_data.core.models import (
     Data,
@@ -214,6 +215,55 @@ async def test_create_report_skips_done_files(
     mock_report_service.send_task.assert_not_called()
     mock_report_service.get_status.assert_not_called()
     mock_report_service.get_result.assert_not_called()
+
+
+def test_done_files_excludes_temp_csv(
+    tmp_path: Path,
+    tv_json5_content: str,
+    hermetic_app_service: AppService,
+):
+    """``get_done_files`` must ignore atomic-publication temp CSV files.
+
+    ``utils.csv_to_file`` publishes atomically by writing a temp file whose
+    name starts with ``utils.CSV_TEMP_PREFIX`` and then ``os.replace``-ing it
+    onto the final name.  A temp file left behind (e.g. a crashed writer) must
+    never be recognized as published output during resume discovery, so
+    ``get_done_files`` files it under the published key only.
+    """
+
+    # ---- 1. Parse ReportSettings from the fixture JSON5 ----------------
+    json5_data = json.loads(tv_json5_content)
+    report_settings = ReportSettings(**json5_data[0])
+
+    # ---- 2. Hermetic AppService + data settings -----------------------
+    app_service = hermetic_app_service
+    data_settings = app_service.get_data_settings(report_settings)
+
+    # ---- 3. Export path with a published file and a sibling temp file -
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    published_name = "2025-01-01_2025-01-07_all_18+"
+    (export_path / f"{published_name}.csv.gz").touch()
+    (export_path / f"{utils.CSV_TEMP_PREFIX}{published_name}.csv.gz").touch()
+
+    # ---- 4. Minimal report (only export_path + report_settings used) --
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=MagicMock(),
+        network_client=MagicMock(),
+        task_strategy=MagicMock(),
+        data_strategy=MagicMock(),
+        check_done=True,
+    )
+
+    # ---- 5. Assertions ------------------------------------------------
+    done_files = report.get_done_files()
+    assert published_name in done_files
+    assert f"{utils.CSV_TEMP_PREFIX}{published_name}" not in done_files
+    assert len(done_files) == 1
 
 
 async def test_create_report_timeout_does_not_hang(

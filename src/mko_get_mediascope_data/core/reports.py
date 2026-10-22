@@ -97,10 +97,11 @@ class Report:
 
     def get_done_files(self):
         sufix = utils.get_files_suffix(self.report_settings.compression)
-        return utils.dir_content_to_dict(
-            utils.list_files_in_directory(self.export_path, extensions=(sufix,)),
-            suffix=sufix,
-        )
+        files = utils.list_files_in_directory(self.export_path, extensions=(sufix,))
+        published_files = [
+            file for file in files if not file.name.startswith(utils.CSV_TEMP_PREFIX)
+        ]
+        return utils.dir_content_to_dict(published_files, suffix=sufix)
 
 
 class MediaReport(Report):
