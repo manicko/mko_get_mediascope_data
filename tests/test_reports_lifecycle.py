@@ -8,6 +8,7 @@ mocked -- only the external Mediascope API client is doubled.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -2529,3 +2530,138 @@ async def test_write_error_artifact_swallows_and_logs(
         "artifact_task" in msg and "original task error" in msg
         for msg in error_messages
     ), f"Expected task name and original error in log, got: {error_messages}"
+
+
+# ---------------------------------------------------------------------------
+# PIPE-014: collision-safe task identity and deterministic disambiguation
+# ---------------------------------------------------------------------------
+
+
+def _build_collision_report(
+    tmp_path: Path,
+    hermetic_app_service: AppService,
+    targets: dict[str, str],
+) -> TVMediaReport:
+    """Construct a hermetic ``TVMediaReport`` for PIPE-014 collision tests.
+
+    Uses the real ``DefaultTVTaskStrategy`` so the generated task names follow
+    production transliteration, and a doubled ``MediaVortexTask`` whose API
+    methods are never invoked (the tests drive ``generate_tasks`` directly).
+    """
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",  # type: ignore[arg-type]
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+        target_audiences=targets,
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True, exist_ok=True)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+
+    return TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=NetworkClient(sleep_time=0, max_attempts=1),
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
+        check_done=False,
+    )
+
+
+async def _collect_generated_tasks(report: TVMediaReport) -> list[TVTask]:
+    """Materialise the report's generated tasks exactly like processing_tasks."""
+    tasks: list[TVTask] = []
+    async for task in report.generate_tasks():
+        tasks.append(task)
+    return tasks
+
+
+async def test_distinct_audience_names_cannot_collide_after_transliteration(
+    tmp_path: Path,
+    hermetic_app_service: AppService,
+):
+    """PIPE-014: distinct audiences that transliterate identically stay unique.
+
+    ``"Аудитория"`` (leading Cyrillic "А", U+0410) and ``"Aудитория"``
+    (leading Latin "A", U+0041) are distinct audiences with distinct filters,
+    yet both ``unidecode`` to the same string.  Without disambiguation both
+    tasks would share one persisted filename.  After
+    ``Report._disambiguate_task_names`` each name is unique and carries the
+    deterministic 8-hex SHA-256 suffix; rerunning yields identical names.
+    """
+    cyrillic_target = "\u0410удитория"
+    latin_target = "Aудитория"
+    assert cyrillic_target != latin_target
+    assert unidecode(cyrillic_target) == unidecode(latin_target)
+
+    targets = {cyrillic_target: "age >= 18", latin_target: "age >= 25"}
+
+    report = _build_collision_report(tmp_path, hermetic_app_service, targets)
+    report.period = [("2025-01-01", "2025-01-07")]
+
+    tasks = await _collect_generated_tasks(report)
+
+    # Precondition: the raw transliterated names genuinely collide.
+    assert len(tasks) == 2
+    assert tasks[0].name == tasks[1].name
+
+    # Disambiguate exactly as processing_tasks does.
+    TVMediaReport._disambiguate_task_names(tasks)
+
+    names = [task.name for task in tasks]
+    assert len(set(names)) == 2, f"Expected unique names, got: {names}"
+
+    legacy_name = tasks[0].name[:-9]
+    for task in tasks:
+        assert task.name.startswith(legacy_name + "_")
+        assert task._collision_id is not None
+        digest = hashlib.sha256(task._collision_id.encode("utf-8")).hexdigest()[:8]
+        assert task.name == legacy_name + "_" + digest
+        assert len(digest) == 8
+
+    # Stability: regenerating and re-disambiguating yields the same names.
+    report_again = _build_collision_report(
+        tmp_path, hermetic_app_service, targets
+    )
+    report_again.period = [("2025-01-01", "2025-01-07")]
+    tasks_again = await _collect_generated_tasks(report_again)
+    TVMediaReport._disambiguate_task_names(tasks_again)
+
+    assert [task.name for task in tasks_again] == names
+
+
+async def test_non_colliding_names_preserved_without_hash(
+    tmp_path: Path,
+    hermetic_app_service: AppService,
+):
+    """PIPE-014: a single/non-colliding audience keeps its exact legacy name.
+
+    With one audience the transliterated name is unique, so
+    ``_disambiguate_task_names`` must leave it verbatim (no hash suffix) so
+    resume discovery of legacy output files is unchanged.
+    """
+    target = "all 18+"
+    report = _build_collision_report(
+        tmp_path, hermetic_app_service, {target: "age >= 18"}
+    )
+    report.period = [("2025-01-01", "2025-01-07")]
+
+    tasks = await _collect_generated_tasks(report)
+    assert len(tasks) == 1
+
+    legacy_name = "_".join(("2025-01-01", "2025-01-07")) + "_" + unidecode(target)
+    assert tasks[0].name == legacy_name
+
+    TVMediaReport._disambiguate_task_names(tasks)
+
+    assert tasks[0].name == legacy_name, (
+        "Non-colliding name must stay verbatim for resume back-compat"
+    )

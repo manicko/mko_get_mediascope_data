@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import sys
 import time
@@ -102,6 +103,36 @@ class Report:
             file for file in files if not file.name.startswith(utils.CSV_TEMP_PREFIX)
         ]
         return utils.dir_content_to_dict(published_files, suffix=sufix)
+
+    @staticmethod
+    def _disambiguate_task_names(tasks: list[TVTask]) -> None:
+        """Append a deterministic SHA-256 suffix to colliding task names.
+
+        Distinct audience labels/filters can transliterate (via ``unidecode``)
+        to the same readable name, so two tasks would otherwise share one
+        persisted filename — the second publication overwrites the first and
+        resume treats the shared path as complete for both (PIPE-014).
+
+        Tasks whose names are unique keep their exact legacy name (so resume
+        is unchanged).  Each task in a colliding group (size > 1) gets
+        ``"_" + sha256(collision_id)[:8]`` appended to its name, making the
+        output deterministic and stable across runs.  Ambiguous legacy names
+        therefore become unresolved and are regenerated.
+        """
+        groups: dict[str, list[TVTask]] = {}
+        for task in tasks:
+            groups.setdefault(task.name, []).append(task)
+        for name, group in groups.items():
+            if len(group) < 2:
+                continue
+            logger.warning(
+                f"Detected {len(group)} tasks colliding on name '{name}' after "
+                "transliteration; disambiguating with a SHA-256 suffix."
+            )
+            for task in group:
+                collision_source = task._collision_id or task.name
+                digest = hashlib.sha256(collision_source.encode("utf-8")).hexdigest()
+                task.name += "_" + digest[:8]
 
 
 class MediaReport(Report):
@@ -297,6 +328,11 @@ class MediaReport(Report):
                     "interval — the requested period may be empty or outside "
                     "the available data range."
                 )
+
+            # Disambiguate colliding names once per report run, before the
+            # progress report and before the done_files skip check, so both
+            # observe the final (collision-safe) task names (PIPE-014).
+            self._disambiguate_task_names(all_tasks)
 
             self.reporter.report_started(report_id, total)
             reported_started = True
@@ -712,6 +748,7 @@ class DefaultTVTaskStrategy(TaskGenerationStrategy):
                     task.name += "_" + unidecode(t_name)
                 task.interval = interval
                 task.target = t_name
+                task._collision_id = f"{t_name}|{interval[0]}|{interval[1]}"
                 yield task
 
 
@@ -771,6 +808,9 @@ class TVRegTaskStrategy(TaskGenerationStrategy):
                     )
                     task.interval = interval
                     task.target = t_name
+                    task._collision_id = (
+                        f"{t_name}|{interval[0]}|{interval[1]}|{reg_id}"
+                    )
                     yield task
 
 

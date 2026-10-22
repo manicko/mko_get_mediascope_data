@@ -26,6 +26,9 @@ class TVTask:
         self.target: str | None = None
         self.report_type = report_type
         self.report_subtype = report_subtype
+        # Original (pre-transliteration) identity used to disambiguate task
+        # names that collide after unidecode transliteration (PIPE-014).
+        self._collision_id: str | None = None
 
     def to_file(self, folder: str | PathLike[str] | None = None):
         if folder is None:
