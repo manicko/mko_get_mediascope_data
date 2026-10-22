@@ -166,7 +166,7 @@ await run_report_async(
 ```
 
 ## 🛠️ Requirements
-- Python 3.14+
+- Python 3.12+
 - Recommended: [uv](https://docs.astral.sh/uv/) package manager
 
 ## 📖 Documentation

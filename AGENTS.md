@@ -14,7 +14,7 @@ alwaysApply: true
 - **CLI entry point:** `uv run -m mko_get_mediascope_data`
 - **Lint:** `uv run ruff check <path>` · **Auto-fix:** `uv run ruff check --fix <path>` · **pre-commit:** `pre-commit run --all-files` (`.pre-commit-config.yaml`)
 - **Format:** `uv run ruff format <path>`
-- **Typecheck:** `uv run mypy <path>` · mypy checks both `src` and `tests` (configured in `pyproject.toml`)
+- **Typecheck:** `uv run mypy <path>` · mypy checks `src`, `tests`, and `ci` (configured in `pyproject.toml`)
 - **Test:** `uv run pytest` (coverage reported by default via `--cov`) · **`slow` marker:** `uv run pytest -m slow` (run only slow tests); `uv run pytest -m "not slow"` (skip slow tests)
 - **Add dep:** `uv add <package>` · **Add dev dep:** `uv add --dev <package>`
 
