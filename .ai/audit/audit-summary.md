@@ -1,15 +1,15 @@
 ---
 id: audit-summary-2026-10-21
-report_status: in-progress
+report_status: complete
 ---
 
 # Project Audit — 2026-10-21
 
 ## Status
 
-AUDIT IN PROGRESS
+AUDIT COMPLETE
 
-Accepted phases: **10/13**. Coordinator: `tech-lead`; investigation: `auditor`; independent verification: `validator`.
+Accepted phases: **13/13**. Coordinator: `tech-lead`; investigation: `auditor`; independent verification: `validator`.
 
 Selected phases: all 13 content phases in registry order. Phase 99 provides conditional independent validation. Maximum two active subagents; one investigator session and one independent validator session were reused.
 
@@ -17,7 +17,7 @@ Selected phases: all 13 content phases in registry order. Phase 99 provides cond
 
 | CRITICAL | HIGH | MEDIUM | LOW | Total |
 |---:|---:|---:|---:|---:|
-| 3 | 8 | 8 | 2 | 21 |
+| 3 | 3 | 8 | 2 | 16 |
 
 | ID | Severity | Finding | Validated report |
 |---|---|---|---|
@@ -25,21 +25,16 @@ Selected phases: all 13 content phases in registry order. Phase 99 provides cond
 | PIPE-012 | CRITICAL | Failed publication is accepted as completed on resume | [Report](99-validation/04-data-pipeline-validated-findings.md) |
 | PIPE-014 | CRITICAL | Distinct audience results collapse to one persisted output | [Report](99-validation/04-data-pipeline-validated-findings.md) |
 | ASY-009 | HIGH | Timed-out thread work exceeds the configured permit ceiling | [Report](99-validation/03-async-concurrency-validated-findings.md) |
-| CFG-011 | HIGH | Omitted client filter removes the subtype restriction | [Report](99-validation/02-config-secrets-validated-findings.md) |
 | CFG-012 | HIGH | Authenticated proxy user information is printed | [Report](99-validation/02-config-secrets-validated-findings.md) |
-| ENT-008 | HIGH | Notebook guidance selects an incompatible wrapper | [Report](99-validation/01-entry-architecture-validated-findings.md) |
-| ENT-009 | HIGH | Missing-settings startup bypasses recovery diagnostics | [Report](99-validation/01-entry-architecture-validated-findings.md) |
 | PIPE-013 | HIGH | Missing period prevents later available entries | [Report](99-validation/04-data-pipeline-validated-findings.md) |
-| TST-013 | HIGH | Independent doubles erase task-key handoff fidelity | [Report](99-validation/11-test-coverage-validated-findings.md) |
-| TST-014 | HIGH | Wrapper test accepts scheduling unrelated non-awaitable work | [Report](99-validation/11-test-coverage-validated-findings.md) |
 | ASY-010 | MEDIUM | Pre-join exits leave workers outside report cleanup | [Report](99-validation/03-async-concurrency-validated-findings.md) |
 | EXT-010 | MEDIUM | Session release lacks deterministic report ownership | [Report](99-validation/09-external-api-validated-findings.md) |
 | EXT-011 | MEDIUM | Constructor dependency requests miss the application retry guard | [Report](99-validation/09-external-api-validated-findings.md) |
+| NUM-005 | MEDIUM | Initial display understates enqueued pending lifecycle work | [Report](99-validation/17-arithmetic-validated-findings.md) |
 | OPS-007 | MEDIUM | Release guard reads an absent static version | [Report](99-validation/12-production-ops-validated-findings.md) |
 | OPS-008 | MEDIUM | Developer command names a nonexistent module | [Report](99-validation/12-production-ops-validated-findings.md) |
 | OPS-009 | MEDIUM | Renaming does not convert legacy YAML syntax | [Report](99-validation/12-production-ops-validated-findings.md) |
 | QLT-021 | MEDIUM | Lazy root export loses the available static signature | [Report](99-validation/10-code-quality-validated-findings.md) |
-| TST-015 | MEDIUM | Inconsistent test return contract keeps the declared type gate red | [Report](99-validation/11-test-coverage-validated-findings.md) |
 | EXT-009 | LOW | Submission documentation promises an unimplemented pre-commit predicate | [Report](99-validation/09-external-api-validated-findings.md) |
 | QLT-022 | LOW | Getter explanation overstates single-name deferral | [Report](99-validation/10-code-quality-validated-findings.md) |
 
@@ -57,9 +52,9 @@ Selected phases: all 13 content phases in registry order. Phase 99 provides cond
 | 11-test-coverage | complete | [Raw](11-test-coverage/findings.md) | [Validated](99-validation/11-test-coverage-validated-findings.md) |
 | 12-production-ops | complete | [Raw](12-production-ops/findings.md) | [Validated](99-validation/12-production-ops-validated-findings.md) |
 | 13-performance | complete | [Raw](13-performance/findings.md) | skipped |
-| 15-authorization | running | Pending for this run | pending |
-| 16-rendered-surface | pending | Pending for this run | pending |
-| 17-arithmetic | pending | Pending for this run | pending |
+| 15-authorization | complete | [Raw](15-authorization/findings.md) | skipped |
+| 16-rendered-surface | complete | [Raw](16-rendered-surface/findings.md) | skipped |
+| 17-arithmetic | complete | [Raw](17-arithmetic/findings.md) | [Validated](99-validation/17-arithmetic-validated-findings.md) |
 
 ## Audit-Only Advisories
 
@@ -68,8 +63,11 @@ Trivial findings whose verification was skipped under the Skill are not counted 
 | ID | Severity | Finding | Raw report |
 |---|---|---|---|
 | PERF-004 | LOW | Poll-budget guidance excludes per-call jitter | [Report](13-performance/findings.md) |
+| OUT-007 | LOW | Data-flow guide describes an obsolete dictionary surface | [Report](16-rendered-surface/findings.md) |
 - 05-config-templates: No new finding or nontrivial code/architecture issue; all six blocks and fresh template-probe evidence recorded separately. Restored historical validation is not a result of this run.
 - 13-performance: Only trivial LOW poll-limit documentation advisory PERF-004; no significant code or architecture change, no new measured capacity defect. Advisory excluded from independently validated product totals.
+- 15-authorization: Zero new findings; four blocks and bounded synthetic lifecycle evidence recorded in phase15-coverage.md.
+- 16-rendered-surface: Only trivial LOW guide-drift advisory OUT-007 after actual local CSV/error rendering; no new runtime defect or significant architecture change. Excluded from independently validated product totals.
 
 ## Rejected Findings and Corrections
 
@@ -93,7 +91,7 @@ These use the phase-99 audit-artifact scale and are separate from product severi
 
 ## Evidence Scope and Limitations
 
-Initial HEAD: `4c08eb445f80584a00f16d929bc995239a1bd3d3`. Most recently recorded HEAD: `b27b8708d4d816940310d4f034b549cb1db6f397`. This is a moving dirty-working-tree audit, not an atomic immutable checkout.
+Initial HEAD: `4c08eb445f80584a00f16d929bc995239a1bd3d3`. Most recently recorded HEAD: `c4d8143f87a22e0bbec94a55770bfa441137b9bd`. This is a moving dirty-working-tree audit, not an atomic immutable checkout.
 
 Concurrent work changed source, tests, guidance and docs during the audit. [Snapshot freshness review](99-validation/snapshot-freshness.md) rechecked accepted phase-01/02/03 findings against the changed source; they still applied at that review. Individual reports identify their inspected ref and evidence limits.
 
@@ -114,6 +112,25 @@ At the user's request, 28 stale reports and obsolete audit helpers were removed 
 ## Verification Results
 
 Phase 11 records one approved native Windows full-suite run with actual HTTP transport blocked: **165 passed, 87.27% statement coverage**, above the 70% threshold. Ruff passed; the configured src/tests mypy command failed on the single test inconsistency TST-015. Vendor deprecation and an unawaited AsyncMock warning remain in the saved log. These results do not establish real API fidelity, branch coverage, CI-host behavior or an immutable source snapshot. See [phase-11 validation](99-validation/11-test-coverage-validated-findings.md).
+
+## Final Source Review and Resolved Findings
+
+[Final freshness review](99-validation/final-snapshot-freshness.md) takes precedence over historical applicability in earlier reports. The counts and actionable table above exclude these findings resolved by external project changes:
+
+| ID | Historical severity | Resolved finding | Original validation |
+|---|---|---|---|
+| ENT-008 | HIGH | Notebook guidance selects an incompatible wrapper | [Report](99-validation/01-entry-architecture-validated-findings.md) |
+| ENT-009 | HIGH | Missing-settings startup bypasses recovery diagnostics | [Report](99-validation/01-entry-architecture-validated-findings.md) |
+| CFG-011 | HIGH | Omitted client filter removes the subtype restriction | [Report](99-validation/02-config-secrets-validated-findings.md) |
+| TST-013 | HIGH | Independent doubles erase task-key handoff fidelity | [Report](99-validation/11-test-coverage-validated-findings.md) |
+| TST-014 | HIGH | Wrapper test accepts scheduling unrelated non-awaitable work | [Report](99-validation/11-test-coverage-validated-findings.md) |
+| TST-015 | MEDIUM | Inconsistent test return contract keeps the declared type gate red | [Report](99-validation/11-test-coverage-validated-findings.md) |
+
+Fresh mypy passed after the test correction. The earlier 165-test/87.27% full-suite result remains historical evidence, not a claim that the changed full suite was rerun. The addendum records targeted tests, static checks and their precise limits. Original reports are frozen for provenance.
+
+## Completion Checkpoint
+
+[Final preservation check](99-validation/final-preservation-check.md) confirms all 74 content fingerprints still match after phase 17. All 54 .kilo baseline files remain present; the known external tech-lead permission edit is preserved. All 13 content phases are accepted, required independent reviews are complete, no finding is unsettled, and no output-existence retry was needed. Quota and user-requested interruptions were resumed in the same agent sessions. Validation was skipped only for phase 05/15 with zero findings and phase 13/16 with trivial LOW documentation advisories; their reasons are recorded above. No application fixes were made by this audit.
 
 ## Preserved External Kilo Edit
 
