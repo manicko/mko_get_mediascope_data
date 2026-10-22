@@ -142,7 +142,7 @@ skip-magic-trailing-comma = false
 [tool.mypy]
 # If sources live in package root, mypy_path not needed; if you use src/ layout set mypy_path.
 # mypy_path = "./src"
-files = ["src", "tests"]
+files = ["src", "tests", "ci"]
 follow_imports = "silent"
 strict_optional = true
 warn_redundant_casts = true
