@@ -62,7 +62,7 @@ tracks it, and writes one CSV file per period interval per audience.
 
 The two entry styles are the same engine: CLI (`app.py` Typer commands) and
 library (`run_report`, `run_report_async`, `initialize_settings`) both resolve
-to `AppService.run_report` `[code — __init__.py:17-30 (re-exports),
+to `AppService.run_report` `[code — __init__.py:13-32 (re-exports),
 app.py:40-62, app.py:80-87, services.py:156]`.
 
 ### What the product does today (summary)
