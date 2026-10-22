@@ -442,7 +442,7 @@ async def test_semaphore_released_after_exhausted_retries(mocker):
 async def test_call_timeout_none_invokes_raw(mocker):
     """With call_timeout=None, _invoke returns the raw coroutine (no wait_for).
 
-    network.py:77-79 — when ``_call_timeout is None``, no ``asyncio.wait_for``
+    network.py:77-79 — when ``_call_timeout is None``, no ``asyncio.wait`` deadline
     wraps the call.
     """
     client = NetworkClient(max_attempts=1, sleep_time=0, call_timeout=None)
@@ -458,10 +458,11 @@ async def test_call_timeout_none_invokes_raw(mocker):
 
 
 async def test_invoke_applies_timeout_and_thread(mocker):
-    """_invoke wraps func in asyncio.to_thread + asyncio.wait_for.
+    """_invoke offloads func via asyncio.to_thread, bounded by the asyncio.wait deadline.
 
-    network.py:74-79 — a func that exceeds call_timeout is cancelled,
-    raising TimeoutError (which is in RETRIABLE_EXCEPTIONS).
+    network.py:74-79 — exceeding ``call_timeout`` raises ``CallTimeoutError`` (a
+    ``TimeoutError`` in ``RETRIABLE_EXCEPTIONS``), so with ``max_attempts=1`` the
+    call ends in ``MaxRetriesExceeded``.
     """
     client = NetworkClient(max_attempts=1, sleep_time=0, call_timeout=0.1)
 
@@ -740,3 +741,91 @@ async def test_call_timeout_propagates_as_timeout_error_for_api_call_false(mocke
 
     # Let the thread finish so its exception is consumed by the drain callback.
     await asyncio.sleep(0.3)
+
+
+
+async def test_retained_thread_failure_after_timeout_not_reported(mocker):
+    """A thread failing after ``call_timeout`` must not surface as an unhandled
+    exception.
+
+    Regression: Python 3.14's ``asyncio.shield`` reported the late failure of a
+    shielded inner task to the loop exception handler ("<Exc> exception in
+    shielded future") even though the retained thread's outcome is consumed by
+    the drain callback (ASY-009).
+    """
+    loop = asyncio.get_running_loop()
+    reported: list[dict[str, object]] = []
+    previous_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _loop, context: reported.append(context))
+    try:
+        mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+        client = NetworkClient(max_attempts=1, sleep_time=0, call_timeout=0.05)
+
+        def failing_func():
+            time.sleep(0.2)
+            raise ValueError("late failure")
+
+        with pytest.raises(CallTimeoutError) as exc_info:
+            await client.call(failing_func, api_call=False)
+
+        thread_task = exc_info.value.thread_task
+        assert thread_task is not None
+
+        done = asyncio.Event()
+        thread_task.add_done_callback(lambda _fut: done.set())
+        await asyncio.wait_for(done.wait(), timeout=5.0)
+
+        messages = [str(ctx.get("message", "")) for ctx in reported]
+        assert not [m for m in messages if "shielded" in m], (
+            f"late thread failure was reported to the loop exception handler: {messages}"
+        )
+        assert not [m for m in messages if "never retrieved" in m], messages
+    finally:
+        loop.set_exception_handler(previous_handler)
+
+
+async def test_caller_cancellation_retains_thread_and_consumes_outcome():
+    """A cancelled caller retains the still-running thread for the deferred-work
+    guard (EXT-010) and consumes its later failure without reporting it.
+
+    Regression: with ``wait_for(asyncio.shield(...))`` the cancelled wait left
+    the shielded thread task reported to the loop exception handler when it
+    failed later ("<Exc> exception in shielded future").
+    """
+    loop = asyncio.get_running_loop()
+    reported: list[dict[str, object]] = []
+    previous_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _loop, context: reported.append(context))
+    try:
+        client = NetworkClient(max_attempts=1, sleep_time=0, call_timeout=30.0)
+
+        started = threading.Event()
+
+        def failing_func():
+            started.set()
+            time.sleep(0.5)
+            raise ValueError("late failure")
+
+        task = asyncio.create_task(client.call(failing_func, sleep_time=0))
+        while not started.is_set():
+            await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert client.has_outstanding_deferred(), (
+            "the still-running thread must be visible to the deferred guard"
+        )
+
+        deadline = loop.time() + 5.0
+        while client.has_outstanding_deferred() and loop.time() < deadline:
+            await asyncio.sleep(0.05)
+        assert not client.has_outstanding_deferred()
+
+        messages = [str(ctx.get("message", "")) for ctx in reported]
+        assert not [m for m in messages if "shielded" in m], (
+            f"late thread failure was reported to the loop exception handler: {messages}"
+        )
+        assert not [m for m in messages if "never retrieved" in m], messages
+    finally:
+        loop.set_exception_handler(previous_handler)

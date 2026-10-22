@@ -14,7 +14,7 @@
   // Independent of max_concurrent_requests (this is remote-calc capacity, not HTTP concurrency).
   "max_tasks": 100,
 
-  // Per-call timeout (seconds) for ALL API calls, applied via asyncio.wait_for.
+  // Per-call timeout (seconds) for ALL API calls, applied via asyncio.wait.
   // PositiveFloat > 0. Includes build_task, result2table, get_connection too.
   // Total per-call time ≈ max_attempts * call_timeout. Increase for slow calls; decrease to fail fast.
   "call_timeout": 300.0,

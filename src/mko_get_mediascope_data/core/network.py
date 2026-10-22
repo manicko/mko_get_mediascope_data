@@ -45,7 +45,7 @@ RETRIABLE_EXCEPTIONS = (
     ChunkedEncodingError,
     ConnectionResetError,
     socket.timeout,
-    TimeoutError,  # asyncio.wait_for cancellation raises TimeoutError (= asyncio.TimeoutError in 3.11+)
+    TimeoutError,  # CallTimeoutError (call_timeout deadline in _invoke) subclasses TimeoutError
     ProtocolError,
     IncompleteRead,  # connection reset mid-stream under server throttling
     NameResolutionError,  # ← added: DNS resolution failed
@@ -130,24 +130,35 @@ class NetworkClient:
 
         The dispatched thread keeps running even if ``call_timeout`` elapses, so a
         timeout raises :class:`CallTimeoutError` retaining the inner task wrapping
-        ``asyncio.to_thread``.  ``asyncio.shield`` prevents ``wait_for`` from
-        cancelling that inner task on timeout — the retained task stays pending
-        until the thread actually completes, allowing the permit to be held for the
-        thread's real lifetime (ASY-009).
+        ``asyncio.to_thread``.  The deadline is enforced with ``asyncio.wait``
+        rather than ``asyncio.wait_for(asyncio.shield(inner), ...)``: ``wait_for``
+        cancels the awaited future on timeout, which forces a shield around the
+        thread task, and Python 3.14's ``shield`` reports a late failure of that
+        task to the loop exception handler ("<Exc> exception in shielded future")
+        even though the retained thread's outcome is consumed (ASY-009).
+        ``asyncio.wait`` never cancels the awaited task, so the thread task stays
+        pending until the thread actually completes, allowing the permit to be
+        held for the thread's real lifetime (ASY-009).
         """
         inner = asyncio.ensure_future(asyncio.to_thread(func, *args, **kwargs))
-        if self._call_timeout is not None:
-            try:
-                return await asyncio.wait_for(
-                    asyncio.shield(inner), timeout=self._call_timeout
-                )
-            except TimeoutError:
-                # Retain the still-running thread so its lifetime is observable
-                # (EXT-010 deferred-work guard) and its terminal outcome is
-                # consumed.  The callback only discards tracking state; permit
-                # handling stays with the caller's own callback.
-                self._track_deferred(inner)
-                raise CallTimeoutError(thread_task=inner) from None
+        if self._call_timeout is None:
+            return await inner
+        try:
+            done, _ = await asyncio.wait({inner}, timeout=self._call_timeout)
+        except asyncio.CancelledError:
+            # Caller cancellation cannot stop the thread; retain it so the
+            # deferred-work guard (EXT-010) sees it and consume its terminal
+            # outcome instead of surfacing it as an unretrieved exception.
+            self._track_deferred(inner)
+            inner.add_done_callback(self._consume_thread_result)
+            raise
+        if not done:
+            # Retain the still-running thread so its lifetime is observable
+            # (EXT-010 deferred-work guard) and its terminal outcome is consumed.
+            # The callback only discards tracking state; permit handling stays
+            # with the caller's own callback.
+            self._track_deferred(inner)
+            raise CallTimeoutError(thread_task=inner) from None
         return await inner
 
     def _track_deferred(self, thread_task: asyncio.Future[Any]) -> None:
@@ -185,7 +196,7 @@ class NetworkClient:
 
         On :class:`CallTimeoutError` the permit release is deferred to a
         done-callback on the retained thread task, so the permit is held until the
-        synchronous work finishes rather than at the moment ``wait_for`` times out.
+        synchronous work finishes rather than at the moment the ``call_timeout`` deadline fires.
         """
         deferred_release = False
         await self._semaphore.acquire()

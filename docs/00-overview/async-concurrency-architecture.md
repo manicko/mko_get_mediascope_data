@@ -62,9 +62,10 @@ permit before each attempt and **defers releasing it until the dispatched synchr
 operation actually completes** — not merely until the async wait is cancelled. The call
 itself delegates to `_invoke` (network.py:117), which offloads `func` to a worker thread
 via `asyncio.ensure_future(asyncio.to_thread(...))` and bounds it with
-`asyncio.wait_for(asyncio.shield(inner), timeout=self._call_timeout)`. When the wait
-times out, `wait_for` cancels only the outer wait while `asyncio.shield` keeps the inner
-thread task alive; `_invoke` then raises `CallTimeoutError` (a `TimeoutError` subclass,
+`asyncio.wait({inner}, timeout=self._call_timeout)`. Because `asyncio.wait` never
+cancels the awaited task, when the deadline elapses the thread task stays pending until
+the thread actually completes (so the permit is held for the thread's real lifetime,
+ASY-009); `_invoke` then raises `CallTimeoutError` (a `TimeoutError` subclass,
 `core/errors.py:16`) carrying `thread_task` — the retained inner task — so the permit
 can be released when the thread truly finishes:
 
@@ -88,8 +89,8 @@ finally:
 `api_call: bool = True` parameter (network.py:188); when `api_call=False`, the method
 returns `await self._invoke(func, *args, **kwargs)` immediately (network.py:226-228)
 — *before* the initial jitter sleep, the `asyncio.Semaphore`, and the retry loop.
-Such calls are still bounded by `_invoke`'s `asyncio.wait_for(asyncio.shield(inner),
-timeout=self._call_timeout)` (default 300 s, network.py:113). Because `api_call=False`
+Such calls are still bounded by `_invoke`'s `asyncio.wait({inner},
+timeout=self._call_timeout)` deadline (default 300 s, network.py:113). Because `api_call=False`
 calls acquire no permit, on `CallTimeoutError` they attach a drain-only callback
 (`_consume_thread_result`, network.py:137) that consumes the retained thread's terminal
 exception and re-raises, so the caller still observes a `TimeoutError` without an
@@ -250,8 +251,10 @@ error-artifact write (ASY-008) nor an unexpected worker exit (ASY-008
 | `get_tv_region` | reports.py:720-722 | default (2) | default (True) | uniform 1–4 s |
 
 All calls are bounded by `_invoke` (network.py:117), which offloads the synchronous
-function to a thread and bounds it with `asyncio.wait_for(asyncio.shield(inner),
-timeout=self._call_timeout)` (default 300 s, network.py:113). A timeout raises
+function to a thread and bounds it with `asyncio.wait({inner},
+timeout=self._call_timeout)` (default 300 s, network.py:113). `asyncio.wait` never
+cancels the awaited thread task, so it stays pending until the thread completes; a
+timeout raises
 `CallTimeoutError` (a `TimeoutError` subclass, so it is classified as retryable by
 `RETRIABLE_EXCEPTIONS`) and retains the inner thread task so the permit can be released
 on actual completion (network.py:127-134). Calls with `api_call=False` (`builder`, `result2table`)
@@ -294,8 +297,8 @@ through `_get_connection_with_attempt_cleanup` at `services.py:285`) pass `None`
 Retryable conditions:
 - Members of `RETRIABLE_EXCEPTIONS` (network.py:34–47): transport errors such as
   `ConnectTimeout`, `ConnectionError`, `Timeout`, `socket.timeout`, and `TimeoutError`
-  — including `CallTimeoutError` raised by `_invoke` when `asyncio.wait_for` times out
-  on the shielded thread future; because `CallTimeoutError` subclasses `TimeoutError`, it
+  — including `CallTimeoutError` raised by `_invoke` when the `asyncio.wait` deadline
+  elapses; because `CallTimeoutError` subclasses `TimeoutError`, it
   is classified as retryable (`core/errors.py:16`, network.py:42)
 - HTTP 429 (`TooManyRequestsError`) — handled by a dedicated `except` clause
    (network.py:286–300), retried with exponential backoff (the vendor does not
@@ -361,7 +364,7 @@ after the constructor succeeds (line `services.py:287`) and releases them in a
 **Deferred-work guard (reuses ASY-009).**  The release is guarded by
 `network_client.has_outstanding_deferred()` (`services.py:334`): when a timed-out
 `asyncio.to_thread` future is still running (the `CallTimeoutError` path that
-retains the inner thread via `asyncio.shield`), the sessions it may still hold are
+retains the inner thread via the `asyncio.wait` deadline), the sessions it may still hold are
 left intact and a warning is logged instead of closing beneath in-flight work.
 
 **Per-attempt cleanup (EXT-011).**  The constructor is invoked through
