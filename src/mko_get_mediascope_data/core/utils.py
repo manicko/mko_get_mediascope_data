@@ -1,4 +1,6 @@
 import logging
+import os
+import tempfile
 import time
 from collections.abc import Iterator
 from datetime import date, datetime
@@ -13,6 +15,10 @@ from pandas import DataFrame
 from mko_get_mediascope_data.core.models import LastTimeModel
 
 logger = logging.getLogger(__name__)
+
+# Prefix for the sibling temporary file used when publishing CSV output
+# atomically. A file carrying this prefix is never a valid published artifact.
+CSV_TEMP_PREFIX: str = ".tmp_csv_"
 
 
 def str_to_date(date_string: str) -> date:
@@ -203,6 +209,19 @@ def csv_to_file(
     add_time: bool = True,
     **kwargs: Any,
 ) -> None:
+    """Publish a DataFrame as a CSV file atomically.
+
+    The DataFrame is written to a sibling temporary file on the same
+    filesystem (required for ``os.replace`` to be atomic) whose suffix matches
+    the final format, so ``compression="infer"`` and compressed writers keep
+    working. The temp file is flushed and fsynced, then renamed onto the final
+    path in a single atomic step.
+
+    A failure at any point leaves the previously published final file (if any)
+    untouched and removes only the temporary artifact before re-raising. This
+    prevents a partially written file from being mistaken for a completed
+    artifact on resume.
+    """
     time_str = ""
     if add_time:
         time_str = "_" + time.strftime("%Y%m%d_%H%M%S")
@@ -210,20 +229,44 @@ def csv_to_file(
     out_file = Path(csv_path_out, f"{file_prefix}{time_str}{ext}")
 
     encoding = kwargs.pop("encoding", "utf-8-sig")
-    data_frame.to_csv(
-        path_or_buf=out_file,
-        index=False,
-        mode="w",
-        decimal=",",
-        sep=";",
-        # Null policy is deliberate, not a pandas default: empty cells
-        # represent missing/NaN statistic values. Documented in the output
-        # contract (see docs/00-overview/open-questions.md, G-04 / D-13).
-        na_rep="",
-        encoding=encoding,
-        compression=compression,
-        **kwargs,
+
+    # The temp suffix must equal the final format suffix so pandas can infer
+    # the compression from the temporary file name as well.
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(out_file.parent), prefix=CSV_TEMP_PREFIX, suffix=ext
     )
+    os.close(fd)
+    tmp_path = Path(tmp_name)
+
+    try:
+        data_frame.to_csv(
+            path_or_buf=tmp_path,
+            index=False,
+            mode="w",
+            decimal=",",
+            sep=";",
+            # Null policy is deliberate, not a pandas default: empty cells
+            # represent missing/NaN statistic values. Documented in the output
+            # contract (see docs/00-overview/open-questions.md, G-04 / D-13).
+            na_rep="",
+            encoding=encoding,
+            compression=compression,
+            **kwargs,
+        )
+
+        # Flush the buffer to disk and fsync before publishing so the final
+        # name only ever refers to fully written content.
+        with open(tmp_path, "rb+") as handle:
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        os.replace(tmp_path, out_file)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            logger.debug("Could not remove temp file %s", tmp_path, exc_info=True)
+        raise
 
 
 def en_to_ru(slices_en: list[Any] | None) -> list[Any]:

@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from mko_get_mediascope_data.core.utils import (
+    CSV_TEMP_PREFIX,
     csv_to_file,
     en_to_ru,
     get_files_suffix,
@@ -91,3 +92,60 @@ def test_csv_to_file_renders_nulls_as_empty_cells(tmp_path):
         "Tula;;0,0",
     ]
     assert lines == expected
+
+
+def test_csv_to_file_atomic_success_publishes_final(tmp_path):
+    """A successful call publishes the final file and leaves no temp artifact."""
+    df = pd.DataFrame({"regionName": ["Msk", "SPb"], "RtgPerSum": [10.0, 20.0]})
+    csv_to_file(df, tmp_path, file_prefix="atomic", add_time=False, compression=None)
+
+    files = list(tmp_path.glob("*.csv"))
+    assert len(files) == 1
+    final_file = files[0]
+    assert final_file.exists()
+    assert not final_file.name.startswith(CSV_TEMP_PREFIX)
+
+    lines = final_file.read_text(encoding="utf-8-sig").strip().splitlines()
+    assert lines == [
+        "regionName;RtgPerSum",
+        "Msk;10,0",
+        "SPb;20,0",
+    ]
+
+    leftovers = [p for p in tmp_path.iterdir() if p.name.startswith(CSV_TEMP_PREFIX)]
+    assert leftovers == []
+
+
+def test_csv_to_file_atomic_failure_preserves_prior_final(tmp_path, mocker):
+    """A failure after the temp file is created preserves the prior final file.
+
+    The prior published artifact must remain byte-identical, the temp artifact
+    must be removed, and the original exception must propagate.
+    """
+    df = pd.DataFrame({"col": [1, 2]})
+    csv_to_file(df, tmp_path, file_prefix="prior", add_time=False, compression=None)
+
+    published = list(tmp_path.glob("prior*.csv"))
+    assert len(published) == 1
+    prior_final = published[0]
+    prior_bytes = prior_final.read_bytes()
+
+    real_to_csv = pd.DataFrame.to_csv
+
+    def failing_to_csv(self, path_or_buf=None, *args, **kwargs):
+        # Simulate a partial write to the temp file before failing.
+        if path_or_buf is not None:
+            with open(path_or_buf, "wb") as handle:
+                handle.write(b"partial,corrupt")
+        raise OSError("simulated write failure")
+
+    mocker.patch.object(pd.DataFrame, "to_csv", failing_to_csv)
+
+    with pytest.raises(OSError):
+        csv_to_file(df, tmp_path, file_prefix="prior", add_time=False, compression=None)
+
+    mocker.patch.object(pd.DataFrame, "to_csv", real_to_csv)
+
+    assert prior_final.read_bytes() == prior_bytes
+    leftovers = [p for p in tmp_path.iterdir() if p.name.startswith(CSV_TEMP_PREFIX)]
+    assert leftovers == []
