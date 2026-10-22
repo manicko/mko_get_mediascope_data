@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
@@ -14,7 +15,7 @@ from pandas import DataFrame
 from unidecode import unidecode
 
 import mko_get_mediascope_data.core.utils as utils
-from mko_get_mediascope_data.core.errors import NoReportFoundError
+from mko_get_mediascope_data.core.errors import NoReportFoundError, WorkerFailureError
 from mko_get_mediascope_data.core.models import (
     Data,
     MediaType,
@@ -249,67 +250,82 @@ class MediaReport(Report):
         bar reflects the complete scope of the report.  Tasks whose output
         already exists are marked ``COMPLETED`` immediately and are not
         enqueued.
+
+        The entire worker lifetime — creation, generation, ``report_started``,
+        enqueue and ``queue.join()`` — is enclosed in a single ``try/finally``
+        so the owned worker group is always cancelled and gathered on every
+        exit path (normal completion, generation failure, cancellation while
+        blocked on ``queue.put``, zero tasks, all-skipped).  ``report_completed``
+        fires only after ``report_started`` (``reported_started`` flag).  As a
+        fail-fast supervision guard, an unexpected worker exception is surfaced
+        as ``WorkerFailureError`` only when no other exception is in flight.
         """
         task_group = [
             asyncio.create_task(self.worker(timeout=timeout))
             for _ in range(self.max_tasks)
         ]
         report_id = str(self.report_settings.relative_path)
-
-        # Materialise ALL tasks so report_started can report the true total
-        all_tasks: list[TVTask] = []
-        async for task in self.generate_tasks():
-            task.task_status = TaskStatus.QUEUED
-            all_tasks.append(task)
-
-        total = len(all_tasks)
-
-        if total == 0:
-            for t in task_group:
-                t.cancel()
-            await asyncio.gather(*task_group, return_exceptions=True)
-            raise NoReportFoundError(
-                "No tasks were generated for this report. Check that "
-                "target_audiences and the period produce at least one "
-                "interval — the requested period may be empty or outside "
-                "the available data range."
-            )
-
-        self.reporter.report_started(report_id, total)
-
-        # Enqueue non-skipped tasks; report skipped tasks as COMPLETED
-        enqueued = 0
-        for task in all_tasks:
-            if task.name in self.done_files:
-                logger.warning(
-                    f"File '{task.name}' already exists in folder, skipping."
-                )
-                task.task_status = TaskStatus.COMPLETED
-                self.reporter.task_status_changed(
-                    task, TaskStatus.QUEUED, TaskStatus.COMPLETED
-                )
-            else:
-                await self.task_queue.put(task)
-                enqueued += 1
-
-        if enqueued == 0:
-            for t in task_group:
-                t.cancel()
-            await asyncio.gather(*task_group, return_exceptions=True)
-            logger.warning(
-                f"All {total} tasks were skipped because their output files "
-                "already exist (check_done=True). Nothing to do."
-            )
-            self.reporter.report_completed(report_id)
-            return
-
+        reported_started = False
         try:
+            # Materialise ALL tasks so report_started can report the true total
+            all_tasks: list[TVTask] = []
+            async for task in self.generate_tasks():
+                task.task_status = TaskStatus.QUEUED
+                all_tasks.append(task)
+
+            total = len(all_tasks)
+
+            if total == 0:
+                raise NoReportFoundError(
+                    "No tasks were generated for this report. Check that "
+                    "target_audiences and the period produce at least one "
+                    "interval — the requested period may be empty or outside "
+                    "the available data range."
+                )
+
+            self.reporter.report_started(report_id, total)
+            reported_started = True
+
+            # Enqueue non-skipped tasks; report skipped tasks as COMPLETED
+            enqueued = 0
+            for task in all_tasks:
+                if task.name in self.done_files:
+                    logger.warning(
+                        f"File '{task.name}' already exists in folder, skipping."
+                    )
+                    task.task_status = TaskStatus.COMPLETED
+                    self.reporter.task_status_changed(
+                        task, TaskStatus.QUEUED, TaskStatus.COMPLETED
+                    )
+                else:
+                    await self.task_queue.put(task)
+                    enqueued += 1
+
+            if enqueued == 0:
+                logger.warning(
+                    f"All {total} tasks were skipped because their output files "
+                    "already exist (check_done=True). Nothing to do."
+                )
+                return
+
             await self.task_queue.join()
         finally:
             for t in task_group:
                 t.cancel()
-            await asyncio.gather(*task_group, return_exceptions=True)
-            self.reporter.report_completed(report_id)
+            results = await asyncio.gather(*task_group, return_exceptions=True)
+            if reported_started:
+                self.reporter.report_completed(report_id)
+            # ASY-008 supervision: fail-fast ONLY when no exception is already
+            # in flight — raising here while one is propagating would mask the
+            # real error (generation failure, CancelledError, NoReportFoundError).
+            if sys.exc_info()[0] is None:
+                for r in results:
+                    if isinstance(r, BaseException) and not isinstance(
+                        r, asyncio.CancelledError
+                    ):
+                        raise WorkerFailureError(
+                            f"Worker exited unexpectedly: {r}"
+                        ) from r
 
     async def create_report(self, timeout: float | None = None) -> None:
         """sync function to run async part"""

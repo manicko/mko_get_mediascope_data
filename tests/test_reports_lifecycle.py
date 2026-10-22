@@ -2105,3 +2105,253 @@ async def test_worker_will_be_skipped_warning_includes_error_reason(
         assert "Task.key is not received from API." in msg, (
             f"Expected error reason in warning, got: {msg}"
         )
+
+
+# ---------------------------------------------------------------------------
+# ASY-010: worker lifetime cleanup on every exit path from processing_tasks
+# ---------------------------------------------------------------------------
+
+
+def _build_hermetic_report(
+    tmp_path: Path,
+    hermetic_app_service: AppService,
+    *,
+    check_done: bool = False,
+    max_tasks: int = 3,
+    reporter: object | None = None,
+) -> TVMediaReport:
+    """Construct a hermetic ``TVMediaReport`` for worker-lifecycle tests.
+
+    Uses a doubled ``MediaVortexTask`` whose API methods never actually run
+    (the tests drive ``processing_tasks`` directly with a custom
+    ``generate_tasks``), plus a real ``NetworkClient``.
+    """
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.DYNAMICS_BY_SPOTS,
+        relative_path="tv/test",  # type: ignore[arg-type]
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+
+    export_path = tmp_path / "output" / report_settings.relative_path
+    export_path.mkdir(parents=True)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=NetworkClient(sleep_time=0, max_attempts=1),
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
+        check_done=check_done,
+        max_tasks=max_tasks,
+        reporter=reporter,  # type: ignore[arg-type]
+    )
+    return report
+
+
+def _capture_worker_tasks(mocker) -> list[asyncio.Task[None]]:
+    """Patch ``asyncio.create_task`` to record every task created.
+
+    ``processing_tasks`` constructs its worker group via
+    ``asyncio.create_task``; recording the created tasks lets the tests assert
+    that the owned workers are cancelled/gathered (never left pending) on every
+    exit path.
+    """
+    created: list[asyncio.Task[None]] = []
+    real_create_task = asyncio.create_task
+
+    def _recording_create_task(coro, **kwargs):
+        task = real_create_task(coro, **kwargs)
+        created.append(task)
+        return task
+
+    mocker.patch("asyncio.create_task", side_effect=_recording_create_task)
+    return created
+
+
+class _RecordingReporter:
+    """Minimal recording reporter for report_completed assertions."""
+
+    def __init__(self) -> None:
+        self.started: list[tuple[str, int]] = []
+        self.completed: list[str] = []
+
+    def report_started(self, report_id: str, total_tasks: int) -> None:
+        self.started.append((report_id, total_tasks))
+
+    def task_status_changed(self, task, old_status, new_status) -> None: ...
+
+    def report_completed(self, report_id: str) -> None:
+        self.completed.append(report_id)
+
+
+async def test_processing_tasks_cleans_workers_on_generation_failure(
+    tmp_path: Path,
+    mocker,
+    hermetic_app_service: AppService,
+):
+    """ASY-010: a generator failure after yielding must not strand workers.
+
+    ``generate_tasks`` yields one task then raises ``RuntimeError``.  The
+    single encompassing ``try/finally`` must cancel and gather the owned
+    workers, and the ORIGINAL exception must propagate — it must NOT be masked
+    by the ASY-008 supervision guard (which sees an exception already in
+    flight via ``sys.exc_info()`` and therefore stays silent).
+    """
+    report = _build_hermetic_report(tmp_path, hermetic_app_service, max_tasks=3)
+    worker_tasks = _capture_worker_tasks(mocker)
+
+    async def _failing_generate():
+        task = TVTask("gen_fail_task", {}, "DYNAMICS_BY_SPOTS", "crosstab")
+        yield task
+        raise RuntimeError("generation blew up after the first task")
+
+    mocker.patch.object(report, "generate_tasks", _failing_generate)
+
+    with pytest.raises(RuntimeError, match="generation blew up"):
+        await asyncio.wait_for(report.processing_tasks(), timeout=10.0)
+
+    # Worker group was created and owned by processing_tasks.
+    assert len(worker_tasks) == 3
+    # Every owned worker is done — none left pending in the live loop.
+    assert all(t.done() for t in worker_tasks)
+    assert not any(t.done() and not t.cancelled() for t in worker_tasks)
+
+
+async def test_processing_tasks_cleans_workers_on_enqueue_cancel(
+    tmp_path: Path,
+    mocker,
+    hermetic_app_service: AppService,
+):
+    """ASY-010: cancellation while blocked on ``queue.put`` cleans up workers.
+
+    A single worker is parked on a never-set event so it never drains the
+    bounded queue (``maxsize == max_tasks == 1``); the enqueue loop therefore
+    blocks on ``queue.put``.  Cancelling ``processing_tasks`` must cancel and
+    gather the owned worker before the ``CancelledError`` propagates.
+    """
+    report = _build_hermetic_report(
+        tmp_path, hermetic_app_service, max_tasks=1
+    )
+    worker_tasks = _capture_worker_tasks(mocker)
+
+    blocker = asyncio.Event()
+
+    async def _blocking_process_item(item):
+        await blocker.wait()
+
+    mocker.patch.object(report, "_process_item", _blocking_process_item)
+
+    tasks = [
+        TVTask(f"cancel_task_{i}", {}, "DYNAMICS_BY_SPOTS", "crosstab")
+        for i in range(3)
+    ]
+
+    async def _generate():
+        for task in tasks:
+            yield task
+
+    mocker.patch.object(report, "generate_tasks", _generate)
+
+    processing = asyncio.create_task(report.processing_tasks())
+    # Let the coroutine reach the blocked ``await self.task_queue.put(...)``.
+    for _ in range(20):
+        await asyncio.sleep(0)
+        if report.task_queue.full():
+            break
+    # Ensure at least one enqueue completed so a put is genuinely blocking.
+    assert report.task_queue.qsize() >= 1
+
+    processing.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(processing, timeout=10.0)
+
+    # Owned worker(s) were cancelled/gathered — none pending.
+    worker_owned = [t for t in worker_tasks if t is not processing]
+    assert len(worker_owned) == 1
+    assert all(t.done() for t in worker_owned)
+    assert all(t.cancelled() for t in worker_owned)
+
+
+async def test_processing_tasks_zero_tasks_cleans_workers(
+    tmp_path: Path,
+    mocker,
+    hermetic_app_service: AppService,
+):
+    """ASY-010: the zero-task path raises inside the try and cleans workers.
+
+    ``generate_tasks`` yields nothing → ``NoReportFoundError`` is raised inside
+    the encompassing ``try``.  The ``finally`` cancels/gathers all workers and
+    must NOT call ``report_completed`` (``report_started`` never fired).
+    """
+    reporter = _RecordingReporter()
+    report = _build_hermetic_report(
+        tmp_path, hermetic_app_service, max_tasks=3, reporter=reporter
+    )
+    worker_tasks = _capture_worker_tasks(mocker)
+
+    async def _empty_generate():
+        return
+        yield  # pragma: no cover
+
+    mocker.patch.object(report, "generate_tasks", _empty_generate)
+
+    with pytest.raises(NoReportFoundError):
+        await asyncio.wait_for(report.processing_tasks(), timeout=10.0)
+
+    assert len(worker_tasks) == 3
+    assert all(t.done() for t in worker_tasks)
+
+    # report_started never fired → report_completed must NOT fire.
+    assert reporter.started == []
+    assert reporter.completed == []
+
+
+async def test_processing_tasks_all_skipped_cleans_workers(
+    tmp_path: Path,
+    mocker,
+    hermetic_app_service: AppService,
+):
+    """ASY-010: the all-skipped path returns inside the try and cleans workers.
+
+    All generated tasks already have output files (``check_done=True``), so the
+    enqueue loop is skipped entirely.  ``report_completed`` must be called
+    (``report_started`` fired with the full total) and no worker may remain
+    pending.
+    """
+    reporter = _RecordingReporter()
+    report = _build_hermetic_report(
+        tmp_path, hermetic_app_service, max_tasks=3, check_done=True, reporter=reporter
+    )
+    worker_tasks = _capture_worker_tasks(mocker)
+
+    skipped_names = ["skipped_a", "skipped_b"]
+    # Pre-create the output files so every generated task is skipped.
+    export_path = tmp_path / "output" / "tv/test"
+    for name in skipped_names:
+        (export_path / f"{name}.csv.gz").touch()
+    report.done_files = report.get_done_files()
+
+    async def _generate():
+        for name in skipped_names:
+            yield TVTask(name, {}, "DYNAMICS_BY_SPOTS", "crosstab")
+
+    mocker.patch.object(report, "generate_tasks", _generate)
+
+    await asyncio.wait_for(report.processing_tasks(), timeout=10.0)
+
+    assert len(worker_tasks) == 3
+    assert all(t.done() for t in worker_tasks)
+
+    # report_started fired with the full total, then report_completed once.
+    assert len(reporter.started) == 1
+    assert reporter.started[0][1] == 2
+    assert len(reporter.completed) == 1
+

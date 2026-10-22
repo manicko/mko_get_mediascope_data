@@ -24,3 +24,15 @@ class WrongDataSettings(Exception):
     defaults template for the requested ``(media, report_type)`` pair is
     missing from the settings directory.
     """
+
+
+class WorkerFailureError(Exception):
+    """Raised when a report worker exits unexpectedly before the queue drains.
+
+    Raised by ``MediaReport.processing_tasks`` from its ``finally`` block as a
+    fail-fast supervision guard (ASY-008): if a worker terminated with an
+    unexpected non-``asyncio.CancelledError`` exception while no other
+    exception was already in flight, the coordinator surfaces it here instead
+    of silently leaving the report half-processed.  The original worker
+    exception is chained via ``from`` so its traceback is preserved.
+    """
