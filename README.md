@@ -20,7 +20,7 @@ uv run -m mko_get_mediascope_data init
 
 # 3. List available reports and run a report
 uv run -m mko_get_mediascope_data list-reports
-uv run -m mko_get_mediascope_data run ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5
+uv run -m mko_get_mediascope_data run ~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5
 ```
 
 ### For developers (editable installation)
@@ -31,7 +31,7 @@ cd mko_get_mediascope_data
 
 uv pip install -e .
 uv run -m mko_get_mediascope_data init
-uv run -m mko_get_medioscope_data run ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5
+uv run -m mko_get_mediascope_data run ~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5
 ```
 
 ## 📁 Configuration
@@ -40,7 +40,17 @@ uv run -m mko_get_medioscope_data run ~/.config/mko_get_medioscope_data/settings
 ```bash
 uv run -m mko_get_mediascope_data init
 ```
-This command creates the full configuration structure in your user directory:
+This command creates the full configuration structure in the platform-specific
+user configuration directory selected by `platformdirs` (there is **no single
+universal path**):
+
+| Platform | Settings directory |
+|---|---|
+| Linux | `~/.config/mko_get_mediascope_data/settings/` |
+| macOS | `~/Library/Application Support/mko_get_mediascope_data/settings/` |
+| Windows | `%APPDATA%\mko_get_mediascope_data\settings\` |
+
+The tree below is the Linux example:
 
 ```
 ~/.config/mko_get_mediascope_data/settings/
@@ -58,11 +68,49 @@ Edit `settings/connections/mediascope.json` with your credentials (see official 
 Copy any file from `settings/reports/` as a template and adjust it to your needs.  
 All parameters follow the standard **Mediascope API** format.
 
-> **Migrating from YAML to JSON5:** Settings templates were migrated from YAML
-> to JSON5. Re-run `uv run -m mko_get_mediascope_data init --force` to refresh
-> your templates. Hand-authored `.yaml` report files must be renamed to `.json5`
-> (the content format is otherwise unchanged). Error artifacts (`errors/*.json5`)
-> and configuration files (`app_config`, `log_config`) are also now JSON5.
+### 4. Migrating a hand-authored report from YAML to JSON5
+Renaming a `.yaml` file to `.json5` is only sufficient when its content is
+already JSON5-compatible. Ordinary YAML block sequences and mappings (indented
+`-` list items and `key: value` lines) are **not** valid JSON5, so such files
+must be converted by hand. Only hand-authored reports need conversion; bundled
+templates are shipped in JSON5. To refresh the bundled templates, run
+`uv run -m mko_get_mediascope_data init --force`; it re-copies the package
+templates and **overwrites files of the same name**, so back up any report you
+edited yourself before running it. There is no automatic migration feature.
+
+For example, this YAML report:
+
+```yaml
+- report_type: crosstab
+  report_subtype: DYNAMICS_BY_SPOTS
+  media: TV
+  relative_path: finance/raw_data
+  period:
+    date_filter:
+      - "2021-01-01"
+      - "2024-11-30"
+    time_unit: m
+```
+
+is written like this in JSON5:
+
+```json5
+[
+  {
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS",
+    "media": "TV",
+    "relative_path": "finance/raw_data",
+    "period": {
+      "date_filter": [
+        "2021-01-01",
+        "2024-11-30",
+      ],
+      "time_unit": "m",
+    },
+  },
+]
+```
 
 ## 📋 CLI Commands
 
@@ -78,13 +126,13 @@ uv run -m mko_get_mediascope_data --help
 **Examples:**
 ```bash
 # Run single report (default verbosity with progress bars)
-uv run -m mko_get_mediascope_data run ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_tvreport.json5
+uv run -m mko_get_mediascope_data run ~/.config/mko_get_mediascope_data/settings/reports/nat_tv_tvreport.json5
 
 # Run with verbose logging and progress bars
-uv run -m mko_get_mediascope_data run --verbosity VERBOSE ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5
+uv run -m mko_get_mediascope_data run --verbosity VERBOSE ~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5
 
 # Run quietly (no progress bars, warnings only)
-uv run -m mko_get_mediascope_data run --verbosity QUIET ~/.config/mko_get_medioscope_data/settings/reports/nat_tv_brands_last.json5
+uv run -m mko_get_mediascope_data run --verbosity QUIET ~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5
 ```
 
 ## 🔌 Public API (scripts, Airflow, notebooks)
@@ -103,18 +151,22 @@ from mko_get_mediascope_data import run_report, run_report_async, initialize_set
 initialize_settings(force=True)
 
 # Synchronous script or Airflow task
-run_report("~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5")
+run_report(
+    "~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5"
+)
 ```
 
 ```python
 # Jupyter / IPython notebook or any host with a running event loop
 from mko_get_mediascope_data import run_report_async
 
-await run_report_async("~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5")
+await run_report_async(
+    "~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5"
+)
 ```
 
 ## 🛠️ Requirements
-- Python 3.12+
+- Python 3.14+
 - Recommended: [uv](https://docs.astral.sh/uv/) package manager
 
 ## 📖 Documentation
