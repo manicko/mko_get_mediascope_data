@@ -27,7 +27,7 @@ from mko_get_mediascope_data.core.models import (
     SendTaskSettings,
     TaskStatus,
 )
-from mko_get_mediascope_data.core.network import NetworkClient, RETRIABLE_EXCEPTIONS
+from mko_get_mediascope_data.core.network import RETRIABLE_EXCEPTIONS, NetworkClient
 from mko_get_mediascope_data.core.progress import (
     NullProgressReporter,
     ProgressReporter,
@@ -173,7 +173,9 @@ class MediaReport(Report):
         # limits maximum tasks sent to Mediascope API
         self.max_tasks = max_tasks
         self.poll = poll or PollSettings()
-        self.send_task_settings: SendTaskSettings = send_task_settings or SendTaskSettings()
+        self.send_task_settings: SendTaskSettings = (
+            send_task_settings or SendTaskSettings()
+        )
         self.task_queue: asyncio.Queue[TVTask] = asyncio.Queue(maxsize=self.max_tasks)
 
         self.period: list[tuple[str, str]] | list[tuple[date, date]] | None = None
@@ -274,9 +276,7 @@ class MediaReport(Report):
                 item.error = f"Timeout after {timeout}s"
                 old_status = item.task_status
                 item.task_status = TaskStatus.FAILED
-                self.reporter.task_status_changed(
-                    item, old_status, TaskStatus.FAILED
-                )
+                self.reporter.task_status_changed(item, old_status, TaskStatus.FAILED)
                 await self._write_error_artifact(item)
             except Exception as exc:
                 logger.error(f"Task '{item.name}' failed: {exc} — skipping.")
@@ -285,9 +285,7 @@ class MediaReport(Report):
                 item.error = str(exc)
                 old_status = item.task_status
                 item.task_status = TaskStatus.FAILED
-                self.reporter.task_status_changed(
-                    item, old_status, TaskStatus.FAILED
-                )
+                self.reporter.task_status_changed(item, old_status, TaskStatus.FAILED)
                 await self._write_error_artifact(item)
             finally:
                 self.task_queue.task_done()
@@ -519,7 +517,10 @@ class TVMediaReport(MediaReport):
         stage_start = time.perf_counter()
         # print(f'debug task.settings = {task.settings}')
         task_json = await self.network_client.call(
-            self.builder, task.report_type, **task.settings, api_call=False,
+            self.builder,
+            task.report_type,
+            **task.settings,
+            api_call=False,
             task_name=task.name,
         )
         if task_json is not False:
@@ -541,11 +542,16 @@ class TVMediaReport(MediaReport):
             # (transport-only) vs default-unrestricted retry scope.
             retryable: bool = cfg.retryable
             retry_on: tuple[type[BaseException], ...] | None = (
-                RETRIABLE_EXCEPTIONS if cfg.retry_on_connection_error else None
-            ) if cfg.retryable else None
+                (RETRIABLE_EXCEPTIONS if cfg.retry_on_connection_error else None)
+                if cfg.retryable
+                else None
+            )
 
             task.key = await self.network_client.call(
-                self.sender, task_json, retryable=retryable, retry_on=retry_on,
+                self.sender,
+                task_json,
+                retryable=retryable,
+                retry_on=retry_on,
                 task_name=task.name,
             )
 
@@ -597,7 +603,9 @@ class TVMediaReport(MediaReport):
         start = loop.time()
         stage_start = time.perf_counter()
         polls = 0
-        sleep_interval = self.poll.initial_interval  # Start at 30s; API needs ~40s to process after submit
+        sleep_interval = (
+            self.poll.initial_interval
+        )  # Start at 30s; API needs ~40s to process after submit
         while True:
             polls += 1
             if polls > max_polls:
@@ -614,8 +622,10 @@ class TVMediaReport(MediaReport):
             await asyncio.sleep(sleep_interval)
 
             status = await self.network_client.call(
-                self.report_service.get_status, task.key,
-                sleep_time=self.poll.sleep_time, task_name=task.name,
+                self.report_service.get_status,
+                task.key,
+                sleep_time=self.poll.sleep_time,
+                task_name=task.name,
             )
             if status is False:
                 task.status = False
@@ -665,8 +675,11 @@ class TVMediaReport(MediaReport):
             task.error = "Task json is not returned"
         if task.status:
             df: DataFrame | None = await self.network_client.call(
-                self.report_service.result2table, res_json, project_name=task.target,
-                api_call=False, task_name=task.name,
+                self.report_service.result2table,
+                res_json,
+                project_name=task.target,
+                api_call=False,
+                task_name=task.name,
             )
             if df is None:
                 task.status = False
@@ -870,7 +883,7 @@ class DictDataStrategy(DataPreparationStrategy):
             logger.error(f"Missing columns: {missing}")
             return None
 
-        shift = 3
+        shift = 2
 
         df_long = (
             df[output_columns]
