@@ -146,6 +146,20 @@ class MediaReport(Report):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
+    async def _write_error_artifact(self, item: TVTask) -> None:
+        """Persist a task's error artifact, isolated from the worker loop.
+
+        Failures here are logged once and must not propagate — otherwise the
+        worker dies and queue.join() strands remaining work (ASY-008).
+        """
+        try:
+            await asyncio.to_thread(item.to_file, self.export_path)
+        except Exception as exc:
+            logger.error(
+                f"Failed to persist error artifact for task '{item.name}': {exc}. "
+                f"Original task error was: {item.error}"
+            )
+
     async def generate_tasks(self) -> AsyncGenerator[TVTask, None]:
         """Generate tasks. Must be an async generator."""
         return
@@ -210,7 +224,7 @@ class MediaReport(Report):
                             f"Calculation: '{item.name}' will be skipped. "
                             f"Reason: {item.error}"
                         )
-                        await asyncio.to_thread(item.to_file, self.export_path)
+                        await self._write_error_artifact(item)
                     else:
                         logger.warning(f"No data for task '{item.name}' — skipping.")
                 else:
@@ -227,7 +241,7 @@ class MediaReport(Report):
                 self.reporter.task_status_changed(
                     item, old_status, TaskStatus.FAILED
                 )
-                await asyncio.to_thread(item.to_file, self.export_path)
+                await self._write_error_artifact(item)
             except Exception as exc:
                 logger.error(f"Task '{item.name}' failed: {exc} — skipping.")
                 item.status = False
@@ -238,7 +252,7 @@ class MediaReport(Report):
                 self.reporter.task_status_changed(
                     item, old_status, TaskStatus.FAILED
                 )
-                await asyncio.to_thread(item.to_file, self.export_path)
+                await self._write_error_artifact(item)
             finally:
                 self.task_queue.task_done()
 

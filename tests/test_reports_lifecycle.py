@@ -2355,3 +2355,127 @@ async def test_processing_tasks_all_skipped_cleans_workers(
     assert reporter.started[0][1] == 2
     assert len(reporter.completed) == 1
 
+
+
+# ---------------------------------------------------------------------------
+# ASY-008: error-artifact persistence isolation in worker
+# ---------------------------------------------------------------------------
+
+
+async def test_error_persistence_failure_does_not_strand_queue_join(
+    tmp_path: Path,
+    mocker,
+    hermetic_app_service: AppService,
+):
+    """ASY-008: a failing ``to_file`` must not kill the worker or strand join.
+
+    One worker (``max_tasks=1``) drains two tasks.  The first task fails, so
+    ``worker`` invokes ``_write_error_artifact`` — with ``TVTask.to_file``
+    patched to raise ``OSError``.  Before the fix that exception escaped the
+    ``except`` block, killed the worker, and left the second queued item with
+    no consumer, so ``queue.join()`` hung.  With ``_write_error_artifact`` the
+    persistence failure is logged once and swallowed, so the worker proceeds to
+    the second task and ``queue.join()`` completes.
+
+    The outer ``asyncio.wait_for(..., timeout=10.0)`` is a hang guard: if the
+    worker dies, the test fails within 10 s instead of hanging the suite.
+    """
+    report = _build_hermetic_report(tmp_path, hermetic_app_service, max_tasks=1)
+    worker_tasks = _capture_worker_tasks(mocker)
+
+    # Record the order in which items are processed so we can prove the second
+    # task was handled after the first task's persistence failure.
+    processed: list[str] = []
+
+    async def _failing_process_item(item):
+        processed.append(item.name)
+        if item.name == "first":
+            item.status = False
+            item.log_error = True
+            item.error = "synthetic failure"
+
+    mocker.patch.object(report, "_process_item", _failing_process_item)
+
+    tasks = [
+        TVTask("first", {}, "DYNAMICS_BY_SPOTS", "crosstab"),
+        TVTask("second", {}, "DYNAMICS_BY_SPOTS", "crosstab"),
+    ]
+
+    async def _generate():
+        for task in tasks:
+            yield task
+
+    mocker.patch.object(report, "generate_tasks", _generate)
+
+    # The error-artifact writer fails — the ASY-008 death trigger.
+    mock_to_file = mocker.patch.object(
+        TVTask, "to_file", side_effect=OSError("disk full")
+    )
+
+    # Spy on the module-level logger.error to assert the persistence failure is
+    # logged once (dictConfig from the fixture replaces caplog's handler).
+    reports_logger = logging.getLogger(_REPORTER_LOGGER)
+    mock_error = mocker.spy(reports_logger, "error")
+
+    await asyncio.wait_for(report.processing_tasks(), timeout=10.0)
+
+    # Both tasks were processed despite the first task's to_file failure.
+    assert processed == ["first", "second"]
+
+    # queue.join() completed — every enqueued item got task_done().
+    assert report.task_queue.qsize() == 0
+
+    # The single owned worker was cancelled/gathered — none left pending.
+    assert len(worker_tasks) == 1
+    assert all(t.done() for t in worker_tasks)
+
+    # to_file was attempted exactly once (the failing first task), no retry.
+    assert mock_to_file.call_count == 1
+
+    # The persistence failure was logged exactly once.
+    persistence_logs = [
+        str(call.args[0]) if call.args else ""
+        for call in mock_error.call_args_list
+    ]
+    matching = [
+        msg
+        for msg in persistence_logs
+        if "Failed to persist error artifact for task 'first'" in msg
+    ]
+    assert len(matching) == 1, (
+        f"Expected exactly one persistence-failure log, got: {persistence_logs}"
+    )
+
+
+async def test_write_error_artifact_swallows_and_logs(
+    tmp_path: Path,
+    mocker,
+    hermetic_app_service: AppService,
+):
+    """ASY-008: ``_write_error_artifact`` swallows a ``to_file`` failure and logs it.
+
+    Drives the method directly: ``TVTask.to_file`` raises ``OSError``; the
+    method must not propagate the exception and must log the failure, including
+    the task name and the original task error.
+    """
+    report = _build_hermetic_report(tmp_path, hermetic_app_service, max_tasks=1)
+
+    task = TVTask("artifact_task", {}, "DYNAMICS_BY_SPOTS", "crosstab")
+    task.error = "original task error"
+
+    mocker.patch.object(TVTask, "to_file", side_effect=OSError("disk full"))
+
+    reports_logger = logging.getLogger(_REPORTER_LOGGER)
+    mock_error = mocker.spy(reports_logger, "error")
+
+    # Must not raise.
+    await report._write_error_artifact(task)
+
+    error_messages = [
+        str(call.args[0]) if call.args else ""
+        for call in mock_error.call_args_list
+    ]
+    assert any(
+        "artifact_task" in msg and "original task error" in msg
+        for msg in error_messages
+    ), f"Expected task name and original error in log, got: {error_messages}"
