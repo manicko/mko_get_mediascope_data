@@ -129,8 +129,12 @@ class Report:
                 f"Detected {len(group)} tasks colliding on name '{name}' after "
                 "transliteration; disambiguating with a SHA-256 suffix."
             )
-            for task in group:
-                collision_source = task._collision_id or task.name
+            for index, task in enumerate(group):
+                collision_source = (
+                    task._collision_id
+                    if task._collision_id is not None
+                    else f"{task.name}|{index}"
+                )
                 digest = hashlib.sha256(collision_source.encode("utf-8")).hexdigest()
                 task.name += "_" + digest[:8]
 

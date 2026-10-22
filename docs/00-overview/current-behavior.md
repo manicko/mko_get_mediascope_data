@@ -361,7 +361,7 @@ network, no Mediascope credentials). All tests pass at HEAD, including
 (`test_csv_to_file_atomic_*`, `test_done_files_excludes_temp_csv`,
 `test_distinct_audience_names_cannot_collide_after_transliteration`,
 `test_non_colliding_names_preserved_without_hash`, and
-`test_run_report_skips_missing_period_entry`). One test,
+`test_no_overlap_entry_warns_and_continues_later_entries`). One test,
 `test_run_report_with_real_models`, carries the
 `@pytest.mark.slow` marker and can be excluded with
 `uv run pytest -m "not slow"` (188 passed, 1 deselected). Coverage is
@@ -376,7 +376,7 @@ reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-mis
 | `tests/test_network.py` | Retry exhaustion raises `MaxRetriesExceeded("Network retry limit exceeded")` (subclasses `RuntimeError`); `mock_network_client` fixture retries on retryable errors; success returns the function result; `BadRequestError` (4xx) and `AuthorizationError` (401) are re-raised without retry; HTTP 429 (`TooManyRequestsError`) is retried with backoff; `TimeoutError` from `asyncio.wait_for` (`call_timeout` ceiling) is retryable; `retryable=False` makes the task-submission POST non-retried (EXT-001); `call_timeout` caps wall-clock via `asyncio.wait_for` (EXT-002); `retry_5xx` toggle controls 5xx retry (EXT-005); `log_errors_detail` redacts PII (args/kwargs) from error logs (EXT-008); semaphore limits concurrent in-flight calls; default `max_attempts=10`; PERF-001: `api_call=False` short-circuits `NetworkClient.call` to direct `_invoke` (no jitter, no semaphore, no retry, timeout-bounded) — verified by `test_cpu_local_calls_bypass_semaphore_and_jitter` |
 | `tests/test_reports.py` | `DefaultTVTaskStrategy` task naming; `DictDataStrategy` output columns |
 | `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5; `test_large_result_is_processed` verifies there is **no** row-count cap — an oversized `resultBody` (> 10 000 rows) is processed through `result2table` and produces a CSV with no error artifact; PERF-003: `test_worker_emits_per_task_duration` verifies structured `task_stage_complete`/`task_complete` timing logs; **temp CSV files are excluded from resume discovery via `get_done_files` (PIPE-012); collision-safe task identity via `Report._disambiguate_task_names` — unique names stay verbatim, colliding names gain a deterministic `sha256(collision_id)[:8]` suffix (PIPE-014)** |
-| `tests/test_services.py` | Full `run_report` pipeline end-to-end (slow; doubled `MediaVortexTask`, real `AppService`); `app_config` caching; `reload_config()` invalidates cache, is safe before first access, reapplies logging, and re-resolves `export_folder`; missing credentials raise `FileNotFoundError`; **a no-overlap entry is warned and skipped while later entries still export (`test_run_report_skips_missing_period_entry`, PIPE-013)** |
+| `tests/test_services.py` | Full `run_report` pipeline end-to-end (slow; doubled `MediaVortexTask`, real `AppService`); `app_config` caching; `reload_config()` invalidates cache, is safe before first access, reapplies logging, and re-resolves `export_folder`; missing credentials raise `FileNotFoundError`; **a no-overlap entry is warned and skipped while later entries still export (`test_no_overlap_entry_warns_and_continues_later_entries`, PIPE-013)** |
 | `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; gzip CSV writing; suffix mapping; `csv_to_file` writes into the report directory (`tmp_report_dir` fixture); **atomic publication** — final-file publication + temp-artifact cleanup/preservation on failure (`test_csv_to_file_atomic_success_publishes_final`, `test_csv_to_file_atomic_failure_preserves_prior_final`, PIPE-012) |
 | `tests/test_progress.py` | `NullProgressReporter` no-op semantics (all methods complete without raising); `ProgressReporter` protocol `isinstance` check (runtime_checkable); `TVTask.task_status` default is `QUEUED` |
 | `tests/test_verbosity.py` | `VerbosityMode.to_logging_level()` mapping (QUIET→WARNING, DEFAULT→WARNING, VERBOSE→INFO, DEBUG→DEBUG, SILENT→CRITICAL); `AppSettings.verbosity_mode` default and Pydantic string/enum coercion; `configure_logging_level()` sets root logger and all handlers; CLI `--verbosity` flag integration via `CliRunner` |
@@ -436,7 +436,7 @@ boundaries.
   the entry (no export path appended), and continues to the next entry; the
   function accumulates `attempted`/`exported`/`warned` counters and logs a
   summary. Unexpected errors still abort. Test:
-  `test_run_report_skips_missing_period_entry`.
+  `test_no_overlap_entry_warns_and_continues_later_entries`.
 - PIPE-014 — collision-safe task identity: each strategy records the original
   pre-transliteration identity as `TVTask._collision_id`, and
   `Report._disambiguate_task_names` (called in `processing_tasks` after the

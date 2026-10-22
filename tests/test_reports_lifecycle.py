@@ -2665,3 +2665,28 @@ async def test_non_colliding_names_preserved_without_hash(
     assert tasks[0].name == legacy_name, (
         "Non-colliding name must stay verbatim for resume back-compat"
     )
+
+
+def test_disambiguation_fallback_is_unique_without_collision_id():
+    """PIPE-014: colliding tasks lacking ``_collision_id`` still disambiguate.
+
+    Both real strategies always set ``_collision_id``, so the fallback path is
+    normally unreachable.  This guards it defensively: when a future task
+    source omits the identity and two tasks share the same ``name``, the
+    index-based fallback must still yield distinct suffixes so collisions are
+    always broken (no silent overwrite).
+    """
+    tasks = [
+        TVTask(name="same", settings={}, report_subtype="s", report_type="t"),
+        TVTask(name="same", settings={}, report_subtype="s", report_type="t"),
+    ]
+    assert all(task._collision_id is None for task in tasks)
+
+    TVMediaReport._disambiguate_task_names(tasks)
+
+    first, second = tasks[0].name, tasks[1].name
+    assert first != second, f"Fallback failed to disambiguate: {[first, second]}"
+    for index, task in enumerate(tasks):
+        expected = hashlib.sha256(f"same|{index}".encode()).hexdigest()[:8]
+        assert task.name == "same_" + expected
+        assert len(expected) == 8
