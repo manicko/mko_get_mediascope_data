@@ -8,7 +8,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
 
 # pyright: reportUnsupportedDunderAll=false
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 __all__ = [
     "run_report",
@@ -19,6 +19,17 @@ __all__ = [
     "list_reports",
     "app",
 ]
+
+if TYPE_CHECKING:
+    from .app import (
+        app as app,
+        init as init,
+        list_reports as list_reports,
+        run as run,
+        run_report as run_report,
+        run_report_async as run_report_async,
+        initialize_settings as initialize_settings,
+    )
 
 
 def __getattr__(name: str) -> Any:

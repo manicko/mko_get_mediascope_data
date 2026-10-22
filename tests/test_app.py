@@ -224,6 +224,30 @@ def test_lazy_import_same_object_as_app_module():
     assert pkg_run_report is app_run_report
 
 
+def test_public_package_exports_preserve_static_function_signatures():
+    """Package-root public callables must retain the concrete ``.app`` signatures.
+
+    QLT-021: the documented ``from mko_get_mediascope_data import ...`` seam
+    must resolve to the same typed callables as the direct ``.app`` import at
+    the static level. This runtime check verifies that the exposed object is
+    the concrete function (not a wrapper/``Any`` placeholder) and that its
+    signature and resolved type hints match the ``.app`` definition exactly.
+    """
+    import inspect
+    import typing
+
+    import mko_get_mediascope_data
+    from mko_get_mediascope_data import app as app_module
+
+    for name in ("run_report", "run_report_async", "initialize_settings"):
+        pkg_fn = getattr(mko_get_mediascope_data, name)
+        app_fn = getattr(app_module, name)
+
+        assert pkg_fn is app_fn, f"{name} must be the same object as in .app"
+        assert inspect.signature(pkg_fn) == inspect.signature(app_fn)
+        assert typing.get_type_hints(pkg_fn) == typing.get_type_hints(app_fn)
+
+
 def test_cli_missing_settings_explains_init_recovery(mocker, tmp_path):
     """`run` with missing settings exits nonzero and shows init recovery hint."""
     report_file = tmp_path / "report.json5"
