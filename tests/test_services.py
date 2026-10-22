@@ -532,3 +532,89 @@ async def test_run_report_multi_entry_yields_multiple_paths(
     assert len(export_paths) == 2
     assert export_paths[0].name == "raw_data"
     assert export_paths[1].name == "dynamic_spots"
+
+
+async def test_no_overlap_entry_warns_and_continues_later_entries(
+    tmp_path: Path,
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+) -> None:
+    """A no-overlap entry is warned and skipped; later entries still export (PIPE-013).
+
+    Entry 1's period has no overlap with the available data range, so its
+    ``create_report`` raises ``NoReportFoundError`` from ``get_period``.
+    ``run_report`` must catch only that error, warn, continue, and return the
+    export paths of the entries that did succeed — with no export path or error
+    artifact written for the skipped entry, and without raising.
+    """
+    entries = [
+        {
+            "media": MediaType.TV.value,
+            "report_type": ReportType.crosstab.value,
+            "report_subtype": ReportSubtype.TOP_NAT_TV_ADVERTISERS.value,
+            "relative_path": "tv/no_overlap",
+            "data_lang": "ru",
+            # Fully out-of-range explicit period: no overlap with the 2025
+            # availability range, so get_period raises NoReportFoundError.
+            "period": {"date_filter": ["2000-01-01", "2000-01-31"]},
+            "target_audiences": {"all 18+": "age >= 18"},
+        },
+        {
+            "media": MediaType.TV.value,
+            "report_type": ReportType.crosstab.value,
+            "report_subtype": ReportSubtype.DYNAMICS_BY_SPOTS.value,
+            "relative_path": "tv/available",
+            "data_lang": "ru",
+            "period": {"last_time": {"unit_count": 1}, "time_unit": "m"},
+            "target_audiences": {"all 18+": "age >= 18"},
+        },
+    ]
+    config_file = tmp_path / "no_overlap.json5"
+    config_file.write_text(json5.dumps(entries), encoding="utf-8")
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+
+    settings_2 = ReportSettings.model_validate(entries[1])
+    result_df_2 = _compute_result_df(hermetic_app_service, settings_2)
+    mock_report_service.result2table.return_value = result_df_2
+
+    mock_network_client = MagicMock()
+
+    async def mock_call_side_effect(func, *args, **kwargs):
+        if getattr(func, "__name__", None) == "get_connection":
+            return mock_report_service
+        return func(*args, **kwargs)
+
+    mock_network_client.call = AsyncMock(side_effect=mock_call_side_effect)
+    mocker.patch(
+        "mko_get_mediascope_data.core.services.NetworkClient",
+        return_value=mock_network_client,
+    )
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    export_paths = await hermetic_app_service.run_report(config_file)
+
+    # Only entry 2 was exported; entry 1 produced no export path.
+    assert len(export_paths) == 1
+    assert export_paths[0].name == "available"
+    assert export_paths[0].parts[-2] == "tv"
+    skipped_export_path = hermetic_app_service.export_folder / "tv" / "no_overlap"
+    assert skipped_export_path not in export_paths
+
+    # No error artifact or CSV written for the skipped entry.
+    skipped_dir = hermetic_app_service.export_folder / "tv" / "no_overlap"
+    assert not list(skipped_dir.rglob("*.csv*"))
+    assert not list(skipped_dir.rglob("*.log"))
+
+    # Entry 2's data was actually produced.
+    csv_files = list(
+        (hermetic_app_service.export_folder / "tv" / "available").glob("*.csv.gz")
+    )
+    assert len(csv_files) > 0, f"Expected entry 2 CSV output, found {csv_files}"

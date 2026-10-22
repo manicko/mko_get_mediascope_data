@@ -17,7 +17,7 @@ from mko_get_mediascope_data.core.models import (
     MediaType,
     ReportSettings,
 )
-from mko_get_mediascope_data.core.errors import WrongDataSettings
+from mko_get_mediascope_data.core.errors import NoReportFoundError, WrongDataSettings
 from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
 from mko_get_mediascope_data.core.progress import NullProgressReporter, ProgressReporter
@@ -174,6 +174,9 @@ class AppService:
             report_settings_path
         )
         export_paths: list[Path] = []
+        attempted = 0
+        exported = 0
+        warned = 0
 
         start_time = datetime.now().replace(microsecond=0)
         logger.info(
@@ -182,6 +185,7 @@ class AppService:
 
         idx = 1
         for report_settings in report_settings_sequence:
+            attempted += 1
             logger.info(f"Report {idx}: {report_settings.report_subtype}")
             export_path: Path = Path(self.export_folder / report_settings.relative_path)
             self.resolver.ensure_dir(export_path)
@@ -220,14 +224,33 @@ class AppService:
                 reporter=reporter,
             )
 
-            await rep.create_report()
+            # A single entry whose period has no overlap with the available
+            # data range raises NoReportFoundError from get_period. Warn and
+            # skip that entry (no export path) so later entries still run.
+            # Unexpected errors are deliberately not caught and still abort.
+            try:
+                await rep.create_report()
+            except NoReportFoundError as err:
+                warned += 1
+                logger.warning(
+                    f"Report {idx}: {report_settings.report_subtype} skipped "
+                    f"({report_settings.relative_path}): {err}"
+                )
+                idx += 1
+                continue
+
             export_paths.append(export_path)
+            exported += 1
             idx += 1
 
         end_time = datetime.now().replace(microsecond=0)
         logger.info(
             f"{'-' * 10}  Processing finished: {end_time}. "
             f"Total duration: {end_time - start_time} {'-' * 10}"
+        )
+        logger.info(
+            f"Reports summary: attempted={attempted}, exported={exported}, "
+            f"warned={warned}"
         )
 
         return export_paths
