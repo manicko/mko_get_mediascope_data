@@ -24,7 +24,7 @@ from requests.exceptions import (
 )
 from urllib3.exceptions import NameResolutionError, ProtocolError, IncompleteRead
 
-from mko_get_mediascope_data.core.errors import MaxRetriesExceeded
+from mko_get_mediascope_data.core.errors import CallTimeoutError, MaxRetriesExceeded
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +115,58 @@ class NetworkClient:
         self._log_errors_detail = log_errors_detail
 
     async def _invoke(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
-        """Execute *func* in a worker thread, bounded by ``call_timeout``."""
-        coro = asyncio.to_thread(func, *args, **kwargs)
+        """Execute *func* in a worker thread, bounded by ``call_timeout``.
+
+        The dispatched thread keeps running even if ``call_timeout`` elapses, so a
+        timeout raises :class:`CallTimeoutError` retaining the inner task wrapping
+        ``asyncio.to_thread``.  ``asyncio.shield`` prevents ``wait_for`` from
+        cancelling that inner task on timeout — the retained task stays pending
+        until the thread actually completes, allowing the permit to be held for the
+        thread's real lifetime (ASY-009).
+        """
+        inner = asyncio.ensure_future(asyncio.to_thread(func, *args, **kwargs))
         if self._call_timeout is not None:
-            return await asyncio.wait_for(coro, timeout=self._call_timeout)
-        return await coro
+            try:
+                return await asyncio.wait_for(
+                    asyncio.shield(inner), timeout=self._call_timeout
+                )
+            except TimeoutError:
+                raise CallTimeoutError(thread_task=inner) from None
+        return await inner
+
+    def _consume_thread_result(self, thread_task: asyncio.Future[Any]) -> None:
+        """Consume a retained thread future's outcome without raising."""
+        try:
+            thread_task.result()
+        except BaseException:  # noqa: BLE001 — never raise from a done-callback
+            pass
+
+    def _drain_thread_and_release(self, thread_task: asyncio.Future[Any]) -> None:
+        """Release one permit and consume the retained thread's terminal outcome."""
+        self._semaphore.release()
+        self._consume_thread_result(thread_task)
+
+    async def _attempt_with_permit(
+        self, func: Callable[..., T], *args: Any, **kwargs: Any
+    ) -> T:
+        """Run one attempt holding a permit until the thread actually completes.
+
+        On :class:`CallTimeoutError` the permit release is deferred to a
+        done-callback on the retained thread task, so the permit is held until the
+        synchronous work finishes rather than at the moment ``wait_for`` times out.
+        """
+        deferred_release = False
+        await self._semaphore.acquire()
+        try:
+            return await self._invoke(func, *args, **kwargs)
+        except CallTimeoutError as err:
+            if err.thread_task is not None:
+                err.thread_task.add_done_callback(self._drain_thread_and_release)
+            deferred_release = True
+            raise
+        finally:
+            if not deferred_release:
+                self._semaphore.release()
 
     def _redact_args(self, value: Any) -> str:
         """Redact potentially sensitive arguments from error-log messages.
@@ -177,7 +224,12 @@ class NetworkClient:
             The return value of *func*.
         """
         if not api_call:
-            return await self._invoke(func, *args, **kwargs)
+            try:
+                return await self._invoke(func, *args, **kwargs)
+            except CallTimeoutError as err:
+                if err.thread_task is not None:
+                    err.thread_task.add_done_callback(self._consume_thread_result)
+                raise
 
         _sleep_time = max(sleep_time, self._sleep_time)
         _task_ctx = f" task={task_name}" if task_name is not None else ""
@@ -187,13 +239,11 @@ class NetworkClient:
 
         if not retryable and retry_on is None:
             # Legacy behavior: single attempt, no retry loop at all.
-            async with self._semaphore:
-                return await self._invoke(func, *args, **kwargs)
+            return await self._attempt_with_permit(func, *args, **kwargs)
 
         for attempt in range(1, self._max_attempts + 1):
             try:
-                async with self._semaphore:
-                    return await self._invoke(func, *args, **kwargs)
+                return await self._attempt_with_permit(func, *args, **kwargs)
 
             except BadRequestError as err:
                 logger.error(f"Bad request. Check configuration. {err}{_task_ctx}")

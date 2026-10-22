@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 import time
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,7 +13,7 @@ from mediascope_api.core.errors import (
 )
 from requests.exceptions import ConnectTimeout
 
-from mko_get_mediascope_data.core.errors import MaxRetriesExceeded
+from mko_get_mediascope_data.core.errors import CallTimeoutError, MaxRetriesExceeded
 from mko_get_mediascope_data.core.network import NetworkClient
 
 
@@ -637,3 +638,105 @@ async def test_call_omits_task_context_when_name_is_none(mocker, caplog):
     assert "task=" not in log_text
     assert "Network error" in log_text
     assert call_count[0] == 3
+
+
+async def test_timed_out_sync_calls_remain_within_concurrency_ceiling(mocker):
+    """ASY-009: a timed-out thread retains its permit until it actually completes.
+
+    With ``max_concurrent_requests=1`` the blocking function sleeps far longer
+    than ``call_timeout``, so every attempt times out.  A thread-safe counter
+    tracks how many dispatches are simultaneously active: the peak must never
+    exceed the permit ceiling, proving the timed-out thread holds its permit
+    across retries instead of releasing it at cancellation time.
+    """
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)  # backoff only, not time.sleep
+    client = NetworkClient(
+        max_concurrent_requests=1, call_timeout=0.05, max_attempts=3, sleep_time=0
+    )
+
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+
+    def blocking_func():
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.5)
+        with lock:
+            active -= 1
+        return "done"
+
+    async def _run():
+        with pytest.raises(MaxRetriesExceeded):
+            await client.call(blocking_func)
+
+    # Guard against a hang: the full sequence is ~1.5s of genuine sleeps.
+    await asyncio.wait_for(_run(), timeout=15.0)
+
+    assert peak <= 1, f"concurrency ceiling breached: peak_active={peak}"
+
+
+async def test_timeout_defers_semaphore_release_until_thread_completes(mocker):
+    """ASY-009: the permit is not released until the timed-out thread finishes.
+
+    After ``call`` raises ``MaxRetriesExceeded`` the timed-out thread is still
+    running, so the sole permit is still held — the semaphore must NOT be
+    immediately acquirable.  Once the thread completes, its done-callback
+    releases the permit and the semaphore becomes acquirable.
+    """
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+    client = NetworkClient(
+        max_concurrent_requests=1, call_timeout=0.05, max_attempts=1, sleep_time=0
+    )
+
+    def blocking_func():
+        time.sleep(0.3)
+        return "done"
+
+    with pytest.raises(MaxRetriesExceeded):
+        await client.call(blocking_func)
+
+    # The thread (0.3s) has not finished yet — the permit is still held.
+    try:
+        async with asyncio.timeout(0.05):
+            await client._semaphore.acquire()
+            client._semaphore.release()
+    except TimeoutError:
+        pass
+    else:
+        pytest.fail("Permit was released before the timed-out thread completed")
+
+    # Wait past the thread's completion; the done-callback releases the permit.
+    await asyncio.sleep(0.5)
+
+    async with asyncio.timeout(1.0):
+        await client._semaphore.acquire()
+        client._semaphore.release()
+
+
+async def test_call_timeout_propagates_as_timeout_error_for_api_call_false(mocker):
+    """ASY-009: ``api_call=False`` surfaces ``CallTimeoutError`` (a ``TimeoutError``).
+
+    The bypass path attaches a drain-only callback to the retained thread task so
+    the thread's terminal exception is consumed (no "exception was never
+    retrieved" warning) while the ``TimeoutError`` still propagates to the caller.
+    """
+    client = NetworkClient(call_timeout=0.05, sleep_time=0)
+
+    def blocking_func():
+        time.sleep(0.2)
+        return "done"
+
+    with pytest.raises(CallTimeoutError) as exc_info:
+        await client.call(blocking_func, api_call=False)
+
+    assert isinstance(exc_info.value, TimeoutError)
+    assert exc_info.value.thread_task is not None
+
+    # The drain-only callback was attached to the retained thread task.
+    assert len(exc_info.value.thread_task._callbacks) > 0  # noqa: SLF001
+
+    # Let the thread finish so its exception is consumed by the drain callback.
+    await asyncio.sleep(0.3)

@@ -1,3 +1,7 @@
+import asyncio
+from typing import Any
+
+
 class NoReportFoundError(Exception):
     """Raised when no report data or tasks can be produced.
 
@@ -7,6 +11,19 @@ class NoReportFoundError(Exception):
     Per D-08 this is a warning-level condition surfaced to the caller
     rather than a silent failure.
     """
+
+
+class CallTimeoutError(TimeoutError):
+    """Raised when a call exceeds ``call_timeout`` while its thread may still run.
+
+    ``thread_task`` retains the inner task wrapping ``asyncio.to_thread`` so callers
+    can defer permit release until the synchronous work actually completes and consume
+    its terminal exception.  Subclasses ``TimeoutError`` for retry classification.
+    """
+
+    def __init__(self, thread_task: asyncio.Future[Any] | None = None) -> None:
+        super().__init__()
+        self.thread_task = thread_task
 
 
 class MaxRetriesExceeded(RuntimeError):
