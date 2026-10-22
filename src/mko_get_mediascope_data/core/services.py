@@ -22,10 +22,16 @@ from mko_get_mediascope_data.core.network import NetworkClient
 from mko_get_mediascope_data.core.paths import APP_PATHS, AppPaths, PathResolver
 from mko_get_mediascope_data.core.progress import NullProgressReporter, ProgressReporter
 from mko_get_mediascope_data.core.reports import ReportFactory, TVMediaReport
+from mko_get_mediascope_data.core.vendor_lifecycle import (
+    CapturedSessions,
+    capture_sessions,
+    capture_singleton_sessions,
+    release_sessions,
+)
 
 logger = logging.getLogger(__name__)
 
-_CONNECTION_MAP: dict[MediaType, type] = {
+_CONNECTION_MAP: dict[MediaType, type[MediaVortexTask]] = {
     MediaType.TV: MediaVortexTask,
     MediaType.TV_REG: MediaVortexTask,
 }
@@ -200,48 +206,63 @@ class AppService:
                 retry_5xx=self.app_config.app_settings.retry_5xx,
                 log_errors_detail=self.app_config.app_settings.log_errors_detail,
             )
-            report_service: MediaVortexTask = await network_client.call(
-                self.get_connection,
-                report_settings.media,
-                api_call=False,
-                task_name=None,
-            )
-
-            report_strategies = ReportFactory(report_settings)
-
-            rep = TVMediaReport(
-                report_settings=report_settings,
-                data_settings=data_settings,
-                export_path=export_path,
-                report_service=report_service,
-                network_client=network_client,
-                task_strategy=report_strategies.task_strategy(),
-                data_strategy=report_strategies.data_strategy(),
-                max_tasks=self.app_config.app_settings.max_tasks,
-                poll=self.app_config.app_settings.poll,
-                send_task_settings=self.app_config.app_settings.send_task,
-                check_done=report_settings.check_done,
-                reporter=reporter,
-            )
-
-            # A single entry whose period has no overlap with the available
-            # data range raises NoReportFoundError from get_period. Warn and
-            # skip that entry (no export path) so later entries still run.
-            # Unexpected errors are deliberately not caught and still abort.
+            captured: CapturedSessions | None = None
             try:
-                await rep.create_report()
-            except NoReportFoundError as err:
-                warned += 1
-                logger.warning(
-                    f"Report {idx}: {report_settings.report_subtype} skipped "
-                    f"({report_settings.relative_path}): {err}"
+                report_service: MediaVortexTask = await network_client.call(
+                    self.get_connection,
+                    report_settings.media,
+                    api_call=False,
+                    task_name=None,
                 )
-                idx += 1
-                continue
+                captured = capture_sessions(report_service)
 
-            export_paths.append(export_path)
-            exported += 1
-            idx += 1
+                report_strategies = ReportFactory(report_settings)
+
+                rep = TVMediaReport(
+                    report_settings=report_settings,
+                    data_settings=data_settings,
+                    export_path=export_path,
+                    report_service=report_service,
+                    network_client=network_client,
+                    task_strategy=report_strategies.task_strategy(),
+                    data_strategy=report_strategies.data_strategy(),
+                    max_tasks=self.app_config.app_settings.max_tasks,
+                    poll=self.app_config.app_settings.poll,
+                    send_task_settings=self.app_config.app_settings.send_task,
+                    check_done=report_settings.check_done,
+                    reporter=reporter,
+                )
+
+                # A single entry whose period has no overlap with the available
+                # data range raises NoReportFoundError from get_period. Warn and
+                # skip that entry (no export path) so later entries still run.
+                # Unexpected errors are deliberately not caught and still abort.
+                try:
+                    await rep.create_report()
+                except NoReportFoundError as err:
+                    warned += 1
+                    logger.warning(
+                        f"Report {idx}: {report_settings.report_subtype} skipped "
+                        f"({report_settings.relative_path}): {err}"
+                    )
+                    idx += 1
+                    continue
+
+                export_paths.append(export_path)
+                exported += 1
+                idx += 1
+            finally:
+                # Release the vendor sessions owned by this entry on every exit
+                # path: success, constructor partial failure, execution failure,
+                # and the NoReportFoundError skip. On constructor failure the
+                # returned object never exists, so capture from the partially
+                # initialized vendor singletons instead.
+                if captured is None:
+                    captured = capture_singleton_sessions()
+                release_sessions(
+                    captured,
+                    has_outstanding_work=network_client.has_outstanding_deferred(),
+                )
 
         end_time = datetime.now().replace(microsecond=0)
         logger.info(

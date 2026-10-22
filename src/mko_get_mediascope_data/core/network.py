@@ -119,6 +119,11 @@ class NetworkClient:
         self._call_timeout = call_timeout
         self._retry_5xx = retry_5xx
         self._log_errors_detail = log_errors_detail
+        # Threads retained after ``call_timeout`` elapses (ASY-009).  They keep
+        # running the synchronous vendor call and may still hold references to
+        # the vendor sessions, so callers must not close those sessions while
+        # this set is non-empty (EXT-010).
+        self._deferred_threads: set[asyncio.Future[Any]] = set()
 
     async def _invoke(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         """Execute *func* in a worker thread, bounded by ``call_timeout``.
@@ -137,8 +142,29 @@ class NetworkClient:
                     asyncio.shield(inner), timeout=self._call_timeout
                 )
             except TimeoutError:
+                # Retain the still-running thread so its lifetime is observable
+                # (EXT-010 deferred-work guard) and its terminal outcome is
+                # consumed.  The callback only discards tracking state; permit
+                # handling stays with the caller's own callback.
+                self._track_deferred(inner)
                 raise CallTimeoutError(thread_task=inner) from None
         return await inner
+
+    def _track_deferred(self, thread_task: asyncio.Future[Any]) -> None:
+        """Record a retained thread future until it completes (EXT-010 guard)."""
+        self._deferred_threads.add(thread_task)
+        thread_task.add_done_callback(self._deferred_threads.discard)
+
+    def has_outstanding_deferred(self) -> bool:
+        """Return ``True`` while a timed-out thread is still running.
+
+        ``call_timeout`` (ASY-009) lets the synchronous vendor call outlive the
+        awaited call; such threads may still reference the vendor sessions.
+        Callers releasing those sessions (EXT-010) must defer the close until
+        this returns ``False`` so a session is never closed beneath in-flight
+        work.
+        """
+        return bool(self._deferred_threads)
 
     def _consume_thread_result(self, thread_task: asyncio.Future[Any]) -> None:
         """Consume a retained thread future's outcome without raising."""
