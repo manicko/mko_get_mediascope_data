@@ -1,57 +1,241 @@
 [
   {
-    media: 'TV',
-    report_type: 'crosstab',
-    report_subtype: 'DYNAMICS_BY_SPOTS', // тип отчета
-    compression: {
-      method: 'gzip'
+    "relative_path": "theiss/base/raw_data",
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS", // тип отчета
+    "compression": {
+      "method": 'gzip'
     },
-    data_lang: 'ru', // задаем язык выгрузки
-    relative_path: 'theiss/raw_data',
-    multiple_files: true, // True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    ad_filter: '(articleLevel3Id=176 OR articleLevel4Id IN (791, 846, 863, 864, 3631, 4413)) AND adIssueStatusId = R', // DRTHEISS
-    target_audiences: {
-      'all 18+': 'age >= 18',
-      'W 30-50': 'sex = 2 AND age >= 30 AND age <= 50',
-      'W 30-50 BC': 'sex = 2 AND age >= 30 AND age <= 50 AND incomeGroupRussia IN (2,3)',
-      'W 35+ BC': 'sex = 2 AND age >= 35 AND incomeGroupRussia IN (2,3)',
-      'W 50+ BC': 'sex = 2 AND age >= 50 AND incomeGroupRussia IN (2,3)',
-      'W 50+': 'sex = 2 AND age >= 50',
-      'W 55+': 'sex = 2 AND age >= 55'
+    "data_lang": "ru", // задаем язык выгрузки
+    "multiple_files": true, // True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    "ad_filter": "(articleLevel3Id=176 OR articleLevel4Id IN (786, 790, 791,  846, 863, 864, 3631, 4413, 4595)) AND adIssueStatusId = R", // DRTHEISS
+    "target_audiences": {
+      "all 18+": "age >= 18",
+      "W 30-50": "sex = 2 AND age >= 30 AND age <= 50",
+      "W 30-50 BC": "sex = 2 AND age >= 30 AND age <= 50 AND incomeGroupRussia IN (2,3)",
+      "W 50+": "sex = 2 AND age >= 50",
+      "W 50+ BC": "sex = 2 AND age >= 50 AND incomeGroupRussia IN (2,3)"
     },
-    period: {
-      date_filter: [
-        '2023-01-01',
-        '2026-10-10'
+    "period": {
+      "date_filter": [
+        "2023-01-01",
+        '2026-12-31'
       ], // Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      time_unit: 'm'
+      "time_unit": "w"
       // "last_time": { //если нужно последние несколько мес
       //   "unit_count": 1,
       //   "include_current": false
-      // },
+      // }
+    },
+    "slices": [
+      "researchDate", // day - can specify at most 1 time slice per task.
+      // 'researchMonth', # month - can specify at most 1 time slice per task.
+      // 'researchWeek', # week - can specify at most 1 time slice per task.
+      "articleList4EName", // Product categories 4 list
+      "advertiserListEName", // Advertisers list
+      // 'advertiserListId',  # Advertisers list id
+      "brandListEName", // Brands list
+      // 'brandListId',  # Brands list id
+      "subbrandListEName", // Sub-brands list
+      // 'subbrandListId',  # Sub-brands list id
+      "modelListEName", // Products list
+      // 'modelListId',  # Products list id
+      "adEName", // Ad
+      // "articleList2EName", // Product categories 2 list
+      // "articleList3EName", // Product categories 3 list
+      "articleList4EName", // Product categories 4 list
+      "adStandardDuration", // Ad expected duration
+      "adDistributionTypeEName", // Ad distribution
+      "adTypeEName", // Ad type
+      //"adPositionId", // Ad position in block
+      //"adPositionTypeEName", // Ad positioning
+      "adPrimeTimeStatusId", // Prime/Off-prime ad id '1 - Prime-time, 2 - Off-prime
+      "adPrimeTimeStatusEName", // Prime/Off-prime ads (en.)
+      "adId", // Ad ID
+      "adNotes", // Ad description
+      "adFirstIssueDate", // Ad first air date
+      "tvCompanyEName" // TV company
+      //"programEName", // Program
+      //"programCategoryEName", // Program category (en.)
+      //"programCategoryShortEName", // Program short category
+      //"programTypeEName" // Program genre
+    ],
+    "statistics": [
+      "RtgPerSum", // Total reach of event group in %
+      "StandRtgPerSum",
+      "SalesRtgPerSum", // Total reach of event group in %, calculated using channel audience
+      "StandSalesRtgPerSum",
+      "QuantitySum" // Number of broadcast events
+    ]
+  },
+  {
+    "relative_path": "theiss/base/dict",
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS_DICT", // тип отчета
+    "data_lang": "ru", // задаем язык выгрузки
+    "multiple_files": false, // True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    "ad_filter": "(articleLevel3Id=176 OR articleLevel4Id IN (786, 790, 791,  846, 863, 864, 3631, 4413, 4595)) AND adIssueStatusId = R", // DRTHEISS
+    "target_audiences": {
+      "all 18+": 'age >= 18'
+    },
+    "period": {
+      "date_filter": [
+        "2023-01-01",
+        '2026-12-31'
+      ], // Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+      "time_unit": "w"
+      // "last_time": { //если нужно последние несколько мес
+      //   "unit_count": 1,
+      //   "include_current": false
+      // }
     }
   },
   {
-    media: 'TV',
-    report_type: 'crosstab',
-    report_subtype: 'DYNAMICS_BY_SPOTS_DICT', // тип отчета
-    relative_path: 'theiss/dict',
-    data_lang: 'ru', // задаем язык выгрузки
-    multiple_files: true, // True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
-    ad_filter: '(articleLevel3Id=176 OR articleLevel4Id IN (791, 846, 863, 864, 3631, 4413)) AND adIssueStatusId = R', // DRTHEISS
-    target_audiences: {
-      'all 18+': 'age >= 18'
+    "relative_path": "theiss/weekly/raw_data",
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS", // тип отчета
+    "compression": {
+      "method": 'gzip'
     },
-    period: {
-      date_filter: [
-        '2023-01-01',
-        '2026-10-10'
-      ], // Задаем явно период ['2020-01-01', '2024-01-31'] или Null
-      time_unit: 'm'
-      // "last_time": { //если нужно последние несколько мес
-      //   "unit_count": 1,
-      //   "include_current": false
-      // },
-    }
+    "data_lang": "ru", // задаем язык выгрузки
+    "multiple_files": true, // True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    "ad_filter": "(articleLevel3Id=176 OR articleLevel4Id IN (786, 790, 791,  846, 863, 864, 3631, 4413, 4595)) AND adIssueStatusId = R", // DRTHEISS
+    "target_audiences": {
+      "all 18+": "age >= 18",
+      "W 30-50": "sex = 2 AND age >= 30 AND age <= 50",
+      "W 30-50 BC": "sex = 2 AND age >= 30 AND age <= 50 AND incomeGroupRussia IN (2,3)",
+      "W 50+": "sex = 2 AND age >= 50",
+      "W 50+ BC": "sex = 2 AND age >= 50 AND incomeGroupRussia IN (2,3)"
+    },
+    "period": {
+      // "date_filter": [
+      //   "2023-01-01",
+      //   '2026-10-10'
+      // ], // Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+      "time_unit": "w",
+      "last_time": { //если нужно последние несколько мес
+        "unit_count": 1,
+        "include_current": false
+      }
+    },
+    "slices": [
+      //"researchDate", // day - can specify at most 1 time slice per task.
+      // 'researchMonth', # month - can specify at most 1 time slice per task.
+      "researchWeek", // # week - can specify at most 1 time slice per task.
+      "articleList4EName", // Product categories 4 list
+      "advertiserListEName", // Advertisers list
+      // 'advertiserListId',  # Advertisers list id
+      "brandListEName", // Brands list
+      // 'brandListId',  # Brands list id
+      "subbrandListEName", // Sub-brands list
+      // 'subbrandListId',  # Sub-brands list id
+      "modelListEName", // Products list
+      // 'modelListId',  # Products list id
+      "adEName", // Ad
+      // "articleList2EName", // Product categories 2 list
+      // "articleList3EName", // Product categories 3 list
+      "articleList4EName", // Product categories 4 list
+      "adStandardDuration", // Ad expected duration
+      "adDistributionTypeEName", // Ad distribution
+      "adTypeEName", // Ad type
+      //"adPositionId", // Ad position in block
+      //"adPositionTypeEName", // Ad positioning
+      "adPrimeTimeStatusId", // Prime/Off-prime ad id '1 - Prime-time, 2 - Off-prime
+      "adPrimeTimeStatusEName", // Prime/Off-prime ads (en.)
+      "adId", // Ad ID
+      "adNotes", // Ad description
+      "adFirstIssueDate", // Ad first air date
+      "tvCompanyEName", // TV company
+      "programEName", // Program
+      "programCategoryEName", // Program category (en.)
+      "programCategoryShortEName", // Program short category
+      "programTypeEName", // Program genre
+      "breaksAdCount" // Number of ad breaks
+    ],
+    "statistics": [
+      "RtgPerSum", // Total reach of event group in %
+      "StandRtgPerSum",
+      "SalesRtgPerSum", // Total reach of event group in %, calculated using channel audience
+      "StandSalesRtgPerSum",
+      "QuantitySum", // Number of broadcast events
+      "CumReach000", // - накопленный охват в тыс. человек. Количество человек, смотревших какое-либо событие группы не менее 1 минуты, выраженное в тысячах человек"
+      "CumReachPer" // - накопленный охват в %. 
+    ]
+  },
+  {
+    "relative_path": "theiss/monthly/raw_data",
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "DYNAMICS_BY_SPOTS", // тип отчета
+    "compression": {
+      "method": 'gzip'
+    },
+    "data_lang": "ru", // задаем язык выгрузки
+    "multiple_files": true, // True, если период больше 1 года, разбиваем выгрузки по месяцам/неделям
+    "ad_filter": "(articleLevel3Id=176 OR articleLevel4Id IN (786, 790, 791,  846, 863, 864, 3631, 4413, 4595)) AND adIssueStatusId = R", // DRTHEISS
+    "target_audiences": {
+      "all 18+": "age >= 18",
+      "W 30-50": "sex = 2 AND age >= 30 AND age <= 50",
+      "W 30-50 BC": "sex = 2 AND age >= 30 AND age <= 50 AND incomeGroupRussia IN (2,3)",
+      "W 50+": "sex = 2 AND age >= 50",
+      "W 50+ BC": "sex = 2 AND age >= 50 AND incomeGroupRussia IN (2,3)"
+    },
+    "period": {
+      // "date_filter": [
+      //   "2023-01-01",
+      //   '2026-10-10'
+      // ], // Задаем явно период ['2020-01-01', '2024-01-31'] или Null
+      "time_unit": "m",
+      "last_time": { //если нужно последние несколько мес
+        "unit_count": 1,
+        "include_current": false
+      }
+    },
+    "slices": [
+      //"researchDate", // day - can specify at most 1 time slice per task.
+      "researchMonth", //# month - can specify at most 1 time slice per task.
+      // 'researchWeek', # week - can specify at most 1 time slice per task.
+      "articleList4EName", // Product categories 4 list
+      "advertiserListEName", // Advertisers list
+      // 'advertiserListId',  # Advertisers list id
+      "brandListEName", // Brands list
+      // 'brandListId',  # Brands list id
+      "subbrandListEName", // Sub-brands list
+      // 'subbrandListId',  # Sub-brands list id
+      "modelListEName", // Products list
+      // 'modelListId',  # Products list id
+      "adEName", // Ad
+      // "articleList2EName", // Product categories 2 list
+      // "articleList3EName", // Product categories 3 list
+      "articleList4EName", // Product categories 4 list
+      "adStandardDuration", // Ad expected duration
+      "adDistributionTypeEName", // Ad distribution
+      "adTypeEName", // Ad type
+      //"adPositionId", // Ad position in block
+      //"adPositionTypeEName", // Ad positioning
+      "adPrimeTimeStatusId", // Prime/Off-prime ad id '1 - Prime-time, 2 - Off-prime
+      "adPrimeTimeStatusEName", // Prime/Off-prime ads (en.)
+      "adId", // Ad ID
+      "adNotes", // Ad description
+      "adFirstIssueDate", // Ad first air date
+      "tvCompanyEName", // TV company
+      "programEName", // Program
+      "programCategoryEName", // Program category (en.)
+      "programCategoryShortEName", // Program short category
+      "programTypeEName", // Program genre
+      "breaksAdCount" // Number of ad breaks
+    ],
+    "statistics": [
+      "RtgPerSum", // Total reach of event group in %
+      "StandRtgPerSum",
+      "SalesRtgPerSum", // Total reach of event group in %, calculated using channel audience
+      "StandSalesRtgPerSum",
+      "QuantitySum", // Number of broadcast events
+      "CumReach000", // - накопленный охват в тыс. человек. Количество человек, смотревших какое-либо событие группы не менее 1 минуты, выраженное в тысячах человек"
+      "CumReachPer" // - накопленный охват в %. 
+    ]
   }
 ]

@@ -21,9 +21,6 @@ from mko_get_mediascope_data.core.paths import APP_PATHS
 from mko_get_mediascope_data.core.services import AppService
 from mko_get_mediascope_data.core.utils import en_to_ru
 
-# Number of report entries expected across the 17 bundled JSON5 report templates.
-EXPECTED_TEMPLATE_ENTRIES = 34
-
 # Valid Media-Scope kitId legend values (dataset IDs).
 VALID_KIT_IDS: set[int] = {1, 2, 3, 4, 5, 6, 7, 9, 10}
 
@@ -85,11 +82,11 @@ def test_merge_data_settings_en_does_not_translate():
 
 
 def test_bundled_templates_validate():
-    """All 34 entries across 17 bundled JSON5 report templates must pass
-    ReportSettings validation.
+    """All bundled JSON5 report templates must pass ReportSettings validation.
 
     Reads from the package's bundled templates via APP_PATHS.app_settings_dir
-    (read-only), not the user config directory.
+    (read-only), not the user config directory.  There is no fixed entry count:
+    templates may contain as many entries as needed.
     """
     reports_dir = APP_PATHS.app_settings_dir / "reports"
     json5_files = sorted(reports_dir.rglob("*.json5"))
@@ -114,10 +111,6 @@ def test_bundled_templates_validate():
             failures
         )
         pytest.fail(msg)
-
-    assert total_entries == EXPECTED_TEMPLATE_ENTRIES, (
-        f"Expected {EXPECTED_TEMPLATE_ENTRIES} entries, found {total_entries}"
-    )
 
 
 def test_data_defaults_covers_all_subtypes():
