@@ -21,7 +21,7 @@ async def test_dict_data_strategy():
 
     1. Selects only the columns listed in ``data_settings.slices``.
     2. Melts them into ``(column, value)`` rows, dropping NaN and duplicates.
-    3. Assigns ``search_column_idx`` starting at a fixed shift (3) and sets
+    3. Assigns ``search_column_idx`` starting at a fixed shift (2) and sets
        ``action="r"`` / ``match="p"``.
     4. Strips parenthetical suffixes and whitespace into ``term``.
     5. Creates one ``{col}_clean`` column per slice, populated only on rows
@@ -80,27 +80,27 @@ async def test_dict_data_strategy():
     assert len(result) == 51
     assert not result.duplicated().any()
 
-    # Row counts per slice match the user-specified output
-    assert (result["search_column_idx"] == 3).sum() == 20  # channel
-    assert (result["search_column_idx"] == 4).sum() == 22  # program
-    assert (result["search_column_idx"] == 5).sum() == 9   # category
+    # Row counts per slice match the user-specified output (shift=2 → idx 2/3/4)
+    assert (result["search_column_idx"] == 2).sum() == 20  # channel
+    assert (result["search_column_idx"] == 3).sum() == 22  # program
+    assert (result["search_column_idx"] == 4).sum() == 9   # category
 
     # action and match are constants
     assert set(result["action"]) == {"r"}
     assert set(result["match"]) == {"p"}
 
     # Each _clean column is populated only on rows of its own slice type
-    channel_rows = result[result["search_column_idx"] == 3]
+    channel_rows = result[result["search_column_idx"] == 2]
     assert channel_rows["channel_clean"].notna().all()
     assert channel_rows["program_clean"].isna().all()
     assert channel_rows["category_clean"].isna().all()
 
-    program_rows = result[result["search_column_idx"] == 4]
+    program_rows = result[result["search_column_idx"] == 3]
     assert program_rows["program_clean"].notna().all()
     assert program_rows["channel_clean"].isna().all()
     assert program_rows["category_clean"].isna().all()
 
-    category_rows = result[result["search_column_idx"] == 5]
+    category_rows = result[result["search_column_idx"] == 4]
     assert category_rows["category_clean"].notna().all()
     assert category_rows["channel_clean"].isna().all()
     assert category_rows["program_clean"].isna().all()
