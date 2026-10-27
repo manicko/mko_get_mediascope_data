@@ -72,9 +72,28 @@ def iter_period_slices(
         current = next_start
 
 
+@overload
 def slice_period(
     period: list[date] | tuple[date, date],
     frequency: Literal["d", "w", "m", "y"],
+    *,
+    as_strings: Literal[True] = True,
+) -> list[tuple[str, str]]: ...
+
+
+@overload
+def slice_period(
+    period: list[date] | tuple[date, date],
+    frequency: Literal["d", "w", "m", "y"],
+    *,
+    as_strings: Literal[False] = False,
+) -> list[tuple[date, date]]: ...
+
+
+def slice_period(
+    period: list[date] | tuple[date, date],
+    frequency: Literal["d", "w", "m", "y"],
+    *,
     as_strings: bool = True,
 ) -> list[tuple[str, str]] | list[tuple[date, date]]:
     """

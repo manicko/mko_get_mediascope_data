@@ -178,7 +178,7 @@ class MediaReport(Report):
         )
         self.task_queue: asyncio.Queue[TVTask] = asyncio.Queue(maxsize=self.max_tasks)
 
-        self.period: list[tuple[str, str]] | list[tuple[date, date]] | None = None
+        self.period: list[tuple[str, str]] | None = None
         self.reporter = reporter or NullProgressReporter()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -385,7 +385,7 @@ class MediaReport(Report):
         self.period = await self.get_period()
         await self.processing_tasks(timeout=timeout)
 
-    async def get_period(self) -> list[tuple[str, str]] | list[tuple[date, date]]:
+    async def get_period(self) -> list[tuple[str, str]]:
         raise NotImplementedError
 
 
@@ -464,7 +464,7 @@ class TVMediaReport(MediaReport):
 
         return output_columns
 
-    async def get_period(self) -> list[tuple[str, str]] | list[tuple[date, date]]:
+    async def get_period(self) -> list[tuple[str, str]]:
         """Prepare period to load data.
         Slice intervals based on frequency from settings
         Checks the latest available date in the Mediascope database using API
@@ -504,7 +504,13 @@ class TVMediaReport(MediaReport):
                 )
             if self.report_settings.multiple_files:
                 return utils.slice_period(period, frequency)
-            return [period]
+            # Convert date objects to ISO-format strings so they can be
+            # serialized by the vendor's build_task -> json.dumps chain
+            # (date objects are not JSON-serializable).  This keeps the
+            # multiple_files=False path consistent with slice_period's
+            # as_strings=True output and prevents
+            # "TypeError: Object of type date is not JSON serializable".
+            return [(period[0].isoformat(), period[1].isoformat())]
         except Exception as e:
             logger.exception(e)
             raise

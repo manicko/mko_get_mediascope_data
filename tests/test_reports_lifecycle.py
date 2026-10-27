@@ -1704,7 +1704,7 @@ async def test_get_period_multiple_files_false_returns_single_period(
     dummy_df: pd.DataFrame,
     hermetic_app_service: AppService,
 ):
-    """With multiple_files=False, get_period returns [period] not sliced intervals (reports.py:336-338)."""
+    """With multiple_files=False, get_period returns [period] not sliced intervals (reports.py:505-507)."""
     report_settings = ReportSettings(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
@@ -1732,6 +1732,90 @@ async def test_get_period_multiple_files_false_returns_single_period(
 
     period = await report.get_period()
     assert len(period) == 1  # single interval, not sliced
+    # Intervals must be ISO-format *strings*, not date objects — date objects
+    # are not JSON-serializable and crash the vendor's build_task -> json.dumps
+    # (PIPE date-serialization regression).
+    interval = period[0]
+    assert all(isinstance(d, str) for d in interval)
+    assert interval == ("2025-01-01", "2025-01-07")
+
+
+async def test_send_task_with_multiple_files_false_passes_string_date_filter(
+    mocker,
+    dummy_df: pd.DataFrame,
+    tv_json5_content: str,
+    hermetic_app_service: AppService,
+):
+    """PIPE date-serialization: multiple_files=False must not pass date objects to build_task.
+
+    Reproduces the original bug: with ``multiple_files=False`` and an explicit
+    ``date_filter``, ``get_period`` returned ``date`` objects which the vendor's
+    ``build_task`` -> ``json.dumps`` cannot serialize, producing
+    ``TypeError: Object of type date is not JSON serializable``.
+
+    This test drives ``create_report`` end-to-end (generate + send_task) with the
+    ``DYNAMICS_BY_SPOTS_DICT`` subtype and ``multiple_files=False``, asserting
+    that ``build_task`` receives ``date_filter`` containing **str** dates
+    suitable for JSON serialization.
+    """
+    from datetime import date as date_cls
+
+    json5_data = json.loads(tv_json5_content)
+    # Override to the failing config from the bug report: DICT subtype,
+    # multiple_files=False, explicit date_filter.
+    json5_data[0]["report_subtype"] = ReportSubtype.DYNAMICS_BY_SPOTS_DICT.value
+    json5_data[0]["multiple_files"] = False
+    json5_data[0]["period"] = {"date_filter": ["2025-01-01", "2025-01-07"]}
+    report_settings = ReportSettings(**json5_data[0])
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    result_df = _build_result_df(data_settings, report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = result_df
+
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    export_path = hermetic_app_service.export_folder / "test_dict_nofilesplit"
+    export_path.mkdir(parents=True, exist_ok=True)
+
+    report_factory = ReportFactory(report_settings)
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=export_path,
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=report_factory.task_strategy(),
+        data_strategy=report_factory.data_strategy(),
+        check_done=False,
+    )
+
+    await report.create_report()
+
+    # build_task must have been called — verify the date_filter argument it
+    # received contains str dates, not date objects.
+    assert mock_report_service.build_task.called
+    call_kwargs = mock_report_service.build_task.call_args.kwargs
+    date_filter = call_kwargs.get("date_filter")
+    assert date_filter is not None, "Expected date_filter in build_task kwargs"
+    # date_filter is a list of [start, end] tuples; every element must be a
+    # JSON-serializable string (not a date object).
+    for interval in date_filter:
+        for d in interval:
+            assert not isinstance(d, date_cls), (
+                f"date_filter contains non-serializable date object: {d!r} "
+                "(must be str)"
+            )
+            assert isinstance(d, str), f"Expected str date, got {type(d)}: {d!r}"
+            json.dumps(d)  # must not raise TypeError
 
 
 # ---------------------------------------------------------------------------
