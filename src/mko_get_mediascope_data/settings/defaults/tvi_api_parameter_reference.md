@@ -552,7 +552,7 @@ Global alphabetical lookup of all statistic names across all report types. Per-r
 
 ## Slices Dictionary
 
-Cross-reference table of all slice element names. Each `Id` element typically also has `Name` and `EName` variants. The `en_to_ru` function (`utils.py:341-351`) translates `EName` → `Name` by string replacement when `data_lang = "en"`.
+Cross-reference table of all slice element names. Each `Id` element typically also has `Name` and `EName` variants. The `en_to_ru` function (`utils.py:341-351`) translates `EName` → `Name` by string replacement when `data_lang = "ru"`.
 
 > **Constraint:** At most 1 time slice per task among `researchDate` / `researchWeek` / `researchMonth`.
 
@@ -761,7 +761,7 @@ Cross-reference table of all slice element names. Each `Id` element typically al
 | `adStartTimeOriginal` | — | Ad | Original start time. |
 | `adTvCompanyOriginal` | — | Ad | Original TV company. |
 
-> **Note:** `+Name` and `+EName` variants are produced by appending `Name` or `EName` to the base `Id` element. The `en_to_ru` function (`utils.py:341-351`) replaces `EName` → `Name` for English-language output.
+> **Note:** `+Name` and `+EName` variants are produced by appending `Name` or `EName` to the base `Id` element. The `en_to_ru` function (`utils.py:341-351`) replaces `EName` → `Name` for Russian-language output.
 
 > **Last verified: 2026-10-28 — sources: [url_2], [url_2b], [url_3]**
 
@@ -1018,7 +1018,7 @@ basedemo_filter = "sex = 2 AND age >= 25 AND age <= 55 AND incomeGroupRussia IN 
 
 **JSON shape:** `{sorting: {sortingUnits: [{unit: "<slice|statistic name>", direction: "ASC"|"DESC"}]}}`
 
-**Dict input format:** `{column: 'ASC'|'DESC'}` — the library (`tasks.py:559-573` and `core/tasks.py:200-214`) wraps the input dict into the JSON shape above.
+**Dict input format:** `{column: 'ASC'|'DESC'}` — the library (`vendor_library core/tasks.py:559-573` and `vendor_library core/tasks.py:200-214`) wraps the input dict into the JSON shape above.
 
 **Validation rules:**
 - `unit` must be in `(statistics + slices)`.
@@ -1031,7 +1031,7 @@ sortings = {'tvCompanyName': 'ASC'}
 sortings = {'researchDate': 'ASC', 'RtgPer': 'DESC'}
 ```
 
-> **Last verified: 2026-10-28 — sources: [url_3], vendor_library v1.8.3 (tasks.py:559-573, core/tasks.py:200-214, checks.py)**
+> **Last verified: 2026-10-28 — sources: [url_3], vendor_library v1.8.3 (core/tasks.py:200-214, core/tasks.py:559-573, checks.py)**
 
 ---
 
@@ -1194,7 +1194,7 @@ These parameters are **NOT TVI API parameters** — they are used by `mko_get_me
 | 📋 `task_type` | `str` | required | All RF | Vendor report type (`timeband`, `simple`, `crosstab`, `consumption-target`, `duplication-timeband`, `respondent-analysis`). Passed as the first positional argument to `build_task`. |
 | 📋 `regions` | `list[int]` | absent | optional | TV_REG-only: restricts region iteration in `TVRegTaskStrategy`. If absent, iterates all available regions from `get_tv_region` catalog. Used by `reports.py:808`. |
 
-> `en_to_ru` (`utils.py:341-351`) replaces `"EName"` with `"Name"` in slice names when `data_lang = "en"`.
+> `en_to_ru` (`utils.py:341-351`) replaces `"EName"` with `"Name"` in slice names when `data_lang = "ru"`.
 
 > **Last verified: 2026-10-28 — sources: [url_3], vendor_library v1.8.3, project source (models.py, utils.py, services.py, reports.py)**
 
@@ -1212,13 +1212,13 @@ The TVI API task workflow proceeds through 5 stages. Each stage corresponds to a
 | 4 | `get_result` | Task ID | Result JSON | Retrieve the computed result. |
 | 5 | `result2table` | Result JSON | `pandas.DataFrame` | Convert API result to a DataFrame. |
 
-**Project-specific:** `core/tasks.py` wraps these with `add_filter`, `add_slices`, `add_sortings` helper methods that transform snake_case kwargs into the JSON structure the API expects. `core/network.py` wraps `send_task` with retry logic (exponential backoff + jitter), a per-call deadline (`call_timeout`, default 300s), and concurrency limiting via `asyncio.Semaphore`.
+**Project-specific:** The vendor library's `TaskBuilder` class (in `mediascope_api/core/tasks.py`) provides `add_filter`, `add_slices`, `add_sortings` helper methods that transform snake_case kwargs into the JSON structure the API expects. The project's `core/tasks.py` manages task state via the `TVTask` class. `core/network.py` wraps `send_task` with retry logic (exponential backoff + jitter), a per-call deadline (`call_timeout`, default 300s), and concurrency limiting via `asyncio.Semaphore`.
 
 **Supporting methods:** `get_active_tasks_count()`, `get_report_info()`, `get_excel_filename()`.
 
 > Cross-references: `core/tasks.py`, `core/network.py`, vendor `mediavortex/tasks.py`
 
-> **Last verified: 2026-10-28 — sources: [url_3], vendor_library v1.8.3 (tasks.py), project source (core/tasks.py:200-214, core/network.py)**
+> **Last verified: 2026-10-28 — sources: [url_3], vendor_library v1.8.3 (core/tasks.py:200-214), project source (core/tasks.py TVTask class, core/network.py)**
 
 ---
 
@@ -1418,7 +1418,7 @@ The following parameters are documented in the vendor docs but are **project-lev
 |---|---|---|
 | `time_filter` support matrix | `build_*_task` signatures: timeband ✅ (tasks.py:326), simple ✗ (tasks.py:443), crosstab ✗ (tasks.py:575), consumption-target ✅ (tasks.py:708), duplication-timeband ✅ (tasks.py:829) | CONFIRMED |
 | Statistics completeness | `checks.py:199-208` — `_check_scales` validates at runtime via `cats.get_*_unit(kit_id)`; `RtgPerSum` (Crosstab), `ATV` (Simple), `Reach000` (Timeband) all in URL-1 | CONFIRMED |
-| Sortings JSON shape | `core/tasks.py:200-214` and `tasks.py:559-573` — sortings dict → `{sorting: {sortingUnits: [{unit, direction}]}}` | CONFIRMED |
+| Sortings JSON shape | `vendor_library core/tasks.py:200-214` and `vendor_library core/tasks.py:559-573` — sortings dict → `{sorting: {sortingUnits: [{unit, direction}]}}` | CONFIRMED |
 
 ### Counts Summary
 
