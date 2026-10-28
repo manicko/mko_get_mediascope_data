@@ -372,7 +372,7 @@ a swallowed `FileExistsError`. All of these have been **resolved by W-02**.
 
 ### Tests
 
-The suite was executed: **189 passed** (`uv run pytest`, all mocked — no
+The suite was executed: **217 passed** (`uv run pytest`, all mocked — no
 network, no Mediascope credentials). All tests pass at HEAD, including
 `test_create_report_skips_done_files` and the PIPE-012/013/014 tests
 (`test_csv_to_file_atomic_*`, `test_done_files_excludes_temp_csv`,
@@ -381,7 +381,7 @@ network, no Mediascope credentials). All tests pass at HEAD, including
 `test_no_overlap_entry_warns_and_continues_later_entries`). One test,
 `test_run_report_with_real_models`, carries the
 `@pytest.mark.slow` marker and can be excluded with
-`uv run pytest -m "not slow"` (188 passed, 1 deselected). Coverage is
+`uv run pytest -m "not slow"` (216 passed, 1 deselected). Coverage is
 reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-missing`
 (configured in `pyproject.toml`).
 
@@ -392,9 +392,9 @@ reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-mis
 | `tests/test_models.py` | `ReportSettings` validation with the current field names; `PeriodModel` exclusivity rules; `merge_data_settings` does not call `en_to_ru` when `data_lang="en"`; all 32 bundled entries pass `ReportSettings` validation; all 6 `ReportSubtype` values have matching DEFAULT keys |
 | `tests/test_network.py` | Retry exhaustion raises `MaxRetriesExceeded("Network retry limit exceeded")` (subclasses `RuntimeError`); `mock_network_client` fixture retries on retryable errors; success returns the function result; `BadRequestError` (4xx) and `AuthorizationError` (401) are re-raised without retry; HTTP 429 (`TooManyRequestsError`) is retried with backoff; `TimeoutError` from `asyncio.wait` (`call_timeout` ceiling) is retryable; `retryable=False` makes the task-submission POST non-retried (EXT-001); `call_timeout` caps wall-clock via `asyncio.wait` (EXT-002); `retry_5xx` toggle controls 5xx retry (EXT-005); `log_errors_detail` redacts PII (args/kwargs) from error logs (EXT-008); semaphore limits concurrent in-flight calls; default `max_attempts=10`; PERF-001: `api_call=False` short-circuits `NetworkClient.call` to direct `_invoke` (no jitter, no semaphore, no retry, timeout-bounded) — verified by `test_cpu_local_calls_bypass_semaphore_and_jitter` |
 | `tests/test_reports.py` | `DefaultTVTaskStrategy` task naming; `DictDataStrategy` output columns |
-| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5; `test_large_result_is_processed` verifies there is **no** row-count cap — an oversized `resultBody` (> 10 000 rows) is processed through `result2table` and produces a CSV with no error artifact; PERF-003: `test_worker_emits_per_task_duration` verifies structured `task_stage_complete`/`task_complete` timing logs; **temp CSV files are excluded from resume discovery via `get_done_files` (PIPE-012); collision-safe task identity via `Report._disambiguate_task_names` — unique names stay verbatim, colliding names gain a deterministic `sha256(collision_id)[:8]` suffix (PIPE-014)** |
+| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5; `test_large_result_is_processed` verifies there is **no** row-count cap — an oversized `resultBody` (> 10 000 rows) is processed through `result2table` and produces a CSV with no error artifact; PERF-003: `test_worker_emits_per_task_duration` verifies structured `task_stage_complete`/`task_complete` timing logs; **temp CSV files are excluded from resume discovery via `get_done_files` (PIPE-012); collision-safe task identity via `Report._disambiguate_task_names` — unique names stay verbatim, colliding names gain a deterministic `sha256(collision_id)[:8]` suffix (PIPE-014)**; 366-day API limit: `test_get_period_long_period_multiple_files_false_splits_by_year` (4-year span → 4 year chunks, each ≤366 days), `test_get_period_long_period_multiple_files_true_slices_per_year` (year chunks further sliced by weekly frequency, all ≤366 days and single-year), `test_get_period_short_period_unchanged_multiple_files_false` (short single-year period unchanged) |
 | `tests/test_services.py` | Full `run_report` pipeline end-to-end (slow; doubled `MediaVortexTask`, real `AppService`); `app_config` caching; `reload_config()` invalidates cache, is safe before first access, reapplies logging, and re-resolves `export_folder`; missing credentials raise `FileNotFoundError`; **a no-overlap entry is warned and skipped while later entries still export (`test_no_overlap_entry_warns_and_continues_later_entries`, PIPE-013)** |
-| `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; gzip CSV writing; suffix mapping; `csv_to_file` writes into the report directory (`tmp_report_dir` fixture); **atomic publication** — final-file publication + temp-artifact cleanup/preservation on failure (`test_csv_to_file_atomic_success_publishes_final`, `test_csv_to_file_atomic_failure_preserves_prior_final`, PIPE-012) |
+| `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; **calendar-year splitting** (`iter_year_slices`, `split_period_by_year`) for the 366-day API limit — single/multi-year, leap-year, exact-boundary, and ≤366-day guarantee tests; gzip CSV writing; suffix mapping; `csv_to_file` writes into the report directory (`tmp_report_dir` fixture); **atomic publication** — final-file publication + temp-artifact cleanup/preservation on failure (`test_csv_to_file_atomic_success_publishes_final`, `test_csv_to_file_atomic_failure_preserves_prior_final`, PIPE-012) |
 | `tests/test_progress.py` | `NullProgressReporter` no-op semantics (all methods complete without raising); `ProgressReporter` protocol `isinstance` check (runtime_checkable); `TVTask.task_status` default is `QUEUED` |
 | `tests/test_verbosity.py` | `VerbosityMode.to_logging_level()` mapping (QUIET→WARNING, DEFAULT→WARNING, VERBOSE→INFO, DEBUG→DEBUG, SILENT→CRITICAL); `AppSettings.verbosity_mode` default and Pydantic string/enum coercion; `configure_logging_level()` sets root logger and all handlers; CLI `--verbosity` flag integration via `CliRunner` |
 | `tests/test_reports_progress.py` | `ProgressReporter` interaction at send→extract boundaries — `send_task` emits QUEUED→SENT, `extract_data` emits SENT→COMPLETED; failure path emits SENT→FAILED; `TVMediaReport` defaults to `NullProgressReporter` when no reporter is passed |
@@ -461,7 +461,19 @@ boundaries.
   `"_" + sha256(collision_id)[:8]` to colliding names; non-colliding legacy names
   stay verbatim (resume unchanged). Tests:
   `test_distinct_audience_names_cannot_collide_after_transliteration`,
-  `test_non_colliding_names_preserved_without_hash`.
+   `test_non_colliding_names_preserved_without_hash`.
+
+**Updated 2026-10-28:** 366-day API limit — calendar-year period splitting:
+`TVMediaReport.get_period` now **always** splits the clamped period into
+calendar-year-aligned chunks (each ≤366 days, enforced via `MAX_PERIOD_DAYS = 366`
+in `utils.py`) before branching on `multiple_files`. When `multiple_files=false`,
+each year chunk becomes its own interval and thus its own API task + CSV output
+(no file merging). When `multiple_files=true`, each year chunk is further sliced
+by `time_unit` frequency. This prevents the Mediascope API from rejecting tasks
+whose period exceeds 366 days. Tests: `test_get_period_long_period_multiple_files_false_splits_by_year`,
+`test_get_period_long_period_multiple_files_true_slices_per_year`,
+`test_get_period_short_period_unchanged_multiple_files_false` (lifecycle), plus
+`test_iter_year_slices_*` / `test_split_period_by_year_*` (utils).
 
 Behaviors with **no test coverage** — these code paths were therefore never
 executed during this investigation: `TVRegTaskStrategy` (tests use `media=TV`
@@ -548,7 +560,7 @@ Read-only probes executed for this document (scripts kept for reproduction in
 | `.ai/tmp/doc_probe_options_none.py` | A subtype with no defaults block leaves `slices`/`statistics`/`options` as `None`; `Data(**merged)` then raises a Pydantic `ValidationError` for `data_lang: en` (the `data_lang: ru` path crashes earlier in `en_to_ru`) |
 | `.ai/tmp/doc_probe_vendor_build_task.py` + reading `.venv/Lib/site-packages/mediascope_api/` | Vendor `build_task` has no `**kwargs` (unknown key → `TypeError`); one `requests.Session` per `MediaVortexTask` (`core/net.py:73`) |
 | `.ai/tmp/doc_probe_links.py` | All relative links and heading anchors in the documentation resolve |
-| `uv run pytest` | **189 passed** (full suite, mocked — no network, no Mediascope credentials; 188 passed with the `@slow` `test_run_report_with_real_models` deselected; coverage reported via `--cov`) |
+| `uv run pytest` | **217 passed** (full suite, mocked — no network, no Mediascope credentials; 216 passed with the `@slow` `test_run_report_with_real_models` deselected; coverage reported via `--cov`) |
 | `uv run mypy` | **0 errors** (`uv run mypy src tests ci` passes with zero errors; mypy checks `src`, `tests`, and `ci` per `pyproject.toml` `files = ["src", "tests", "ci"]`) |
 | Inspection of the machine's `output/` folder | Confirms the file naming convention `<start>_<end>_<audience>.csv.gz` and that real report runs happened historically; the files predate the current column-selection code |
 
