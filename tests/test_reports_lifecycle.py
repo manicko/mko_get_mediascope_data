@@ -2774,3 +2774,182 @@ def test_disambiguation_fallback_is_unique_without_collision_id():
         expected = hashlib.sha256(f"same|{index}".encode()).hexdigest()[:8]
         assert task.name == "same_" + expected
         assert len(expected) == 8
+
+
+# ---------------------------------------------------------------------------
+# 366-day API limit — year splitting in get_period (reports.py:505-527)
+# ---------------------------------------------------------------------------
+
+
+def _make_long_availability_df() -> pd.DataFrame:
+    """Availability DataFrame covering 2023-01-01 .. 2026-12-31."""
+    return pd.DataFrame(
+        {"id": ["7"], "periodFrom": ["2023-01-01"], "periodTo": ["2026-12-31"]}
+    )
+
+
+async def test_get_period_long_period_multiple_files_false_splits_by_year(
+    hermetic_app_service: AppService,
+):
+    """>366-day period with multiple_files=False splits into year chunks.
+
+    Previously get_period returned a single unsliced interval covering the
+    entire clamped period — exceeding the Mediascope API's 366-day task
+    limit.  Now each calendar-year chunk becomes its own interval, each
+    <= 366 days.
+    """
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",  # type: ignore[arg-typed]
+        multiple_files=False,
+        period={  # type: ignore[arg-type]
+            "date_filter": ["2023-01-01", "2026-12-31"],
+            "time_unit": "w",
+        },
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = (
+        _make_long_availability_df()
+    )
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=NetworkClient(sleep_time=0, max_attempts=1),
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
+        check_done=False,
+    )
+
+    period = await report.get_period()
+
+    # 4 calendar-year chunks for a 4-year span.
+    assert len(period) == 4
+    assert period == [
+        ("2023-01-01", "2023-12-31"),
+        ("2024-01-01", "2024-12-31"),
+        ("2025-01-01", "2025-12-31"),
+        ("2026-01-01", "2026-12-31"),
+    ]
+
+    # Every chunk must be <= MAX_PERIOD_DAYS (366) and contain ISO strings.
+    for start_str, end_str in period:
+        assert isinstance(start_str, str)
+        assert isinstance(end_str, str)
+        start_date = utils.str_to_date(start_str)
+        end_date = utils.str_to_date(end_str)
+        duration = (end_date - start_date).days + 1
+        assert duration <= utils.MAX_PERIOD_DAYS, (
+            f"Chunk ({start_str}, {end_str}) spans {duration} days, "
+            f"exceeding MAX_PERIOD_DAYS ({utils.MAX_PERIOD_DAYS})"
+        )
+
+
+async def test_get_period_long_period_multiple_files_true_slices_per_year(
+    hermetic_app_service: AppService,
+):
+    """>366-day period with multiple_files=True slices each year by frequency.
+
+    Year chunks are first split by calendar year, then each year chunk is
+    further sliced by the configured time_unit (weekly).  All resulting
+    intervals are ISO strings, each <= 366 days, and each confined to a
+    single calendar year.
+    """
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",  # type: ignore[arg-typed]
+        multiple_files=True,
+        period={  # type: ignore[arg-type]
+            "date_filter": ["2023-01-01", "2026-12-31"],
+            "time_unit": "w",
+        },
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = (
+        _make_long_availability_df()
+    )
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=NetworkClient(sleep_time=0, max_attempts=1),
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
+        check_done=False,
+    )
+
+    period = await report.get_period()
+
+    # Weekly slicing of 4 years yields far more intervals than 4 year chunks.
+    assert len(period) > 4
+
+    # Every interval must be <= MAX_PERIOD_DAYS and confined to a single year.
+    for start_str, end_str in period:
+        assert isinstance(start_str, str)
+        assert isinstance(end_str, str)
+        start_date = utils.str_to_date(start_str)
+        end_date = utils.str_to_date(end_str)
+        duration = (end_date - start_date).days + 1
+        assert duration <= utils.MAX_PERIOD_DAYS, (
+            f"Interval ({start_str}, {end_str}) spans {duration} days, "
+            f"exceeding MAX_PERIOD_DAYS ({utils.MAX_PERIOD_DAYS})"
+        )
+        assert start_date.year == end_date.year, (
+            f"Interval ({start_str}, {end_str}) crosses a calendar-year "
+            "boundary"
+        )
+
+
+async def test_get_period_short_period_unchanged_multiple_files_false(
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+):
+    """<366-day single-year period with multiple_files=False is unchanged.
+
+    A period that fits within a single calendar year and is < 366 days
+    produces a single chunk — identical to the pre-split behavior.
+    """
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",  # type: ignore[arg-typed]
+        multiple_files=False,
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=NetworkClient(sleep_time=0, max_attempts=1),
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
+        check_done=False,
+    )
+
+    period = await report.get_period()
+
+    # Single chunk for a single-year period — behavior unchanged.
+    assert len(period) == 1
+    assert period[0] == ("2025-01-01", "2025-01-07")

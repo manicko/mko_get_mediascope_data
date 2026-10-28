@@ -502,15 +502,29 @@ class TVMediaReport(MediaReport):
                     f"available range {tuple(available_period)}; "
                     f"using clamped intersection {period}."
                 )
+            # Always split into year-sized chunks to respect the Mediascope
+            # API's 366-day per-task limit (applied regardless of multiple_files).
+            year_chunks = utils.split_period_by_year(period)
+
             if self.report_settings.multiple_files:
-                return utils.slice_period(period, frequency)
-            # Convert date objects to ISO-format strings so they can be
-            # serialized by the vendor's build_task -> json.dumps chain
-            # (date objects are not JSON-serializable).  This keeps the
-            # multiple_files=False path consistent with slice_period's
-            # as_strings=True output and prevents
-            # "TypeError: Object of type date is not JSON serializable".
-            return [(period[0].isoformat(), period[1].isoformat())]
+                # Further slice each year chunk by the configured time_unit
+                # frequency.  split_period_by_year returns ISO strings, so
+                # convert back to date for slice_period's date arithmetic.
+                all_intervals: list[tuple[str, str]] = []
+                for year_start, year_end in year_chunks:
+                    all_intervals.extend(
+                        utils.slice_period(
+                            (
+                                utils.str_to_date(year_start),
+                                utils.str_to_date(year_end),
+                            ),
+                            frequency,
+                        )
+                    )
+                return all_intervals
+            # multiple_files=False: each year chunk becomes its own task with
+            # its own output CSV (no merge of consolidated files).
+            return year_chunks
         except Exception as e:
             logger.exception(e)
             raise

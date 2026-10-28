@@ -1,13 +1,18 @@
+from datetime import date
+
 import gzip
 import pandas as pd
 import pytest
 
 from mko_get_mediascope_data.core.utils import (
     CSV_TEMP_PREFIX,
+    MAX_PERIOD_DAYS,
     csv_to_file,
     en_to_ru,
     get_files_suffix,
+    iter_year_slices,
     slice_period,
+    split_period_by_year,
     str_to_date,
 )
 
@@ -149,3 +154,106 @@ def test_csv_to_file_atomic_failure_preserves_prior_final(tmp_path, mocker):
     assert prior_final.read_bytes() == prior_bytes
     leftovers = [p for p in tmp_path.iterdir() if p.name.startswith(CSV_TEMP_PREFIX)]
     assert leftovers == []
+
+
+# ---------------------------------------------------------------------------
+# Year splitting — 366-day API limit (utils.iter_year_slices, split_period_by_year)
+# ---------------------------------------------------------------------------
+
+
+def test_iter_year_slices_single_year():
+    """A period within one calendar year yields a single chunk."""
+    result = list(iter_year_slices(date(2025, 1, 1), date(2025, 1, 7)))
+    assert len(result) == 1
+    assert result[0] == (date(2025, 1, 1), date(2025, 1, 7))
+
+
+def test_iter_year_slices_multi_year():
+    """A 3-year period yields 3 chunks aligned to calendar-year boundaries."""
+    result = list(
+        iter_year_slices(date(2023, 1, 1), date(2025, 12, 31))
+    )
+    # One chunk per calendar year, each spanning the full year.
+    assert result == [
+        (date(2023, 1, 1), date(2023, 12, 31)),
+        (date(2024, 1, 1), date(2024, 12, 31)),
+        (date(2025, 1, 1), date(2025, 12, 31)),
+    ]
+
+
+def test_iter_year_slices_leap_year():
+    """A chunk containing Feb 29 never exceeds 366 days."""
+    # Full leap year (2024) — 366 days inclusive.
+    result = list(
+        iter_year_slices(date(2024, 1, 1), date(2024, 12, 31))
+    )
+    assert len(result) == 1
+    chunk_start, chunk_end = result[0]
+    assert (chunk_end - chunk_start).days + 1 <= MAX_PERIOD_DAYS
+
+
+def test_iter_year_slices_exact_boundaries():
+    """Jan 1 to Dec 31 boundary — first chunk starts at Jan 1, not before."""
+    result = list(
+        iter_year_slices(date(2023, 1, 1), date(2025, 12, 31))
+    )
+    assert result == [
+        (date(2023, 1, 1), date(2023, 12, 31)),
+        (date(2024, 1, 1), date(2024, 12, 31)),
+        (date(2025, 1, 1), date(2025, 12, 31)),
+    ]
+
+
+def test_iter_year_slices_partial_start_year():
+    """Mid-year start produces a shorter first chunk."""
+    result = list(
+        iter_year_slices(date(2023, 6, 15), date(2025, 3, 10))
+    )
+    assert result == [
+        (date(2023, 6, 15), date(2023, 12, 31)),
+        (date(2024, 1, 1), date(2024, 12, 31)),
+        (date(2025, 1, 1), date(2025, 3, 10)),
+    ]
+
+
+def test_split_period_by_year_returns_strings():
+    """split_period_by_year returns list of ISO-format string tuples."""
+    result = split_period_by_year(
+        (date(2023, 1, 1), date(2025, 12, 31))
+    )
+    assert isinstance(result, list)
+    assert all(isinstance(interval, tuple) for interval in result)
+    assert all(
+        isinstance(d, str) for interval in result for d in interval
+    )
+    assert result == [
+        ("2023-01-01", "2023-12-31"),
+        ("2024-01-01", "2024-12-31"),
+        ("2025-01-01", "2025-12-31"),
+    ]
+
+
+def test_split_period_by_year_all_chunks_leq_366():
+    """Every chunk from split_period_by_year is <= 366 days inclusive."""
+    # 4-year span including a leap year.
+    result = split_period_by_year(
+        (date(2023, 1, 1), date(2026, 12, 31))
+    )
+    assert len(result) > 1  # multi-year → multiple chunks
+    for start_str, end_str in result:
+        start_date = str_to_date(start_str)
+        end_date = str_to_date(end_str)
+        duration = (end_date - start_date).days + 1
+        assert duration <= MAX_PERIOD_DAYS, (
+            f"Chunk ({start_str}, {end_str}) spans {duration} days, "
+            f"exceeding MAX_PERIOD_DAYS ({MAX_PERIOD_DAYS})"
+        )
+
+
+def test_split_period_by_year_single_year_short():
+    """A <366-day single-year period returns one chunk."""
+    result = split_period_by_year(
+        (date(2025, 1, 1), date(2025, 1, 7))
+    )
+    assert len(result) == 1
+    assert result[0] == ("2025-01-01", "2025-01-07")

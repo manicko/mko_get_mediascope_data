@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 # atomically. A file carrying this prefix is never a valid published artifact.
 CSV_TEMP_PREFIX: str = ".tmp_csv_"
 
+# Calendar-inclusive day limit enforced by the Mediascope API: a single task
+# may not span more than 366 days (covers leap years).  Any interval returned
+# by ``get_period()`` must be <= this many days so that each API task is
+# accepted.
+MAX_PERIOD_DAYS: int = 366
+
 
 def str_to_date(date_string: str) -> date:
     """
@@ -108,6 +114,50 @@ def slice_period(
         return [(s.strftime("%Y-%m-%d"), e.strftime("%Y-%m-%d")) for s, e in slices]
 
     return slices
+
+
+def iter_year_slices(
+    start: date, end: date
+) -> Iterator[tuple[date, date]]:
+    """Split a date range into calendar-year-aligned chunks.
+
+    Each chunk starts on Jan 1 of its year (except the first chunk, which
+    starts at ``start``) and ends on Dec 31 of its year (except the last
+    chunk, which ends at ``end``).  Every chunk is confined to a single
+    calendar year, so no chunk exceeds ``MAX_PERIOD_DAYS`` (366 days,
+    inclusive of leap years).
+
+    Example::
+
+        >>> list(iter_year_slices(date(2023, 6, 15), date(2025, 3, 10)))
+        [(date(2023, 6, 15), date(2023, 12, 31)),
+         (date(2024, 1, 1), date(2024, 12, 31)),
+         (date(2025, 1, 1), date(2025, 3, 10))]
+    """
+    if start > end:
+        return
+
+    current = start
+    while current <= end:
+        year_end = date(current.year, 12, 31)
+        chunk_end = min(year_end, end)
+        yield current, chunk_end
+        current = date(current.year + 1, 1, 1)
+
+
+def split_period_by_year(
+    period: tuple[date, date],
+) -> list[tuple[str, str]]:
+    """Split a date range into calendar-year chunks as ISO-format string tuples.
+
+    Wraps :func:`iter_year_slices`, converting each ``date`` chunk to an
+    ISO-format ``("YYYY-MM-DD", "YYYY-MM-DD")`` tuple so the result matches
+    the string output format used by :func:`slice_period`.
+    """
+    return [
+        (chunk_start.isoformat(), chunk_end.isoformat())
+        for chunk_start, chunk_end in iter_year_slices(period[0], period[1])
+    ]
 
 
 @overload
