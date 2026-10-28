@@ -2802,7 +2802,7 @@ async def test_get_period_long_period_multiple_files_false_splits_by_year(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",  # type: ignore[arg-typed]
+        relative_path="tv/test",  # type: ignore[arg-type]
         multiple_files=False,
         period={  # type: ignore[arg-type]
             "date_filter": ["2023-01-01", "2026-12-31"],
@@ -2866,7 +2866,7 @@ async def test_get_period_long_period_multiple_files_true_slices_per_year(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",  # type: ignore[arg-typed]
+        relative_path="tv/test",  # type: ignore[arg-type]
         multiple_files=True,
         period={  # type: ignore[arg-type]
             "date_filter": ["2023-01-01", "2026-12-31"],
@@ -2927,7 +2927,7 @@ async def test_get_period_short_period_unchanged_multiple_files_false(
         media=MediaType.TV,
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
-        relative_path="tv/test",  # type: ignore[arg-typed]
+        relative_path="tv/test",  # type: ignore[arg-type]
         multiple_files=False,
         period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
     )
