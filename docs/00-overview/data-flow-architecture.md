@@ -91,12 +91,14 @@ flowchart TD
     B -- yes --> D["requested = date_filter"]
     C --> E["clip to API window<br/>max(window.start, requested.start), min(window.end, requested.end)<br/>reports.py:490-493"]
     D --> E
-    E --> Y["split into calendar-year chunks (≤366 days)<br/>utils.split_period_by_year  utils.py:148-160<br/>MAX_PERIOD_DAYS = 366 (utils.py:27)"]
-    Y --> F{"multiple_files?"}
-    F -- true --> G["slice each year chunk by period.time_unit<br/>utils.slice_period  utils.py:99-116"]
-    F -- false --> H["single interval per year chunk"]
-    G --> I["interval list → tasks"]
-    H --> I
+    E --> F{"multiple_files?"}
+    F -- true --> G["slice directly by period.time_unit<br/>utils.slice_period  utils.py:99-116<br/>(intervals may cross calendar-year boundaries)"]
+    F -- false --> H{"period spans > 366 days?"}
+    H -- yes --> I["split into calendar-year chunks (≤366 days)<br/>utils.split_period_by_year  utils.py:148-160<br/>MAX_PERIOD_DAYS = 366 (utils.py:27)"]
+    H -- no --> J["single interval (whole clamped period)"]
+    G --> K["interval list → tasks"]
+    I --> K
+    J --> K
 ```
 
 Rules and their edge cases `[code]`:
@@ -110,7 +112,7 @@ Rules and their edge cases `[code]`:
   additionally moves the end back to just before the current unit (for weeks,
   end = start + N−1 weeks + 6 days).
 - The API window comes from `cats.get_availability_period()` filtered by
-  `options.kitId` / `base_id` (`reports.py:427-428, 433-449`; `base_id` default 1).
+  `options.kitId` / `base_id` (`reports.py:427-429, 433-449`; `base_id` default 1).
   What each `kitId` value means is **not** asserted anywhere: the owner has
   declared the in-template legend stale and will supply the current mapping
   when available (D-20, DISC-11).
@@ -120,22 +122,29 @@ Rules and their edge cases `[code]`:
    `reports.py:494-498`). Since PIPE-013 `AppService.run_report` catches this per
    entry, logs a warning naming the entry and reason, and continues to the next
    entry (no export path is appended for the skipped entry).
-- **Calendar-year splitting (366-day limit).** The clipped period is **always**
-  split into calendar-year-aligned chunks via `utils.split_period_by_year`
-  (`utils.py:148-160`, backed by `utils.iter_year_slices` at `utils.py:119-145`),
-  bounded by `MAX_PERIOD_DAYS = 366` (`utils.py:27`). This enforces the Mediascope
-  API's per-task day limit (366 days, covering leap years) and runs regardless of
-  `multiple_files` (`reports.py:505-507`). Each chunk is confined to a single
-  calendar year: the first chunk starts at the clipped `start` and ends Dec 31 of
-  its year; subsequent chunks start Jan 1 and end Dec 31; the last chunk ends at
-  the clipped `end`. This is independent of — and applied before — the
-  `time_unit` subdivision below.
-- The interval length within each year chunk comes from `period.time_unit`
-  (default `w`), which is always available on `PeriodModel` regardless of
-  whether `date_filter` or `last_time` is used (`models.py:159-176`,
-  `reports.py:489, 509-524`). When `multiple_files` is true, each year chunk is
-  further subdivided by `time_unit`; when false, each year chunk is a single
-  interval.
+- **366-day API limit (calendar-year splitting).** When `multiple_files=false`
+  **and** the clamped period spans more than `MAX_PERIOD_DAYS = 366` days
+  (`utils.py:27`, `reports.py:519-521`), the period is split into calendar-year-aligned
+  chunks via `utils.split_period_by_year` (`utils.py:148-160`, backed by
+  `utils.iter_year_slices` at `utils.py:119-145`). This enforces the Mediascope
+  API's per-task day limit (366 days, covering leap years). Each chunk is confined
+  to a single calendar year: the first chunk starts at the clamped `start` and
+  ends Dec 31 of its year; subsequent chunks start Jan 1 and end Dec 31; the last
+  chunk ends at the clamped `end`. When the period is ≤366 days and
+  `multiple_files=false`, the whole clamped period is sent as a single interval
+  (no year splitting) (`reports.py:522`).
+- **`multiple_files=true` — direct `time_unit` slicing.** The clamped period is
+  sliced **directly** by `period.time_unit` via `utils.slice_period`
+  (`utils.py:99-116`) — year pre-splitting is **not** applied, so `time_unit`
+  intervals (e.g. weeks) can naturally cross calendar-year boundaries (e.g. a
+  weekly chunk spanning Dec 30–Jan 5). Because each `time_unit` slice is at most
+  one unit (day/week/month/year), it never exceeds 366 days and the API limit is
+  respected (`reports.py:505-513`).
+- The interval length comes from `period.time_unit` (default `y` on
+  `PeriodModel`, `models.py:163`), which is always available regardless of
+  whether `date_filter` or `last_time` is used. When `multiple_files` is false,
+  `time_unit` is unused: each chunk is a single interval (one API task + one CSV,
+  with no file merging).
 
 ### Task fan-out
 

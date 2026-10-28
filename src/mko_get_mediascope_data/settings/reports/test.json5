@@ -5,7 +5,7 @@
     "report_subtype": "TOP_NAT_TV_ADVERTISERS", // report type
     "data_lang": "ru", // set data language
     "relative_path": "adv_total_m",
-    "multiple_files": true, // If period exceeds 1 year, split exports by month/week
+    "multiple_files": true, // true: split period by time_unit into multiple export files
     "ad_filter": null,
     "target_audiences": {
       "all 20-45 BC": "age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)",

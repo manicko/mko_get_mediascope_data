@@ -808,7 +808,7 @@ The `options` dict (JSON key `options`) configures per-task calculation behavior
 | `issue_type` | `issueType` | `str` | `PROGRAM` | `PROGRAM`, `BREAKS`, `AD` | ⚠️ **Crosstab-specific** — selects the event aggregation grain. | TV_REG defaults (all `AD`); TV crosstab subtypes; report files |
 | `viewing_subject` | `viewingSubject` | `str` | `RESPONDENT` | `RESPONDENT`, `HOUSEHOLD` | Unit of calculation. | Documented; not used in any template (API uses default `RESPONDENT`). |
 
-> 📋 **Project-level options** (not TVI API parameters): `time_unit` (splits frequency when `date_filter` exceeds the API's ~366-day per-task limit), `last_time` (`{unit_count, include_current}`, "last N periods" convenience). These are handled by the project's `PeriodModel`, not sent to the API as options.
+> 📋 **Project-level options** (not TVI API parameters): `time_unit` (`d`/`w`/`m`/`y`, default `y`; controls the slicing frequency when `multiple_files=true`; when `multiple_files=false` and the period exceeds the API's 366-day per-task limit, calendar-year chunks are produced regardless of `time_unit`), `last_time` (`{unit_count, include_current}`, "last N periods" convenience). These are handled by the project's `PeriodModel`, not sent to the API as options.
 
 > **Last verified: 2026-10-28 — sources: [url_3], vendor_library v1.8.3 (tasks.py)**
 
@@ -1189,7 +1189,7 @@ These parameters are **NOT TVI API parameters** — they are used by `mko_get_me
 | 📋 `target_audiences` | `dict[str, str \| None]` | `{'not_set': null}` | All RF | Dict mapping audience label → demo filter expression; applied as `basedemo_filter` at task generation time. |
 | 📋 `compression` | `dict[str, str] \| None` | `{'method': 'gzip'}` (models.py:190-192) | 13 of 17 RF | CSV output compression method. |
 | 📋 `check_done` | `bool \| None` | `True` (models.py:186) | ReportSettings default | Skip existing output files. |
-| 📋 `multiple_files` | `bool` | `True` (models.py:195) | All RF | If true and period > 1 year, split exports by month/week per `time_unit`. **Not a vendor API parameter** — it is a project wrapper around the TVI API's ~366-day per-task limit. |
+| 📋 `multiple_files` | `bool` | `True` (models.py:195) | All RF | When true (default), the clamped period is sliced directly by `time_unit` into one task per unit — `time_unit` intervals can cross calendar-year boundaries and each is ≤366 days. When false, the period is a single interval unless it spans >366 days, in which case calendar-year chunks are produced. **Not a vendor API parameter** — it is a project wrapper around the TVI API's 366-day per-task limit. |
 | 📋 `period` / `last_time` | `PeriodModel` / `dict` | — | All RF | Either `date_filter` (list of date tuples) OR `last_time` + `time_unit`. Used to populate `date_filter` at runtime. |
 | 📋 `task_type` | `str` | required | All RF | Vendor report type (`timeband`, `simple`, `crosstab`, `consumption-target`, `duplication-timeband`, `respondent-analysis`). Passed as the first positional argument to `build_task`. |
 | 📋 `regions` | `list[int]` | absent | optional | TV_REG-only: restricts region iteration in `TVRegTaskStrategy`. If absent, iterates all available regions from `get_tv_region` catalog. Used by `reports.py:808`. |
@@ -1357,8 +1357,8 @@ The following parameters are documented in the vendor docs but are **project-lev
 
 | Parameter | Vendor Documented As | Project-Level Classification | Notes |
 |---|---|---|---|
-| `multiple_files` | Listed among vendor "Other parameters" | 📋 Project-level (`models.py:195`) | If true and period > 1 year, split exports by month/week per `time_unit`. **Not a TVI API parameter** — it is a wrapper around the API's ~366-day per-task limit. |
-| `time_unit` | N/A | 📋 Project-level (`options.period_split`) | Split frequency for multi-year periods. |
+| `multiple_files` | Listed among vendor "Other parameters" | 📋 Project-level (`models.py:195`) | When true (default), the clamped period is sliced directly by `time_unit` into one task per unit — `time_unit` intervals can cross calendar-year boundaries and each is ≤366 days. When false, the period is a single interval unless it spans >366 days, in which case calendar-year chunks are produced. **Not a TVI API parameter** — it is a wrapper around the API's 366-day per-task limit. |
+| `time_unit` | N/A | 📋 Project-level (`PeriodModel.time_unit`) | Split frequency when `multiple_files=true` (`d`/`w`/`m`/`y`, default `y`). Unused when `multiple_files=false`. |
 | `last_time` | N/A | 📋 Project-level | `{unit_count, include_current}` — "last N periods" convenience for `date_filter`. |
 
 ### Template Issues (from `research_templates.json`)

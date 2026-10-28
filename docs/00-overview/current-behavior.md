@@ -180,38 +180,39 @@ to `AppService.run_report` (`services.py:167-233`).
     `warned` counters and logs a summary at the end. Unexpected errors are
     **not** caught and still abort the run.
 3. **Resolve the period** (`reports.py:385` → `TVMediaReport.get_period` at
-    `reports.py:467-530`):
+    `reports.py:467-525`):
     - the available date window for the dataset is fetched from the API
       (`cats.get_availability_period`, filtered by `options.kitId` / `base_id`;
-      `reports.py:427-428, 433-449`);
+      `reports.py:427-429, 433-449`);
     - if `period.date_filter` is absent, the period is computed from
       `period.last_time` (`utils.get_last_period`, `utils.py:183-232`);
     - the requested period is clipped to the available window with
       `max/min` (`reports.py:490-493`);
     - if the clipped period is inverted (`start > end`), `NoReportFoundError` is
       raised (see [Errors, warnings, and edge cases](#errors-warnings-and-edge-cases));
-    - the clipped period is **always** split into calendar-year-aligned chunks
-      via `utils.split_period_by_year` (`utils.py:148-160`, backed by
-      `utils.iter_year_slices` at `utils.py:119-145`), bounded by the
-      `MAX_PERIOD_DAYS = 366` constant (`utils.py:27`). This enforces the Mediascope
-      API's 366-day per-task limit (covers leap years) and runs regardless of
-      `multiple_files` (`reports.py:505-507`);
-    - if `multiple_files` is true (default), **each** year chunk is further sliced
-      into intervals of `time_unit` via `utils.slice_period` (`utils.py:99-116`;
-      the unit lives on `PeriodModel`, not `LastTimeModel`, since commit `183aed6`,
-      `reports.py:489, 509-524`). When `multiple_files` is false, each year chunk
-      becomes its own interval (its own output CSV).
-4. **Generate tasks** (`reports.py:452-454` → strategy `generate`):
-    - `DefaultTVTaskStrategy` (`reports.py:481-506`): for each interval, for each
+    - if `multiple_files` is true (default), the clamped period is sliced **directly**
+      by `time_unit` via `utils.slice_period` (`utils.py:99-116`) — no year
+      pre-splitting, so `time_unit` intervals (e.g. weeks) can cross calendar-year
+      boundaries. Each slice is at most one unit, so it never exceeds 366 days and
+      the API limit is respected (`reports.py:505-513`); the unit lives on
+      `PeriodModel` (default `y`, `models.py:163`), not `LastTimeModel`, since
+      commit `183aed6` (`reports.py:489`);
+    - if `multiple_files` is false, the period is a single interval unless it
+      spans more than `MAX_PERIOD_DAYS = 366` days (`utils.py:27`), in which case
+      it is split into calendar-year-aligned chunks via `utils.split_period_by_year`
+      (`utils.py:148-160`, backed by `utils.iter_year_slices` at `utils.py:119-145`)
+      (`reports.py:519-522`). `time_unit` is unused when `multiple_files` is false.
+    4. **Generate tasks** (`reports.py:735-737` → strategy `generate`):
+    - `DefaultTVTaskStrategy` (`reports.py:768-791`): for each interval, for each
       `target_audiences` entry: task name = `<start>_<end>_<ascii audience>`,
       settings = merged parameters with `date_filter=[interval]` and
       `basedemo_filter=<audience filter>`. Tasks whose name already exists as an
-      output file are skipped with a warning (`reports.py:507-509`).
-    - `TVRegTaskStrategy` (`reports.py:513-569`): additionally iterates regions
+      output file are skipped with a warning (`reports.py:346-348`).
+    - `TVRegTaskStrategy` (`reports.py:794-853`): additionally iterates regions
       (explicit `regions` list, else all catalog regions from
-      `cats.get_tv_region()` at `reports.py:516`), skips region id 99, adds
-      `regionId IN (<id>)` to the company filter (`reports.py:531-534`), and
-      appends the region's English name to the file name (`reports.py:546-554`).
+      `cats.get_tv_region()` at `reports.py:797-798`), skips region id 99, adds
+      `regionId IN (<id>)` to the company filter (`reports.py:816-817`), and
+      appends the region's English name to the file name (`reports.py:829-841`).
       Only id 99 is excluded in the code; the owner recalled 99 **and** 100
       (recorded as DISC-09), and the region set is to move into the user
       template (D-10, gap G-03).
@@ -268,12 +269,12 @@ merge):
 | `report_type` | yes | Enum: `crosstab`, `timeband`, `simple` (`models.py:44-47`). Selects the DEFAULT template file |
 | `media` | yes | Enum: `TV`, `TV_REG` (`models.py:39-41`). Selects the DEFAULT template file |
 | `relative_path` | yes | Sub-folder under the export root for this report's outputs (`models.py:102`) |
-| `period` | yes | Exactly one of `date_filter: [start, end]` or `last_time: {unit_count: N, include_current: bool}` must be present (`models.py:159-176`); `time_unit: d/w/m/y` (default `w`) controls the splitting frequency **within each calendar-year chunk** when `multiple_files: true` (`reports.py:509-524`). Every period is first split into ≤366-day year chunks via `utils.split_period_by_year` (`utils.py:148-160`, `MAX_PERIOD_DAYS` at `utils.py:27`) to respect the Mediascope API's per-task day limit, before any `time_unit` slicing or `multiple_files` branching occurs. |
+| `period` | yes | Exactly one of `date_filter: [start, end]` or `last_time: {unit_count: N, include_current: bool}` must be present (`models.py:159-176`); `time_unit: d/w/m/y` (default `y`) controls the slicing frequency when `multiple_files: true` (`reports.py:505-513`). Each `time_unit` slice is at most one unit, so it never exceeds the Mediascope API's 366-day per-task limit (enforced via `MAX_PERIOD_DAYS = 366`, `utils.py:27`). When `multiple_files` is false, `time_unit` is unused: the period is a single interval unless it spans >366 days, in which case it is split into calendar-year chunks via `utils.split_period_by_year` (`utils.py:148-160`) (`reports.py:519-522`). |
 | `report_subtype` | no (default `""`) | Selects a subtype block inside the DEFAULT template (`models.py:50-58`) |
 | `data_lang` | no (default `ru`) | `ru` substitutes Russian slice names; `en` keeps the API's English names (`models.py:101`, `services.py:130-131`) |
 | `compression` | no (default `{"method": "gzip"}`) | Output compression; drives the file extension (`models.py:98-100`, `utils.get_files_suffix` `utils.py:158-189`) |
-| `multiple_files` | no (default `true`) | When true (default), split each year chunk into `period.time_unit` intervals (`reports.py:509-524`). The period is **always** pre-split into calendar-year chunks (≤366 days, `utils.MAX_PERIOD_DAYS`) by `utils.split_period_by_year` regardless of this flag, to satisfy the API's per-task day limit (`reports.py:505-507`); when false, each year chunk becomes its own task/output CSV instead of being sub-divided by `time_unit`. (`models.py:195-197`) |
-| `target_audiences` | no (default `{"not_set": null}`) | Map of audience name → basedemo filter string; one task per audience (`models.py:107-109`, `reports.py:494-506`) |
+| `multiple_files` | no (default `true`) | When true (default), slice the clamped period **directly** by `period.time_unit` into one interval per unit (`utils.slice_period`, `utils.py:99-116`; `reports.py:505-513`). Year pre-splitting is **not** applied, so `time_unit` intervals can cross calendar-year boundaries; each interval is at most one unit and therefore ≤366 days. When false, the period is a single interval unless it spans >366 days (`utils.MAX_PERIOD_DAYS`, `utils.py:27`), in which case it is split into calendar-year chunks (`utils.split_period_by_year`, `utils.py:148-160`) — each chunk becomes its own API task + CSV, with no file merging (`reports.py:515-522`). `time_unit` is unused when false. (`models.py:195-197`) |
+| `target_audiences` | no (default `{"not_set": null}`) | Map of audience name → basedemo filter string; one task per audience (`models.py:107-109`, `reports.py:769-791`) |
 | `ad_filter` | no | Ad filter expression; overlaid onto the defaults (`models.py:106`, `services.py:126-128`) |
 | `check_done` | no (default `true`) | Skip tasks whose output file already exists (`models.py:94`, `reports.py:75-76, 78-83`, `:507-509`, `:563-567`) |
 | `slices`, `statistics`, `options`, `company_filter`, … | no | API parameters; overlaid onto the DEFAULT template when the key exists there (`services.py:126-128`) |
@@ -329,7 +330,7 @@ the table below is resolved — see G-01.
 | `run_report` called from a running event loop | `run_report` raises `RuntimeError` (the message names `run_report_async` as the alternative) before constructing its coroutine, so no `run_report_async` coroutine is ever left unawaited. Active-loop hosts (Jupyter/IPython, FastAPI handlers, async frameworks) must use `await run_report_async(...)` instead; `run_report` is for synchronous scripts and Airflow tasks only | `app.py:335-344` |
 | Report entry fails validation | `ReportSettings` error is logged and re-raised; the whole file aborts; CLI prints the error, exit 1 | `services.py:86-98`, `app.py:258-271` |
 | Missing/malformed DEFAULT template | `FileNotFoundError` / `ParserError` propagates from `json5_to_dict`; run aborts with exit 1 | `utils.py:381-389`, `services.py:100-114` |
-| `date_filter` set, `last_time: null` | Works — `time_unit` is on `PeriodModel` (default `w`), so `get_period` reads it without dereferencing `last_time` | code (`reports.py:467-530`, `models.py:159-176`) |
+| `date_filter` set, `last_time: null` | Works — `time_unit` is on `PeriodModel` (default `y`), so `get_period` reads it without dereferencing `last_time` | code (`reports.py:467-525`, `models.py:159-176`) |
 | Requested period entirely outside the API window | Period is clipped (`TVMediaReport.get_period`); when the clipped period is inverted (`start > end`), `NoReportFoundError` is raised. Since PIPE-013 this is caught by `AppService.run_report` around `create_report()`: a warning logs the entry and reason, no export path is appended for the skipped entry, and the loop continues to the next entry — the CLI does **not** exit 1 for a single missing-period entry. **Resolved by W-02 (G-01); per-entry continuation since PIPE-013.** | `reports.py` (`get_period`); `services.py` (`AppService.run_report`); `errors.py:1-9` (lead: audit PIPE-005) |
 | Requested period partially overlaps the API window | Period is clipped to the intersection; a `logger.warning()` names the uncovered remainder; the overlapping part is exported. **Resolved by W-02 (G-01)**. | `reports.py:499-504` (lead: audit PIPE-003, PIPE-004) |
 | Zero tasks generated (e.g. `target_audiences: {}`) | `processing_tasks` raises `NoReportFoundError` when no tasks are generated (`total == 0`); since PIPE-013 this is caught by `AppService.run_report` and the entry is skipped with a warning while later entries continue. (The `enqueued == 0` "all already exported" case, by contrast, warns and returns without raising.) **Resolved by W-02 (G-01) — the run is now visible, not a silent empty exit; per-entry continuation since PIPE-013.** | `reports.py` (`processing_tasks`) (lead: audit PIPE-004) |
@@ -365,7 +366,7 @@ a swallowed `FileExistsError`. All of these have been **resolved by W-02**.
 | `log_config.json5` | Handlers/formatters/levels applied via `logging.config.dictConfig` at service construction (`services.py:58-65`). The named loggers `__main__`, `tests`, `app` never match the real module loggers (which use `__name__`, e.g. `mko_get_mediascope_data.core.reports`), so everything falls through to `root`. `AppService.reload_config()` re-reads the JSON5 files and re-applies logging (`services.py:67-77`, covered by tests, run: passed) |
 | `compression` | File extension and on-disk compression |
 | `data_lang` | `ru` → slice fields `*EName` are requested as `*Name` (`utils.en_to_ru`, `services.py:130-131`) |
-| `multiple_files` + `time_unit` | Export granularity — the `time_unit` interval length within each calendar-year chunk. Year chunks of ≤366 days are always applied first (via `utils.split_period_by_year`, `MAX_PERIOD_DAYS = 366`) to enforce the Mediascope API's per-task day limit, regardless of `multiple_files`; when `multiple_files` is true, each year chunk is further subdivided by `time_unit`. |
+| `multiple_files` + `time_unit` | Export granularity. When `multiple_files=true` (default), the clamped period is sliced directly by `time_unit` into one interval per unit — no year pre-splitting, so intervals can cross calendar-year boundaries, and each interval is ≤366 days by construction. When `multiple_files=false`, `time_unit` is unused: the period is a single interval unless it spans >366 days (`MAX_PERIOD_DAYS = 366`, `utils.py:27`), in which case calendar-year splitting (`utils.split_period_by_year`) enforces the API's per-task limit. (`reports.py:505-522`) |
 | `verbosity_mode` | Sets the log level (`QUIET`→WARNING, `DEFAULT`→WARNING, `VERBOSE`→INFO, `DEBUG`→DEBUG, `SILENT`→CRITICAL) and whether Rich progress bars render (QUIET and SILENT suppress them; DEFAULT/VERBOSE/DEBUG show 4 bars per report). See [Console verbosity and progress bars](#console-verbosity-and-progress-bars) for the full model. |
 | `max_tasks` (100) and `NetworkClient` limits (5 concurrent HTTP calls, 10 attempts, 2 s base sleep) | Concurrency and retry behavior; see [Async Concurrency Architecture](async-concurrency-architecture.md) for the intentional two-level design |
 | Row-count limit on results | **None.** `resultBody` of any size is always passed through to `result2table`/`DataFrame` materialization; there is no configurable or hardcoded cap (`max_result_rows` was removed in W-13). |
@@ -392,7 +393,7 @@ reported by default via `--cov=src/mko_get_mediascope_data --cov-report=term-mis
 | `tests/test_models.py` | `ReportSettings` validation with the current field names; `PeriodModel` exclusivity rules; `merge_data_settings` does not call `en_to_ru` when `data_lang="en"`; all 32 bundled entries pass `ReportSettings` validation; all 6 `ReportSubtype` values have matching DEFAULT keys |
 | `tests/test_network.py` | Retry exhaustion raises `MaxRetriesExceeded("Network retry limit exceeded")` (subclasses `RuntimeError`); `mock_network_client` fixture retries on retryable errors; success returns the function result; `BadRequestError` (4xx) and `AuthorizationError` (401) are re-raised without retry; HTTP 429 (`TooManyRequestsError`) is retried with backoff; `TimeoutError` from `asyncio.wait` (`call_timeout` ceiling) is retryable; `retryable=False` makes the task-submission POST non-retried (EXT-001); `call_timeout` caps wall-clock via `asyncio.wait` (EXT-002); `retry_5xx` toggle controls 5xx retry (EXT-005); `log_errors_detail` redacts PII (args/kwargs) from error logs (EXT-008); semaphore limits concurrent in-flight calls; default `max_attempts=10`; PERF-001: `api_call=False` short-circuits `NetworkClient.call` to direct `_invoke` (no jitter, no semaphore, no retry, timeout-bounded) — verified by `test_cpu_local_calls_bypass_semaphore_and_jitter` |
 | `tests/test_reports.py` | `DefaultTVTaskStrategy` task naming; `DictDataStrategy` output columns |
-| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5; `test_large_result_is_processed` verifies there is **no** row-count cap — an oversized `resultBody` (> 10 000 rows) is processed through `result2table` and produces a CSV with no error artifact; PERF-003: `test_worker_emits_per_task_duration` verifies structured `task_stage_complete`/`task_complete` timing logs; **temp CSV files are excluded from resume discovery via `get_done_files` (PIPE-012); collision-safe task identity via `Report._disambiguate_task_names` — unique names stay verbatim, colliding names gain a deterministic `sha256(collision_id)[:8]` suffix (PIPE-014)**; 366-day API limit: `test_get_period_long_period_multiple_files_false_splits_by_year` (4-year span → 4 year chunks, each ≤366 days), `test_get_period_long_period_multiple_files_true_slices_per_year` (year chunks further sliced by weekly frequency, all ≤366 days and single-year), `test_get_period_short_period_unchanged_multiple_files_false` (short single-year period unchanged) |
+| `tests/test_reports_lifecycle.py` | Real `create_report` → `get_period` → `processing_tasks` → `worker` → `extract_data` → `csv_to_file` pipeline (unmocked except the `MediaVortexTask` double) writes CSV and the queue drains without hanging; `NoReportFoundError` raised when zero tasks enqueued; timeout path produces error JSON5; `test_large_result_is_processed` verifies there is **no** row-count cap — an oversized `resultBody` (> 10 000 rows) is processed through `result2table` and produces a CSV with no error artifact; PERF-003: `test_worker_emits_per_task_duration` verifies structured `task_stage_complete`/`task_complete` timing logs; **temp CSV files are excluded from resume discovery via `get_done_files` (PIPE-012); collision-safe task identity via `Report._disambiguate_task_names` — unique names stay verbatim, colliding names gain a deterministic `sha256(collision_id)[:8]` suffix (PIPE-014)**; 366-day API limit: `test_get_period_long_period_multiple_files_false_splits_by_year` (4-year span → 4 year chunks, each ≤366 days), `test_get_period_long_period_multiple_files_true_slices_by_time_unit` (>366-day span sliced directly by weekly frequency with no year pre-split, intervals crossing calendar-year boundaries), `test_get_period_short_period_unchanged_multiple_files_false` (short single-year period unchanged); plus `test_get_period_multiple_files_false_returns_single_period` (≤366-day period with `multiple_files=false` → single interval), `test_get_period_last_time_calls_get_last_period` (date computation from `last_time`), `test_send_task_with_multiple_files_false_passes_string_date_filter` (PIPE date-serialization) (lifecycle), plus `test_iter_year_slices_*` / `test_split_period_by_year_*` (utils) |
 | `tests/test_services.py` | Full `run_report` pipeline end-to-end (slow; doubled `MediaVortexTask`, real `AppService`); `app_config` caching; `reload_config()` invalidates cache, is safe before first access, reapplies logging, and re-resolves `export_folder`; missing credentials raise `FileNotFoundError`; **a no-overlap entry is warned and skipped while later entries still export (`test_no_overlap_entry_warns_and_continues_later_entries`, PIPE-013)** |
 | `tests/test_utils.py` | Date parsing; period slicing for `m` and `w`; **calendar-year splitting** (`iter_year_slices`, `split_period_by_year`) for the 366-day API limit — single/multi-year, leap-year, exact-boundary, and ≤366-day guarantee tests; gzip CSV writing; suffix mapping; `csv_to_file` writes into the report directory (`tmp_report_dir` fixture); **atomic publication** — final-file publication + temp-artifact cleanup/preservation on failure (`test_csv_to_file_atomic_success_publishes_final`, `test_csv_to_file_atomic_failure_preserves_prior_final`, PIPE-012) |
 | `tests/test_progress.py` | `NullProgressReporter` no-op semantics (all methods complete without raising); `ProgressReporter` protocol `isinstance` check (runtime_checkable); `TVTask.task_status` default is `QUEUED` |
@@ -463,17 +464,34 @@ boundaries.
   `test_distinct_audience_names_cannot_collide_after_transliteration`,
    `test_non_colliding_names_preserved_without_hash`.
 
-**Updated 2026-10-28:** 366-day API limit — calendar-year period splitting:
-`TVMediaReport.get_period` now **always** splits the clamped period into
-calendar-year-aligned chunks (each ≤366 days, enforced via `MAX_PERIOD_DAYS = 366`
-in `utils.py`) before branching on `multiple_files`. When `multiple_files=false`,
-each year chunk becomes its own interval and thus its own API task + CSV output
-(no file merging). When `multiple_files=true`, each year chunk is further sliced
-by `time_unit` frequency. This prevents the Mediascope API from rejecting tasks
-whose period exceeds 366 days. Tests: `test_get_period_long_period_multiple_files_false_splits_by_year`,
-`test_get_period_long_period_multiple_files_true_slices_per_year`,
-`test_get_period_short_period_unchanged_multiple_files_false` (lifecycle), plus
-`test_iter_year_slices_*` / `test_split_period_by_year_*` (utils).
+**Updated 2026-10-28:** 366-day API limit — period splitting in `get_period()`
+revised after a regression. The 366-day per-task limit (`MAX_PERIOD_DAYS = 366`
+in `utils.py`) is enforced per returned interval, but splitting is no longer
+**always** year-pre-split before branching on `multiple_files`:
+
+- `multiple_files=true` (default): the clamped period is sliced **directly** by
+  `period.time_unit` (`utils.slice_period`, `utils.py:99-116`). Year pre-splitting
+  is intentionally **not** applied, so `time_unit` intervals (e.g. weeks) can
+  naturally cross calendar-year boundaries (e.g. Dec 30–Jan 5). Each slice is at
+  most one unit, so it never exceeds 366 days — `reports.py:505-513`.
+- `multiple_files=false`: the whole clamped period is a **single interval** unless
+  it spans more than 366 days, in which case it is split into calendar-year chunks
+  (`utils.split_period_by_year`, `utils.py:148-160`; first chunk from clamped `start`
+  to Dec 31, subsequent chunks Jan 1–Dec 31, last chunk to clamped `end`) —
+  `reports.py:515-522`. `time_unit` is unused when `multiple_files=false`.
+
+This prevents the Mediascope API from rejecting tasks whose period exceeds 366 days
+while avoiding the duplicate period coverage that year pre-splitting produced on the
+`multiple_files=true` path (weekly intervals fragmented at Jan 1). Tests:
+`test_get_period_long_period_multiple_files_false_splits_by_year` (4-year span → 4
+year chunks, each ≤366 days), `test_get_period_long_period_multiple_files_true_slices_by_time_unit`
+(>366-day span sliced directly by weekly frequency with no year pre-split, intervals
+crossing calendar-year boundaries), `test_get_period_short_period_unchanged_multiple_files_false`
+(short single-year period unchanged), `test_get_period_multiple_files_false_returns_single_period`
+(≤366-day period with `multiple_files=false` → single interval), `test_get_period_last_time_calls_get_last_period`
+(date computation from `last_time`), and `test_send_task_with_multiple_files_false_passes_string_date_filter`
+(PIPE date-serialization) (lifecycle), plus `test_iter_year_slices_*` /
+`test_split_period_by_year_*` (utils).
 
 Behaviors with **no test coverage** — these code paths were therefore never
 executed during this investigation: `TVRegTaskStrategy` (tests use `media=TV`

@@ -76,10 +76,10 @@ Given a report JSON5 file, the tool `[code]`:
    parameters (`core/services.py:100-114`).
 3. Resolves the reporting period from the entry (explicit dates or "last N
    weeks/months/…") and clips it to the period the Mediascope database
-   actually has (`core/reports.py:295-338`).
+    actually has (`core/reports.py:433-449`).
 4. Splits the period into intervals (day/week/month/year) and the audiences
    into filters, producing one API task per interval × audience
-   (`core/reports.py:494-506`).
+    (`core/reports.py:505-522`, `735-826`).
 5. Submits tasks with bounded concurrency, polls until each finishes, and
    downloads the result tables (`core/reports.py:189-216`, `core/network.py:59-126`).
 6. Selects and renames the configured columns, then writes one
@@ -108,13 +108,13 @@ Historical evidence of this usage exists on the development machine: export
 folders such as `output/tefal/raw_data/`, `output/tv_report/top_adv/`,
 `output/tv_report/channels_tvr_w/` contain monthly and weekly CSV.gz files
 named `<start>_<end>_<audience>.csv.gz` `[code — the naming rule is implemented
-in DefaultTVTaskStrategy.generate, core/reports.py:494-506, and matches the
+in DefaultTVTaskStrategy.generate, core/reports.py:769-791, and matches the
 on-disk files]`.
 
 **Scenario C — regional (TV_REG) export.** For regional data, the tool expands
 the report over all catalog regions (or an explicit `regions` list), produces
 one task per region × interval × audience, and embeds the region name in the
-file name `[code — TVRegTaskStrategy, core/reports.py:513-569]`.
+file name `[code — TVRegTaskStrategy, core/reports.py:794-853]`.
 
 **Scenario D — dictionary export.** When the report subtype name contains
 `DICT`, the output is not the raw table but a melted "search dictionary" table
