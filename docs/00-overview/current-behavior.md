@@ -179,20 +179,28 @@ to `AppService.run_report` (`services.py:167-233`).
     `AppService.run_report` also accumulates `attempted` / `exported` /
     `warned` counters and logs a summary at the end. Unexpected errors are
     **not** caught and still abort the run.
-3. **Resolve the period** (`reports.py:229` → `TVMediaReport.get_period` at
-    `reports.py:295-338`):
+3. **Resolve the period** (`reports.py:385` → `TVMediaReport.get_period` at
+    `reports.py:467-530`):
     - the available date window for the dataset is fetched from the API
-      (`cats.get_availability_period`, filtered by `options.kitId`;
-      `reports.py:265-277`, `:259-261`);
+      (`cats.get_availability_period`, filtered by `options.kitId` / `base_id`;
+      `reports.py:427-428, 433-449`);
     - if `period.date_filter` is absent, the period is computed from
-      `period.last_time` (`utils.get_last_period`, `utils.py:106-155`);
+      `period.last_time` (`utils.get_last_period`, `utils.py:183-232`);
     - the requested period is clipped to the available window with
-      `max/min` (`reports.py:322-325`);
+      `max/min` (`reports.py:490-493`);
     - if the clipped period is inverted (`start > end`), `NoReportFoundError` is
       raised (see [Errors, warnings, and edge cases](#errors-warnings-and-edge-cases));
-    - if `multiple_files` is true (default), the period is split into intervals
-      of `time_unit` (`utils.slice_period`, `utils.py:69-85`; the unit lives on
-      `PeriodModel`, not `LastTimeModel`, since commit `183aed6`).
+    - the clipped period is **always** split into calendar-year-aligned chunks
+      via `utils.split_period_by_year` (`utils.py:148-160`, backed by
+      `utils.iter_year_slices` at `utils.py:119-145`), bounded by the
+      `MAX_PERIOD_DAYS = 366` constant (`utils.py:27`). This enforces the Mediascope
+      API's 366-day per-task limit (covers leap years) and runs regardless of
+      `multiple_files` (`reports.py:505-507`);
+    - if `multiple_files` is true (default), **each** year chunk is further sliced
+      into intervals of `time_unit` via `utils.slice_period` (`utils.py:99-116`;
+      the unit lives on `PeriodModel`, not `LastTimeModel`, since commit `183aed6`,
+      `reports.py:489, 509-524`). When `multiple_files` is false, each year chunk
+      becomes its own interval (its own output CSV).
 4. **Generate tasks** (`reports.py:452-454` → strategy `generate`):
     - `DefaultTVTaskStrategy` (`reports.py:481-506`): for each interval, for each
       `target_audiences` entry: task name = `<start>_<end>_<ascii audience>`,
@@ -260,11 +268,11 @@ merge):
 | `report_type` | yes | Enum: `crosstab`, `timeband`, `simple` (`models.py:44-47`). Selects the DEFAULT template file |
 | `media` | yes | Enum: `TV`, `TV_REG` (`models.py:39-41`). Selects the DEFAULT template file |
 | `relative_path` | yes | Sub-folder under the export root for this report's outputs (`models.py:102`) |
-| `period` | yes | Exactly one of `date_filter: [start, end]` or `last_time: {unit_count: N, include_current: bool}` must be present (`models.py:67-84`); `time_unit: d/w/m/y` (default `w`) controls the splitting frequency and is required when `multiple_files: true` |
+| `period` | yes | Exactly one of `date_filter: [start, end]` or `last_time: {unit_count: N, include_current: bool}` must be present (`models.py:159-176`); `time_unit: d/w/m/y` (default `w`) controls the splitting frequency **within each calendar-year chunk** when `multiple_files: true` (`reports.py:509-524`). Every period is first split into ≤366-day year chunks via `utils.split_period_by_year` (`utils.py:148-160`, `MAX_PERIOD_DAYS` at `utils.py:27`) to respect the Mediascope API's per-task day limit, before any `time_unit` slicing or `multiple_files` branching occurs. |
 | `report_subtype` | no (default `""`) | Selects a subtype block inside the DEFAULT template (`models.py:50-58`) |
 | `data_lang` | no (default `ru`) | `ru` substitutes Russian slice names; `en` keeps the API's English names (`models.py:101`, `services.py:130-131`) |
 | `compression` | no (default `{"method": "gzip"}`) | Output compression; drives the file extension (`models.py:98-100`, `utils.get_files_suffix` `utils.py:158-189`) |
-| `multiple_files` | no (default `true`) | Split the period into `period.time_unit` intervals (`models.py:67-84`, `reports.py:333-334`) |
+| `multiple_files` | no (default `true`) | When true (default), split each year chunk into `period.time_unit` intervals (`reports.py:509-524`). The period is **always** pre-split into calendar-year chunks (≤366 days, `utils.MAX_PERIOD_DAYS`) by `utils.split_period_by_year` regardless of this flag, to satisfy the API's per-task day limit (`reports.py:505-507`); when false, each year chunk becomes its own task/output CSV instead of being sub-divided by `time_unit`. (`models.py:195-197`) |
 | `target_audiences` | no (default `{"not_set": null}`) | Map of audience name → basedemo filter string; one task per audience (`models.py:107-109`, `reports.py:494-506`) |
 | `ad_filter` | no | Ad filter expression; overlaid onto the defaults (`models.py:106`, `services.py:126-128`) |
 | `check_done` | no (default `true`) | Skip tasks whose output file already exists (`models.py:94`, `reports.py:75-76, 78-83`, `:507-509`, `:563-567`) |
@@ -321,9 +329,9 @@ the table below is resolved — see G-01.
 | `run_report` called from a running event loop | `run_report` raises `RuntimeError` (the message names `run_report_async` as the alternative) before constructing its coroutine, so no `run_report_async` coroutine is ever left unawaited. Active-loop hosts (Jupyter/IPython, FastAPI handlers, async frameworks) must use `await run_report_async(...)` instead; `run_report` is for synchronous scripts and Airflow tasks only | `app.py:335-344` |
 | Report entry fails validation | `ReportSettings` error is logged and re-raised; the whole file aborts; CLI prints the error, exit 1 | `services.py:86-98`, `app.py:258-271` |
 | Missing/malformed DEFAULT template | `FileNotFoundError` / `ParserError` propagates from `json5_to_dict`; run aborts with exit 1 | `utils.py:381-389`, `services.py:100-114` |
-| `date_filter` set, `last_time: null` | Works — `time_unit` is on `PeriodModel` (default `w`), so `get_period` reads it without dereferencing `last_time` | code (`reports.py:295-338`, `models.py:67-84`) |
+| `date_filter` set, `last_time: null` | Works — `time_unit` is on `PeriodModel` (default `w`), so `get_period` reads it without dereferencing `last_time` | code (`reports.py:467-530`, `models.py:159-176`) |
 | Requested period entirely outside the API window | Period is clipped (`TVMediaReport.get_period`); when the clipped period is inverted (`start > end`), `NoReportFoundError` is raised. Since PIPE-013 this is caught by `AppService.run_report` around `create_report()`: a warning logs the entry and reason, no export path is appended for the skipped entry, and the loop continues to the next entry — the CLI does **not** exit 1 for a single missing-period entry. **Resolved by W-02 (G-01); per-entry continuation since PIPE-013.** | `reports.py` (`get_period`); `services.py` (`AppService.run_report`); `errors.py:1-9` (lead: audit PIPE-005) |
-| Requested period partially overlaps the API window | Period is clipped to the intersection; a `logger.warning()` names the uncovered remainder; the overlapping part is exported. **Resolved by W-02 (G-01)**. | `reports.py:331-336` (lead: audit PIPE-003, PIPE-004) |
+| Requested period partially overlaps the API window | Period is clipped to the intersection; a `logger.warning()` names the uncovered remainder; the overlapping part is exported. **Resolved by W-02 (G-01)**. | `reports.py:499-504` (lead: audit PIPE-003, PIPE-004) |
 | Zero tasks generated (e.g. `target_audiences: {}`) | `processing_tasks` raises `NoReportFoundError` when no tasks are generated (`total == 0`); since PIPE-013 this is caught by `AppService.run_report` and the entry is skipped with a warning while later entries continue. (The `enqueued == 0` "all already exported" case, by contrast, warns and returns without raising.) **Resolved by W-02 (G-01) — the run is now visible, not a silent empty exit; per-entry continuation since PIPE-013.** | `reports.py` (`processing_tasks`) (lead: audit PIPE-004) |
 | Output file already exists | `csv_to_file` uses `mode="w"` (overwrites) and publishes atomically (temp file + `os.replace`); a failure leaves any prior final file intact. In the report pipeline, `check_done=True` pre-filters tasks by name match against existing files *before* submission (`Report.get_done_files`, which excludes `utils.CSV_TEMP_PREFIX` temp artifacts so a crashed write is never treated as published output), so already-exported tasks are skipped with a warning. `check_done=False` re-runs bypass the pre-filter and overwrite. **Updated 2026-10-16 (W-02): `mode` changed from `"x"` to `"w"`; the `FileExistsError`-swallow path is gone. Atomic publication and temp-exclusion from resume discovery since PIPE-012.** | `utils.csv_to_file`; `reports.py` (`Report.get_done_files`) (lead: audit PIPE-001 / OUT-003) |
 | Task fails logically (no key, empty result, missing columns) | `task.status = False` → worker checks `log_error`: if `True` (processing failure), writes error JSON5 via `json5.dump` and logs a warning; if `False` (no data), logs a warning only, no error JSON5 (D-15). Run continues. **Updated 2026-10-16 (W-02): worker branching on `log_error` (`reports.py:164-169`).** Updated 2026-10-19 (W-13): oversized `resultBody` (formerly guarded by `max_result_rows`, 10 000) is **no longer rejected** — there is no row-count cap; the full result is always passed to `result2table` (`reports.py:454-457`). | `reports.py:164-169`, `tasks.py:27-57` |
@@ -357,7 +365,7 @@ a swallowed `FileExistsError`. All of these have been **resolved by W-02**.
 | `log_config.json5` | Handlers/formatters/levels applied via `logging.config.dictConfig` at service construction (`services.py:58-65`). The named loggers `__main__`, `tests`, `app` never match the real module loggers (which use `__name__`, e.g. `mko_get_mediascope_data.core.reports`), so everything falls through to `root`. `AppService.reload_config()` re-reads the JSON5 files and re-applies logging (`services.py:67-77`, covered by tests, run: passed) |
 | `compression` | File extension and on-disk compression |
 | `data_lang` | `ru` → slice fields `*EName` are requested as `*Name` (`utils.en_to_ru`, `services.py:130-131`) |
-| `multiple_files` + `time_unit` | Export granularity — the interval length used to split the period |
+| `multiple_files` + `time_unit` | Export granularity — the `time_unit` interval length within each calendar-year chunk. Year chunks of ≤366 days are always applied first (via `utils.split_period_by_year`, `MAX_PERIOD_DAYS = 366`) to enforce the Mediascope API's per-task day limit, regardless of `multiple_files`; when `multiple_files` is true, each year chunk is further subdivided by `time_unit`. |
 | `verbosity_mode` | Sets the log level (`QUIET`→WARNING, `DEFAULT`→WARNING, `VERBOSE`→INFO, `DEBUG`→DEBUG, `SILENT`→CRITICAL) and whether Rich progress bars render (QUIET and SILENT suppress them; DEFAULT/VERBOSE/DEBUG show 4 bars per report). See [Console verbosity and progress bars](#console-verbosity-and-progress-bars) for the full model. |
 | `max_tasks` (100) and `NetworkClient` limits (5 concurrent HTTP calls, 10 attempts, 2 s base sleep) | Concurrency and retry behavior; see [Async Concurrency Architecture](async-concurrency-architecture.md) for the intentional two-level design |
 | Row-count limit on results | **None.** `resultBody` of any size is always passed through to `result2table`/`DataFrame` materialization; there is no configurable or hardcoded cap (`max_result_rows` was removed in W-13). |

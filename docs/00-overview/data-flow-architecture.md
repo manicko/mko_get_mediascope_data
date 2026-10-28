@@ -87,13 +87,14 @@ partial sub-keys are not merged.
 ```mermaid
 flowchart TD
     A["period config"] --> B{"date_filter set?"}
-    B -- no --> C["get_last_period(today = latest available API date,<br/>last_time, time_unit = period.time_unit)  utils.py:106-155"]
+    B -- no --> C["get_last_period(today = latest available API date,<br/>last_time, time_unit = period.time_unit)  utils.py:183-232"]
     B -- yes --> D["requested = date_filter"]
-    C --> E["clip to API window<br/>max(window.start, requested.start), min(window.end, requested.end)<br/>reports.py:322-325"]
+    C --> E["clip to API window<br/>max(window.start, requested.start), min(window.end, requested.end)<br/>reports.py:490-493"]
     D --> E
-    E --> F{"multiple_files?"}
-    F -- true --> G["slice by period.time_unit<br/>utils.slice_period  utils.py:69-85"]
-    F -- false --> H["single interval"]
+    E --> Y["split into calendar-year chunks (≤366 days)<br/>utils.split_period_by_year  utils.py:148-160<br/>MAX_PERIOD_DAYS = 366 (utils.py:27)"]
+    Y --> F{"multiple_files?"}
+    F -- true --> G["slice each year chunk by period.time_unit<br/>utils.slice_period  utils.py:99-116"]
+    F -- false --> H["single interval per year chunk"]
     G --> I["interval list → tasks"]
     H --> I
 ```
@@ -101,26 +102,40 @@ flowchart TD
 Rules and their edge cases `[code]`:
 
 - The reference "today" for `last_time` is the **latest date the API reports as
-  available**, not the system clock (`reports.py:265-277` passes it to
-  `utils.get_last_period` as `today=available_period[1]`).
-- `last_time` semantics (`utils.get_last_period`): start = N whole units back
-  from the start of the current unit; `include_current: false` additionally
-  moves the end back to just before the current unit (for weeks, end = start +
-  N−1 weeks + 6 days).
+  available**, not the system clock (`get_available_period`,
+  `reports.py:433-449`, passes it to `utils.get_last_period` as
+  `today=available_period[1]`).
+- `last_time` semantics (`utils.get_last_period`, `utils.py:183-232`): start = N
+  whole units back from the start of the current unit; `include_current: false`
+  additionally moves the end back to just before the current unit (for weeks,
+  end = start + N−1 weeks + 6 days).
 - The API window comes from `cats.get_availability_period()` filtered by
-  `options.kitId` (`reports.py:265-277`; `base_id` default 1, `reports.py:259-261`).
+  `options.kitId` / `base_id` (`reports.py:427-428, 433-449`; `base_id` default 1).
   What each `kitId` value means is **not** asserted anywhere: the owner has
   declared the in-template legend stale and will supply the current mapping
   when available (D-20, DISC-11).
 - **Clipping can invert the period** (start > end) when the requested range does
   not overlap the window — since W-02, this raises `NoReportFoundError` rather
-   than silently producing zero intervals (`TVMediaReport.get_period`). Since
-   PIPE-013 `AppService.run_report` catches this per entry, logs a warning naming
-   the entry and reason, and continues to the next entry (no export path is
-   appended for the skipped entry).
-- The interval length comes from `period.time_unit` (default `w`), which is
-  always available on `PeriodModel` regardless of whether `date_filter` or
-  `last_time` is used (`models.py:67-84`, `reports.py:317`).
+   than silently producing zero intervals (`TVMediaReport.get_period`,
+   `reports.py:494-498`). Since PIPE-013 `AppService.run_report` catches this per
+   entry, logs a warning naming the entry and reason, and continues to the next
+   entry (no export path is appended for the skipped entry).
+- **Calendar-year splitting (366-day limit).** The clipped period is **always**
+  split into calendar-year-aligned chunks via `utils.split_period_by_year`
+  (`utils.py:148-160`, backed by `utils.iter_year_slices` at `utils.py:119-145`),
+  bounded by `MAX_PERIOD_DAYS = 366` (`utils.py:27`). This enforces the Mediascope
+  API's per-task day limit (366 days, covering leap years) and runs regardless of
+  `multiple_files` (`reports.py:505-507`). Each chunk is confined to a single
+  calendar year: the first chunk starts at the clipped `start` and ends Dec 31 of
+  its year; subsequent chunks start Jan 1 and end Dec 31; the last chunk ends at
+  the clipped `end`. This is independent of — and applied before — the
+  `time_unit` subdivision below.
+- The interval length within each year chunk comes from `period.time_unit`
+  (default `w`), which is always available on `PeriodModel` regardless of
+  whether `date_filter` or `last_time` is used (`models.py:159-176`,
+  `reports.py:489, 509-524`). When `multiple_files` is true, each year chunk is
+  further subdivided by `time_unit`; when false, each year chunk is a single
+  interval.
 
 ### Task fan-out
 
