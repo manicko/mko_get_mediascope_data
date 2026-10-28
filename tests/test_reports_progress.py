@@ -450,7 +450,7 @@ async def test_processing_tasks_reports_all_tasks_including_skipped(
         report_type=ReportType.crosstab,
         report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
         relative_path="tv/test",  # type: ignore[arg-type]
-        period={"date_filter": ["2025-01-01", "2025-01-21"]},  # type: ignore[arg-type]  # 3 weekly intervals
+        period={"date_filter": ["2025-01-01", "2025-01-21"], "time_unit": "w"},  # type: ignore[arg-type]  # 3 weekly intervals
         target_audiences={"all 18+": "age >= 18"},
     )
     data_settings = hermetic_app_service.get_data_settings(report_settings)

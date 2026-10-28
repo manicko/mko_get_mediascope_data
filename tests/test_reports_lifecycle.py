@@ -2852,15 +2852,17 @@ async def test_get_period_long_period_multiple_files_false_splits_by_year(
         )
 
 
-async def test_get_period_long_period_multiple_files_true_slices_per_year(
+async def test_get_period_long_period_multiple_files_true_slices_by_time_unit(
     hermetic_app_service: AppService,
 ):
-    """>366-day period with multiple_files=True slices each year by frequency.
+    """>366-day period with multiple_files=True slices directly by time_unit.
 
-    Year chunks are first split by calendar year, then each year chunk is
-    further sliced by the configured time_unit (weekly).  All resulting
-    intervals are ISO strings, each <= 366 days, and each confined to a
-    single calendar year.
+    Year pre-splitting is intentionally NOT applied for ``multiple_files=True``
+    so that time_unit chunks (e.g. weeks) can naturally cross calendar-year
+    boundaries.  Previously the year-first split fragmented a week like
+    2024-12-30..2025-01-05 into 2024-12-30..2024-12-31 and 2025-01-01..2025-01-05,
+    causing duplicate period coverage.  Now the full period is sliced by time_unit
+    in one pass, producing contiguous non-overlapping intervals.
     """
     report_settings = ReportSettings(
         media=MediaType.TV,
@@ -2894,10 +2896,10 @@ async def test_get_period_long_period_multiple_files_true_slices_per_year(
 
     period = await report.get_period()
 
-    # Weekly slicing of 4 years yields far more intervals than 4 year chunks.
+    # Weekly slicing of ~4 years yields far more intervals than 4 year chunks.
     assert len(period) > 4
 
-    # Every interval must be <= MAX_PERIOD_DAYS and confined to a single year.
+    # Every interval must be <= MAX_PERIOD_DAYS.
     for start_str, end_str in period:
         assert isinstance(start_str, str)
         assert isinstance(end_str, str)
@@ -2908,10 +2910,21 @@ async def test_get_period_long_period_multiple_files_true_slices_per_year(
             f"Interval ({start_str}, {end_str}) spans {duration} days, "
             f"exceeding MAX_PERIOD_DAYS ({utils.MAX_PERIOD_DAYS})"
         )
-        assert start_date.year == end_date.year, (
-            f"Interval ({start_str}, {end_str}) crosses a calendar-year "
-            "boundary"
-        )
+
+    # No duplicate or overlapping intervals — this is the core regression guard.
+    parsed = [
+        (utils.str_to_date(s), utils.str_to_date(e)) for s, e in period
+    ]
+    for i in range(len(parsed)):
+        for j in range(i + 1, len(parsed)):
+            s1, e1 = parsed[i]
+            s2, e2 = parsed[j]
+            assert s1 != s2 or e1 != e2, (
+                f"Duplicate interval ({s1}, {e1})"
+            )
+            assert e1 < s2 or e2 < s1, (
+                f"Overlapping intervals ({s1}, {e1}) and ({s2}, {e2})"
+            )
 
 
 async def test_get_period_short_period_unchanged_multiple_files_false(

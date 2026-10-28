@@ -502,29 +502,24 @@ class TVMediaReport(MediaReport):
                     f"available range {tuple(available_period)}; "
                     f"using clamped intersection {period}."
                 )
-            # Always split into year-sized chunks to respect the Mediascope
-            # API's 366-day per-task limit (applied regardless of multiple_files).
-            year_chunks = utils.split_period_by_year(period)
-
             if self.report_settings.multiple_files:
-                # Further slice each year chunk by the configured time_unit
-                # frequency.  split_period_by_year returns ISO strings, so
-                # convert back to date for slice_period's date arithmetic.
-                all_intervals: list[tuple[str, str]] = []
-                for year_start, year_end in year_chunks:
-                    all_intervals.extend(
-                        utils.slice_period(
-                            (
-                                utils.str_to_date(year_start),
-                                utils.str_to_date(year_end),
-                            ),
-                            frequency,
-                        )
-                    )
-                return all_intervals
-            # multiple_files=False: each year chunk becomes its own task with
-            # its own output CSV (no merge of consolidated files).
-            return year_chunks
+                # Split by time_unit directly — no year pre-splitting.
+                # This lets intervals naturally cross calendar-year boundaries
+                # (e.g. a weekly chunk spanning Dec 30–Jan 5) instead of
+                # fragmenting them at Jan 1, which produced duplicate period
+                # coverage (PIPE period-regression).  Each time_unit chunk is
+                # at most one unit (day/week/month/year) ≤ 366 days, so the
+                # Mediascope 366-day-per-task limit is respected.
+                return utils.slice_period(period, frequency)
+
+            # multiple_files=False: a single task per report entry.
+            # Only split by calendar year when the period exceeds the API's
+            # 366-day per-task limit; otherwise send the whole (clamped)
+            # period as one task.
+            period_days = (period[1] - period[0]).days + 1
+            if period_days > utils.MAX_PERIOD_DAYS:
+                return utils.split_period_by_year(period)
+            return [(period[0].isoformat(), period[1].isoformat())]
         except Exception as e:
             logger.exception(e)
             raise

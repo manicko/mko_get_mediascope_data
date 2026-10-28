@@ -160,7 +160,7 @@ class PeriodModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
     date_filter: list[date] | None = None
     last_time: LastTimeModel | None = None
-    time_unit: Literal["d", "w", "m", "y"] = "w"
+    time_unit: Literal["d", "w", "m", "y"] = "y"
 
     @model_validator(mode="after")
     def validate_exclusive(self):
@@ -193,7 +193,7 @@ class ReportSettings(BaseModel):
     data_lang: Literal["ru", "en"] = "ru"
     relative_path: Path
     multiple_files: bool = (
-        True  # True: if period exceeds 1 year, split exports by month/week
+        True  # True: split period by time_unit into multiple export files
     )
     ad_filter: str | None = None
     target_audiences: dict[str, Any] | None = Field(
