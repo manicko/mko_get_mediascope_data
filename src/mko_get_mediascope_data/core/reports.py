@@ -184,6 +184,20 @@ class MediaReport(Report):
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
+    @staticmethod
+    def _consume_background_call(future: asyncio.Future[Any]) -> None:
+        """Consume a background poll call's outcome without raising.
+
+        Used when ``wait_task`` abandons an in-flight ``get_status`` call because
+        the poll deadline expired.  The call is left running (it manages its own
+        permits/deferred threads) and its terminal outcome is consumed here to
+        avoid an unretrieved-exception warning.
+        """
+        try:
+            future.result()
+        except BaseException:  # noqa: BLE001 — never raise from a done-callback
+            pass
+
     async def _write_error_artifact(self, item: TVTask) -> None:
         """Persist a task's error artifact, isolated from the worker loop.
 
@@ -628,20 +642,45 @@ class TVMediaReport(MediaReport):
                 task.log_error = True
                 task.error = f"Poll deadline exceeded ({max_polls} polls)"
                 break
-            if loop.time() - start > poll_deadline:
+
+            remaining = poll_deadline - (loop.time() - start)
+            if remaining <= 0:
                 task.status = False
                 task.log_error = True
                 task.error = f"Poll deadline exceeded ({poll_deadline}s)"
                 break
 
-            await asyncio.sleep(sleep_interval)
+            await asyncio.sleep(min(sleep_interval, remaining))
 
-            status = await self.network_client.call(
-                self.report_service.get_status,
-                task.key,
-                sleep_time=self.poll.sleep_time,
-                task_name=task.name,
+            remaining = poll_deadline - (loop.time() - start)
+            if remaining <= 0:
+                task.status = False
+                task.log_error = True
+                task.error = f"Poll deadline exceeded ({poll_deadline}s)"
+                break
+
+            # Bound the whole status call by the remaining poll deadline so a
+            # slow/retrying get_status cannot overrun the deadline (previously
+            # the guard only ran at loop top). The call is not cancelled on
+            # timeout — it keeps running in the background and manages its own
+            # permits/deferred threads — but the task is failed promptly.
+            call_future = asyncio.ensure_future(
+                self.network_client.call(
+                    self.report_service.get_status,
+                    task.key,
+                    sleep_time=self.poll.sleep_time,
+                    task_name=task.name,
+                )
             )
+            done, _ = await asyncio.wait({call_future}, timeout=remaining)
+            if not done:
+                call_future.add_done_callback(self._consume_background_call)
+                task.status = False
+                task.log_error = True
+                task.error = f"Poll deadline exceeded ({poll_deadline}s)"
+                break
+            status = call_future.result()
+
             if status is False:
                 task.status = False
                 task.log_error = True

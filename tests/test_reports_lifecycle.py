@@ -1355,6 +1355,63 @@ async def test_wait_task_poll_deadline_exceeded(
     assert "Poll deadline exceeded" in task.error
 
 
+async def test_wait_task_poll_deadline_bounds_slow_get_status(
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+):
+    """wait_task fails promptly when get_status overruns the remaining deadline.
+
+    Regression: the poll deadline was only checked at loop top, so an in-flight
+    status call could block well past the deadline. The call is bounded by the
+    remaining time and the task is marked failed with the wall-clock deadline.
+    """
+    real_sleep = asyncio.sleep
+    report_settings = ReportSettings(
+        media=MediaType.TV,
+        report_type=ReportType.crosstab,
+        report_subtype=ReportSubtype.TOP_NAT_TV_ADVERTISERS,
+        relative_path="tv/test",  # type: ignore[arg-type]
+        period={"date_filter": ["2025-01-01", "2025-01-07"]},  # type: ignore[arg-type]
+    )
+    data_settings = hermetic_app_service.get_data_settings(report_settings)
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+
+    async def slow_get_status(*_args, **_kwargs):
+        await real_sleep(0.5)
+        return {"taskStatus": "IN_PROGRESS"}
+
+    network_client = NetworkClient(sleep_time=0, max_attempts=1)
+    network_client.call = AsyncMock(side_effect=slow_get_status)
+
+    report = TVMediaReport(
+        report_settings=report_settings,
+        data_settings=data_settings,
+        export_path=hermetic_app_service.export_folder / "test",
+        report_service=mock_report_service,
+        network_client=network_client,
+        task_strategy=DefaultTVTaskStrategy(),
+        data_strategy=DefaultDataStrategy(),
+        check_done=False,
+    )
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    task = TVTask("test_poll_deadline_slow", {}, "crosstab", "TV")
+    task.key = {"taskJson": "mock_key"}
+
+    await asyncio.wait_for(
+        report.wait_task(task, max_polls=60, poll_deadline=0.05),
+        timeout=2.0,
+    )
+
+    assert task.status is False
+    assert task.log_error is True
+    assert task.error == "Poll deadline exceeded (0.05s)"
+
+
 # ---------------------------------------------------------------------------
 # send_task is-False branch (reports.py:352-360)
 # ---------------------------------------------------------------------------
