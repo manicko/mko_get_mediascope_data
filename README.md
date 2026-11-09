@@ -141,8 +141,9 @@ Choose the entry point that matches the host environment:
 
 - **Synchronous scripts and Airflow tasks** — `run_report(...)` blocks until the
   report finishes. It must **not** be called from within a running event loop.
-- **Jupyter / IPython notebooks and other active-loop hosts** —
-  `await run_report_async(...)` runs inside the existing event loop.
+- **Jupyter / IPython notebooks and other active-loop hosts with default
+  user settings** — `await run_report_async(...)` runs inside the existing event
+  loop (native `await`; no `nest_asyncio`).
 
 ```python
 from mko_get_mediascope_data import run_report, run_report_async, initialize_settings
@@ -164,6 +165,58 @@ await run_report_async(
     "~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5"
 )
 ```
+
+### Jupyter notebook example (delivered, CR-3 Alternative A — caveated)
+
+A repo-shipped example notebook is provided at
+[`examples/mediascope_notebook_workflow.ipynb`](examples/mediascope_notebook_workflow.ipynb)
+for **local JupyterLab / classic Jupyter** (Python 3.12+). It demonstrates a
+portable-workspace workflow using **internal dependency-injection (DI) workspace
+bootstrap** (not a stable public notebook API):
+
+- **Install from Git (selectable ref, pinned default):** the notebook shows a
+  user-selectable `REPO_URL`/`GIT_REF` and defaults to the pinned delivery ref
+  `0743c3d21ed5ac6291ab0a96dfab26db0664c05f` (the repo has no tags at delivery
+  time; a branch/tag override can be used when appropriate).
+- **Configurable folders (notebook cell variables):** `WORKSPACE_ROOT`,
+  `SETTINGS_WORKSPACE` (settings/config workspace), `REPORTS_DIR` (reports source
+  path), `EXPORT_DIR` (output/export), and `REPORT_PATH`.
+- **Alt A execution path:** bootstrap/validate a workspace-local settings tree
+  from bundled templates (non-destructive by default; excludes
+  `connections/mediascope.json` placeholder credentials from blanket copy), set
+  `app_config.export_folder` to the absolute export directory **before**
+  `AppService` construction, construct
+  `AppPaths(user_dir=WORKSPACE_ROOT, app_dir=core.paths.APP_DIR, app_name=APP_NAME)`,
+  `PathResolver(WORKSPACE_ROOT)`, and `AppService(...)`, then run:
+  ```python
+  export_paths = await service.run_report(
+      Path(REPORT_PATH), progress=NullProgressReporter()
+  )
+  ```
+  Do **not** use the public `run_report_async` singleton wrapper for this Alt A
+  workspace workflow. `run_report_async` / `run_report` remain supported for
+  default user-settings hosts (scripts, Airflow, active-loop notebooks using the
+  user config directory).
+- **Credentials (CR-7):** external/user-managed at a configurable
+  `CREDENTIALS_PATH` (portable default: user-config
+  `connections/mediascope.json`); never embed or print secrets. Workspace
+  credential copy is explicit opt-in only, never overwrites existing credentials,
+  and never promotes the bundled placeholder.
+- **Outputs:** clear export listing/count/sizes; `run_report` may skip entries
+  (warned `NoReportFoundError`) — do not claim success from path existence alone.
+- **Caveats (CR-8):** uses internal modules (`core.paths`, `core.services`,
+  `core.progress`), not a stable public notebook API; `AppService.prepare_app()`
+  applies global `logging.config.dictConfig()` and resolves log handler paths
+  (restart the kernel to reset state in long-lived sessions); bypasses
+  singleton/public wrappers (`init`/`list-reports` remain user-dir fixed; public
+  `run_report*`/`initialize_settings` unchanged); requires a complete valid
+  settings tree; `get_connection()` missing-file errors may mention `init`
+  generically — the Alt A remedy is workspace bootstrap/explicit credential copy.
+- **Real E2E evidence (CR-5):** real execution requires authorized local
+  JupyterLab/classic plus valid external credentials/network. Current sanitized
+  evidence is **BLOCKED** with no success claim:
+  [`.ai/evidence/01-jupyter-notebook-e2e.md`](.ai/evidence/01-jupyter-notebook-e2e.md).
+  Spec reference: [`.ai/problems/02_jupyter_notebook_launch_spec.md`](.ai/problems/02_jupyter_notebook_launch_spec.md).
 
 ## 🛠️ Requirements
 - Python 3.12+

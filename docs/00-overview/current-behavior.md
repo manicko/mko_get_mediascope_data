@@ -71,7 +71,28 @@ app with `typer.testing.CliRunner`:
 - The command is `list-reports`; `list_reports` fails with exit code 2
   (Typer hyphenates command names).
 
-### Console verbosity and progress bars
+### Jupyter notebook example workflow (delivered, 2026-11-09, caveated)
+
+A repo-shipped example notebook,
+[`examples/mediascope_notebook_workflow.ipynb`](../../examples/mediascope_notebook_workflow.ipynb),
+demonstrates a **local JupyterLab / classic Jupyter** workflow (Python 3.12+)
+using **CR-3 Alternative A: internal DI workspace bootstrap** (current
+architecture; caveated). It is an example workflow, **not** a stable public
+notebook API. Spec:
+[`.ai/problems/02_jupyter_notebook_launch_spec.md`](../../.ai/problems/02_jupyter_notebook_launch_spec.md).
+Sanitized evidence: [`.ai/evidence/01-jupyter-notebook-e2e.md`](../../.ai/evidence/01-jupyter-notebook-e2e.md).
+
+| Aspect | Delivered behavior |
+|---|---|
+| Install (CR-4) | Git install from a selectable `REPO_URL`/`GIT_REF`; default pinned to `0743c3d21ed5ac6291ab0a96dfab26db0664c05f` (no repo tags at delivery; branch/tag override possible). |
+| Folders (CR-3, cell variables) | Portable workspace variables: `WORKSPACE_ROOT`, `SETTINGS_WORKSPACE` (settings/config workspace), `REPORTS_DIR` (reports source path), `EXPORT_DIR` (output/export), `REPORT_PATH`. |
+| Bootstrap | Creates/validates a workspace-local settings tree from bundled templates (non-destructive by default). Excludes `connections/mediascope.json` placeholder credentials from blanket copy. Sets `app_config.export_folder` to absolute `EXPORT_DIR` **before** `AppService` construction. |
+| Execution (Alt A) | Constructs `AppPaths(user_dir=WORKSPACE_ROOT, app_dir=core.paths.APP_DIR, app_name=APP_NAME)`, `PathResolver(WORKSPACE_ROOT)`, and `AppService(...)`; runs `await service.run_report(Path(REPORT_PATH), progress=NullProgressReporter())`. Native `await` only; no `nest_asyncio`. **Does not use** the public `run_report_async` singleton wrapper for this workspace path. |
+| Credentials (CR-7) | External/user-managed at configurable `CREDENTIALS_PATH` (portable default: user-config `connections/mediascope.json`). No secrets embedded/printed. Workspace credential copy is explicit opt-in only, never overwrites existing credentials, and never promotes the bundled placeholder. |
+| Outputs | Clear export listing/count/sizes. `run_report` may skip entries (`NoReportFoundError` warned); do not claim success from path existence alone. |
+| Caveats (CR-8) | Uses internal modules (`core.paths`, `core.services`, `core.progress`), not a stable public notebook API. `AppService.prepare_app()` applies global `logging.config.dictConfig()` and resolves log handler paths — restart the kernel to reset state in long-lived sessions. Bypasses singleton/public wrappers (`init`/`list-reports` remain user-dir fixed; public `run_report*`/`initialize_settings` unchanged). Requires a complete valid settings tree. `get_connection()` missing-file errors may mention `init` generically; the Alt A remedy is workspace bootstrap and/or explicit credential copy. |
+| Real E2E evidence (CR-5) | Requires authorized local JupyterLab/classic plus valid external credentials/network. Current sanitized evidence is **BLOCKED** with no success claim (`.ai/evidence/01-jupyter-notebook-e2e.md`). |
+
 
 The `run` CLI command accepts a `--verbosity` (`-v`) flag that controls both log
 output volume and whether progress bars are rendered:
