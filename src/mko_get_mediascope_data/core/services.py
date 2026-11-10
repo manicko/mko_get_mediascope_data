@@ -16,6 +16,7 @@ from mko_get_mediascope_data.core.models import (
     LoggingSettings,
     MediaType,
     ReportSettings,
+    VerbosityMode,
 )
 from mko_get_mediascope_data.core.errors import NoReportFoundError, WrongDataSettings
 from mko_get_mediascope_data.core.network import RETRIABLE_EXCEPTIONS, NetworkClient
@@ -30,6 +31,21 @@ from mko_get_mediascope_data.core.vendor_lifecycle import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def apply_logging_verbosity(mode: VerbosityMode) -> None:
+    """Set the root logger and all handlers to the level mapped from *mode*.
+
+    Handler levels are updated alongside the root logger so configured
+    verbosity takes effect globally even when handlers were set to a higher
+    level by ``dictConfig``.
+    """
+    level = mode.to_logging_level()
+    root = logging.getLogger()
+    root.setLevel(level)
+    for handler in root.handlers:
+        handler.setLevel(level)
+
 
 _CONNECTION_MAP: dict[MediaType, type[MediaVortexTask]] = {
     MediaType.TV: MediaVortexTask,
@@ -90,6 +106,7 @@ class AppService:
                 handler["filename"] = file_path
 
         logging.config.dictConfig(self.app_config.logging_settings.model_dump())
+        apply_logging_verbosity(self.app_config.app_settings.verbosity_mode)
 
     def reload_config(self) -> None:
         """Invalidate cached configuration and re-apply from JSON5 files.

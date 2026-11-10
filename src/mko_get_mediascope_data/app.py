@@ -17,7 +17,7 @@ from rich.progress import BarColumn, Progress, TaskID, TextColumn
 from .core.init_service import init_project
 from .core.models import TaskStatus, VerbosityMode
 from .core.progress import NullProgressReporter, ProgressReporter
-from .core.services import AppService, get_app_service
+from .core.services import AppService, apply_logging_verbosity, get_app_service
 from .core.tasks import TVTask
 from .core.utils import list_files_in_directory
 
@@ -46,15 +46,10 @@ def init(
 def configure_logging_level(mode: VerbosityMode) -> None:
     """Set the root logger and all handlers to the level mapped from *mode*.
 
-    Per RES-02, handler levels are also lowered so that VERBOSE mode
-    (DEBUG) actually surfaces records through handlers whose level was
-    previously higher (e.g. INFO).
+    Delegates to :func:`core.services.apply_logging_verbosity` so CLI and
+    library/service paths share identical verbosity semantics.
     """
-    level = mode.to_logging_level()
-    root = logging.getLogger()
-    root.setLevel(level)
-    for handler in root.handlers:
-        handler.setLevel(level)
+    apply_logging_verbosity(mode)
 
 
 class RichProgressReporter(ProgressReporter):
