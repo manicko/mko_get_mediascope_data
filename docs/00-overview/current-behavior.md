@@ -94,8 +94,9 @@ Sanitized evidence: [`.ai/evidence/01-jupyter-notebook-e2e.md`](../../.ai/eviden
 | Real E2E evidence (CR-5) | Requires authorized local JupyterLab/classic plus valid external credentials/network. Current sanitized evidence is **BLOCKED** with no success claim (`.ai/evidence/01-jupyter-notebook-e2e.md`). |
 
 
-The `run` CLI command accepts a `--verbosity` (`-v`) flag that controls both log
-output volume and whether progress bars are rendered:
+The configured `verbosity_mode` from `app_config.json5` is applied when the service/config is initialized: `AppService.prepare_app()` (`core/services.py`) calls `core.services.apply_logging_verbosity()` after `logging.config.dictConfig(...)`, and `reload_config()` reapplies the configured mode. This makes configured verbosity effective for library/service/notebook usage (for example, `get_app_service()` singleton initialization and `run_report_async`/`run_report` flows).
+
+For the `run` CLI command, `--verbosity` (`-v`) selects the mode for that run; when omitted, the command uses the configured `app_config.app_settings.verbosity_mode`. The resolved mode controls log output volume and whether Rich progress bars are rendered:
 
 | Mode | Logging level | Progress bars |
 |---|---|---|
@@ -105,12 +106,7 @@ output volume and whether progress bars are rendered:
 | `DEBUG` | `DEBUG` — all internal state, API timing, and poll logs | Live 4-bar display (see below) |
 | `SILENT` | `CRITICAL` — all console output suppressed | Suppressed (`NullProgressReporter`) |
 
-`configure_logging_level` (`app.py:46-57`) sets the root logger level **and**
-every handler level to the mapped value, so previously-capped handler levels
-(e.g. `INFO` from `log_config.json5`) are lowered when `VERBOSE` or `DEBUG` is selected.
-The flag does not affect the JSON5 file contents or pipeline logic — it is
-purely a presentation concern. The mapping is defined by
-`VerbosityMode.to_logging_level()` in `core/models.py:60-73`.
+`app.configure_logging_level()` (`app.py:46-57`) delegates to `core.services.apply_logging_verbosity()`, setting the root logger level **and** every handler level to the mapped value so previously-capped handler levels (e.g. `INFO` from `log_config.json5`) are lowered when `VERBOSE` or `DEBUG` is selected. The CLI `run` command applies the resolved mode after service resolution, so an explicit `--verbosity` flag overrides the configured verbosity for that run. Progress bar rendering and CLI console-message suppression remain controlled by the CLI run mode as described; verbosity does not affect JSON5 file contents or data/export pipeline logic. The mapping is defined by `VerbosityMode.to_logging_level()` in `core/models.py:60-73`.
 
 **Progress bars.** When verbosity is `DEFAULT`, `VERBOSE`, or `DEBUG`, the CLI creates a
 `RichProgressReporter` (`app.py:60-204`) that renders four fixed-position bars — one per task lifecycle status (`QUEUED`, `SENT`, `COMPLETED`, `FAILED`).
@@ -388,7 +384,7 @@ a swallowed `FileExistsError`. All of these have been **resolved by W-02**.
 | `compression` | File extension and on-disk compression |
 | `data_lang` | `ru` → slice fields `*EName` are requested as `*Name` (`utils.en_to_ru`, `services.py:130-131`) |
 | `multiple_files` + `time_unit` | Export granularity. When `multiple_files=true` (default), the clamped period is sliced directly by `time_unit` into one interval per unit — no year pre-splitting, so intervals can cross calendar-year boundaries, and each interval is ≤366 days by construction. When `multiple_files=false`, `time_unit` is unused: the period is a single interval unless it spans >366 days (`MAX_PERIOD_DAYS = 366`, `utils.py:27`), in which case calendar-year splitting (`utils.split_period_by_year`) enforces the API's per-task limit. (`reports.py:505-522`) |
-| `verbosity_mode` | Sets the log level (`QUIET`→WARNING, `DEFAULT`→WARNING, `VERBOSE`→INFO, `DEBUG`→DEBUG, `SILENT`→CRITICAL) and whether Rich progress bars render (QUIET and SILENT suppress them; DEFAULT/VERBOSE/DEBUG show 4 bars per report). See [Console verbosity and progress bars](#console-verbosity-and-progress-bars) for the full model. |
+| `verbosity_mode` | Configured verbosity applied in the service lifecycle (`AppService.prepare_app()` via `core.services.apply_logging_verbosity()`, after `dictConfig`; reapplied on `reload_config()`), so library/service/notebook logging honors `app_config.json5`. The CLI `run` command may override it for that run with `--verbosity` (or use the configured mode when omitted). Log/root-handler levels follow the resolved/applied mode (`QUIET`→WARNING, `DEFAULT`→WARNING, `VERBOSE`→INFO, `DEBUG`→DEBUG, `SILENT`→CRITICAL); Rich progress bar rendering and CLI console-message suppression remain controlled by the CLI run mode (QUIET/SILENT suppress bars). Does not affect data/export pipeline behavior. See [Console verbosity and progress bars](#console-verbosity-and-progress-bars) for the full model. |
 | `max_tasks` (100) and `NetworkClient` limits (5 concurrent HTTP calls, 10 attempts, 2 s base sleep) | Concurrency and retry behavior; see [Async Concurrency Architecture](async-concurrency-architecture.md) for the intentional two-level design |
 | Row-count limit on results | **None.** `resultBody` of any size is always passed through to `result2table`/`DataFrame` materialization; there is no configurable or hardcoded cap (`max_result_rows` was removed in W-13). |
 

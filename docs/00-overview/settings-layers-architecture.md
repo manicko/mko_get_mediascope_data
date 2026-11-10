@@ -169,7 +169,7 @@ never forwarded into the API parameter dict.
 
 | Setting | Effect |
 |---|---|
-| `verbosity_mode` | Console verbosity and log level: `QUIET`→WARNING (progress bars suppressed), `DEFAULT`→WARNING (progress bars shown), `VERBOSE`→INFO (progress bars shown), `DEBUG`→DEBUG (progress bars shown), `SILENT`→CRITICAL (progress bars suppressed, all console output suppressed). Mapped via `VerbosityMode.to_logging_level()` (`core/models.py:60-73`). Injected at the CLI layer by `configure_logging_level()` (`app.py:46-57`); does not affect pipeline behavior. See [Console verbosity and progress bars](current-behavior.md#console-verbosity-and-progress-bars) for the full model. |
+| `verbosity_mode` | Console verbosity and log level: `QUIET`→WARNING (progress bars suppressed), `DEFAULT`→WARNING (progress bars shown), `VERBOSE`→INFO (progress bars shown), `DEBUG`→DEBUG (progress bars shown), `SILENT`→CRITICAL (progress bars suppressed, all console output suppressed). Mapped via `VerbosityMode.to_logging_level()` (`core/models.py:60-73`). Applied in the service lifecycle by `AppService.prepare_app()` via `core.services.apply_logging_verbosity()` (after `logging.config.dictConfig(...)`), so the configured mode affects library/service/notebook logging and is reapplied on `reload_config()`. The CLI `run` command can override it for that run with `--verbosity` via `app.configure_logging_level()` (which delegates to the core helper). This does not affect data/export pipeline behavior. See [Console verbosity and progress bars](current-behavior.md#console-verbosity-and-progress-bars) for the full model. |
 
 ### Template Conformance Rules
 
