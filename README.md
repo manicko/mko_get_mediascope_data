@@ -133,6 +133,12 @@ uv run -m mko_get_mediascope_data run --verbosity VERBOSE ~/.config/mko_get_medi
 
 # Run quietly (no progress bars, warnings only)
 uv run -m mko_get_mediascope_data run --verbosity QUIET ~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5
+
+# Run to a custom export directory for this run only (overrides configured export_folder)
+uv run -m mko_get_mediascope_data run --export-folder ./exports ~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5
+
+# Run to an absolute or home directory path
+uv run -m mko_get_mediascope_data run --export-folder ~/data/reports ~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5
 ```
 
 ## 🔌 Public API (scripts, Airflow, notebooks)
@@ -163,6 +169,18 @@ from mko_get_mediascope_data import run_report_async
 
 await run_report_async(
     "~/.config/mko_get_mediascope_data/settings/reports/nat_tv_brands_last.json5"
+)
+```
+
+**Per-run export folder override (optional):** Both `run_report(report_path, progress=None, *, export_folder=None)` and `run_report_async(report_path, progress=None, *, export_folder=None)` accept an optional keyword-only `export_folder` (str | Path). When provided, it replaces the configured `export_folder` **for that run only** (no config/global mutation; precedence over configured value). Each report entry’s output is written to `<effective_base>/<relative_path>` (the base is replaced while `relative_path` is preserved). Relative override paths are resolved/absolutized anchored to the **current working directory (CWD)**; `~` is supported. Empty/blank strings are rejected with `ValueError`. `None` means use the configured export folder. The returned export paths reflect the actual destinations used for the run. 
+
+```python
+from mko_get_mediascope_data import run_report
+
+# Export to a custom directory for this run only
+run_report(
+    "settings/reports/nat_tv_brands_last.json5",
+    export_folder="./exports",
 )
 ```
 

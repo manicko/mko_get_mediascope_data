@@ -50,9 +50,9 @@ code.
 |---|---|---|
 | Console script | `mko-get-mediascope <command>` | `pyproject.toml:44` → `mko_get_mediascope_data.app:app` |
 | Python module | `uv run -m mko_get_mediascope_data <command>` (or `python -m …`) | `__main__.py:1-4` imports `app` from `app.py` |
-| Library (sync) | `from mko_get_mediascope_data import run_report; run_report("report.json5", progress=None)` | `app.py:311-344` (accepts optional `progress`; delegates to `run_report_async` via `asyncio.run`). **Not safe in a running event loop** — if `asyncio.get_running_loop()` succeeds, `run_report` raises `RuntimeError` (naming `run_report_async` as the alternative) before constructing the coroutine, so no `run_report_async` coroutine is ever left unawaited. Synchronous scripts and Airflow tasks use this; Jupyter/IPython and other active-loop hosts use `await run_report_async(...)` instead. Re-exported lazily via PEP 562 `__getattr__` in `__init__.py:35-54` |
-| Library (async) | `from mko_get_mediascope_data import run_report_async` | `app.py:290-308` (accepts optional `progress: ProgressReporter \| None`) — the supported entry point for Jupyter/IPython, FastAPI handlers, and other hosts with a running event loop |
-| Library (setup) | `initialize_settings(force=False)` | `app.py:347-349` → `init_service.init_project` (`init_service.py:93`) |
+| Library (sync) | `from mko_get_mediascope_data import run_report; run_report("report.json5", progress=None, *, export_folder=None)` | `app.py:340-391` (keyword-only `export_folder: str \| Path \| None`; accepts optional `progress`; delegates to `run_report_async` via `asyncio.run`). **Not safe in a running event loop** — if `asyncio.get_running_loop()` succeeds, `run_report` raises `RuntimeError` (naming `run_report_async` as the alternative) before constructing the coroutine. Synchronous scripts and Airflow tasks use this; Jupyter/IPython and other active-loop hosts use `await run_report_async(...)` instead. Re-exported lazily via PEP 562 `__getattr__` in `__init__.py:35-54` |
+| Library (async) | `from mko_get_mediascope_data import run_report_async` | `app.py:312-338` (keyword-only `export_folder: str \| Path \| None`; accepts optional `progress: ProgressReporter \| None`) — the supported entry point for Jupyter/IPython, FastAPI handlers, and other hosts with a running event loop |
+| Library (setup) | `initialize_settings(force=False)` | `app.py:393-395` → `init_service.init_project` (`init_service.py:93`) |
 
 Both library functions delegate to `AppService.run_report`
 (`services.py:167`), the same method the CLI uses.
@@ -62,7 +62,7 @@ Both library functions delegate to `AppService.run_report`
 | Command | Arguments / options | Behavior |
 |---|---|---|
 | `init` | `--force / -f` | Copies the package's bundled `settings/` tree into the user settings folder via `_copy_templates` (`init_service.py:37-57`, force skip at `:53-54`); also runs the legacy credential rename `_migrate_old_credential_name` (`init_service.py:60-90`); without `--force`, existing files are kept |
-| `run` | `REPORT` (required, must exist, must be a file), `--verbosity [QUIET|DEFAULT|VERBOSE|DEBUG|SILENT] / -v` (default: from config) | Runs the report(s) in the JSON5 file (`app.py:222-271`); bootstraps the service via `_get_app_service_or_exit()` (`app.py:206-219`) before configuring logging and dispatching to `asyncio.run(run_report_async(...))` |
+| `run` | `REPORT` (required, must exist, must be a file), `--verbosity [QUIET\|DEFAULT\|VERBOSE\|DEBUG\|SILENT] / -v` (default: from config), `--export-folder` (Path \| None, no short alias) | Runs the report(s) in the JSON5 file (`app.py:222-310`). Bootstraps via `_get_app_service_or_exit()` (`app.py:206-219`) before configuring logging and dispatching to `asyncio.run(run_report_async(..., export_folder=export_folder))`. When `--export-folder` is provided, it replaces the configured export base for this run only (takes precedence), while preserving each report entry’s `relative_path`; relative paths are resolved/absolutized anchored to the **current working directory (CWD)**; `~` supported; empty/blank rejected with `ValueError`. Effective export paths and resume/check-done behavior are coherent with the overridden destination. |
 | `list-reports` | — | Lists `*.json5` files (recursive) under the user settings `reports/` folder (`app.py:274-286`); also bootstraps via `_get_app_service_or_exit()` (`app.py:206-219`) |
 
 Discrepancies between the README and the actual CLI, verified by invoking the
@@ -135,7 +135,7 @@ the `ProgressReporter` protocol without importing Rich).
 |---|---|---|
 | Package templates | `<package>/settings/` (app_config, log_config, connections, defaults, reports) | `paths.py:44-46` (`app_settings_dir`) |
 | User settings | `platformdirs.user_config_dir("mko_get_mediascope_data")/settings/` — on the investigation machine this resolves to `…\AppData\Local\mko_get_mediascope_data\mko_get_mediascope_data\settings` | `paths.py:9` (`USER_DIR`), `:40-42` (`user_settings_dir`) |
-| Export root | `app_config.json5 → export_folder`, resolved against the user settings folder; default `output` | `services.py:79-83`, `settings/app_config.json5` |
+| Export root | `app_config.json5 → export_folder`, resolved against the user settings folder; default `output`. **Per-run override:** `run_report`/`run_report_async`/CLI `--export-folder` can replace the base for a single invocation (CWD-anchored resolution for relative override paths; `~` supported; empty/blank rejected with `ValueError`). The override does not mutate configuration or affect subsequent runs; each entry’s `relative_path` is preserved. | `core/services.py:270-400` (`AppService.run_report`, `_resolve_effective_export_base`), `settings/app_config.json5` |
 | Log file | `log_config.json5 → handlers.rotating_file.filename` (`log.log`), resolved against the user settings folder | `services.py:58-65` (`prepare_app`), `settings/log_config.json5` |
 | Mediascope credentials | `<user settings>/connections/mediascope.json` (username, passw, client_id, client_secret, auth_server, root_url) | `paths.py:60-81` (`connection_config`), `settings/connections/` |
 
@@ -163,18 +163,21 @@ Two startup defects are relevant to configuration handling:
 
 ### Scenario: `run` — step by step
 
-Entry: `run <report.json5>` → `_get_app_service_or_exit()` (bootstrap boundary, `app.py:206-219`) → resolve `mode` from the `-v` flag or `app_config` (`app.py:248-252`) → `configure_logging_level(mode)` (`app.py:253`) → `asyncio.run(run_report_async(report, progress=reporter))` (`app.py:258-264`),
+Entry: `run <report.json5>` [with optional `--export-folder`, `-v`] → `_get_app_service_or_exit()` (bootstrap boundary, `app.py:206-219`) → resolve `mode` from the `-v` flag or `app_config` (`app.py:248-252`) → `configure_logging_level(mode)` (`app.py:253`) → `asyncio.run(run_report_async(report, progress=reporter, export_folder=export_folder))` (`app.py:258-286`),
 where `reporter` is a `RichProgressReporter` in DEFAULT/VERBOSE/DEBUG modes and
 omitted (→ `NullProgressReporter`) in QUIET and SILENT modes. `run_report_async` delegates
-to `AppService.run_report` (`services.py:167-233`).
+to `AppService.run_report` (`core/services.py:270+`).
+
+When `--export-folder` (or API `export_folder`) is provided, `AppService.run_report` uses a run-scoped effective export base: if non-`None`, `_resolve_effective_export_base()` normalizes via `Path(...).expanduser().resolve()` anchored to **CWD** for relative paths, rejects empty/blank strings with `ValueError`, ensures the directory, and returns it (no mutation of service config/caches/global state). The base replaces the configured `app_config.app_settings.export_folder` for this invocation only; each entry’s `relative_path` is preserved and composed as `<effective_base>/<relative_path>`. Resume/check-done, artifacts, and returned export paths are coherent with the overridden destination.
 
 1. **Parse and validate.** `get_report_settings` iterates the JSON5 list and
-   constructs `ReportSettings(**entry)` per entry (`services.py:86-98`). A
+   constructs `ReportSettings(**entry)` per entry (`core/services.py:86-98`). A
    validation error in any entry aborts the whole file: the generator logs the
-   exception and re-raises (`services.py:96-98`).
-2. **Per entry** (`services.py:156-204`):
-   a. `export_path = export_folder / report_settings.relative_path`, created if
-   missing (`services.py:170-171`).
+   exception and re-raises (`core/services.py:96-98`).
+2. **Per entry** (`core/services.py:270+`):
+   a. `export_path = export_folder / report_settings.relative_path` where `export_folder` is the effective base (override if provided, otherwise configured base resolved via `self.export_folder`), created if
+   missing.
+   b. ...
    b. `get_data_settings` builds the API parameters: the DEFAULT template for
    `(media, report_type)` is loaded (`services.py:100-114`, `get_default_data_settings`),
    then `merge_data_settings` overlays the subtype block and report deltas
