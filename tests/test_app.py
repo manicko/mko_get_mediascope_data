@@ -39,17 +39,24 @@ def test_cli_init_force_flag(mocker, tmp_path):
 
 
 def test_cli_run_invokes_report(mocker, tmp_path):
-    """`run` command calls get_app_service().run_report with the given path."""
+    """`run` command calls run_report_async with the given path."""
     report_file = tmp_path / "report.json5"
     report_file.write_text("{}", encoding="utf-8")
     mock_service = mocker.MagicMock()
     mock_service.run_report = AsyncMock(return_value=[tmp_path / "output.csv"])
     mock_service.app_config.app_settings.verbosity_mode = VerbosityMode.DEFAULT
     mocker.patch("mko_get_mediascope_data.app.get_app_service", return_value=mock_service)
+    mock_run_async = mocker.patch(
+        "mko_get_mediascope_data.app.run_report_async", new=AsyncMock()
+    )
     runner = CliRunner()
     result = runner.invoke(app, ["run", str(report_file)])
     assert result.exit_code == 0
-    mock_service.run_report.assert_awaited_once()
+    mock_run_async.assert_awaited_once()
+    args, kwargs = mock_run_async.await_args
+    assert args == (report_file,)
+    assert "progress" in kwargs
+    assert kwargs["export_folder"] is None
     assert "Running report" in result.stdout
     assert "Report completed" in result.stdout
 
@@ -363,6 +370,76 @@ def test_run_report_in_running_host_loop_has_actionable_contract():
     )
 
     assert "run_report_async" in (run_report.__doc__ or "")
+
+
+def test_cli_run_forwards_export_folder_option(mocker, tmp_path):
+    """`run --export-folder` forwards the override in progress mode."""
+    report_file = tmp_path / "report.json5"
+    report_file.write_text("{}", encoding="utf-8")
+    export_dir = tmp_path / "exports"
+    mock_service = mocker.MagicMock()
+    mock_service.app_config.app_settings.verbosity_mode = VerbosityMode.DEFAULT
+    mocker.patch("mko_get_mediascope_data.app.get_app_service", return_value=mock_service)
+    mock_run_async = mocker.patch(
+        "mko_get_mediascope_data.app.run_report_async", new=AsyncMock()
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["run", str(report_file), "--export-folder", str(export_dir)])
+    assert result.exit_code == 0
+    mock_run_async.assert_awaited_once()
+    args, kwargs = mock_run_async.await_args
+    assert args == (report_file,)
+    assert kwargs["export_folder"] == export_dir
+    assert kwargs["progress"] is not None
+    assert "Running report" in result.stdout
+    assert "Report completed" in result.stdout
+
+
+def test_cli_run_forwards_export_folder_option_quiet(mocker, tmp_path):
+    """`run --export-folder` forwards the override in QUIET mode (no progress)."""
+    report_file = tmp_path / "report.json5"
+    report_file.write_text("{}", encoding="utf-8")
+    export_dir = tmp_path / "exports"
+    mock_service = mocker.MagicMock()
+    mock_service.app_config.app_settings.verbosity_mode = VerbosityMode.DEFAULT
+    mocker.patch("mko_get_mediascope_data.app.get_app_service", return_value=mock_service)
+    mock_run_async = mocker.patch(
+        "mko_get_mediascope_data.app.run_report_async", new=AsyncMock()
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            str(report_file),
+            "--export-folder",
+            str(export_dir),
+            "--verbosity",
+            "QUIET",
+        ],
+    )
+    assert result.exit_code == 0
+    mock_run_async.assert_awaited_once()
+    args, kwargs = mock_run_async.await_args
+    assert args == (report_file,)
+    assert kwargs["export_folder"] == export_dir
+    assert "progress" not in kwargs
+    assert "Running report" not in result.stdout
+    assert "Report completed" in result.stdout
+
+
+def test_cli_run_help_documents_export_folder():
+    """`run --help` documents --export-folder and key semantics."""
+    runner = CliRunner()
+    result = runner.invoke(app, ["run", "--help"])
+    assert result.exit_code == 0
+    out = result.stdout
+    assert "--export-folder" in out
+    assert "this run only" in out
+    assert "configured export base" in out or "configured export_folder" in out
+    assert "relative_path" in out
+    assert "current working directory" in out
+
 
 def test_run_report_async_forwards_export_folder_override(mocker, tmp_path):
     """run_report_async forwards export_folder to AppService.run_report."""

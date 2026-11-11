@@ -235,8 +235,26 @@ def run(
             help="Output verbosity level (default: from config)",
         ),
     ] = None,
+    export_folder: Annotated[
+        Path | None,
+        typer.Option(
+            "--export-folder",
+            help=(
+                "Override the configured export base for this run only "
+                "(takes precedence over configured export_folder). Replaces the "
+                "export base while preserving each entry's relative_path. Relative "
+                "paths are resolved from the current working directory."
+            ),
+        ),
+    ] = None,
 ):
-    """Run report export"""
+    """Run report export.
+
+    When --export-folder is provided, it replaces the configured export base for
+    this run only (takes precedence over configured export_folder) while
+    preserving each report entry's relative_path layout. Relative override paths
+    are resolved from the current working directory.
+    """
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
 
@@ -259,9 +277,13 @@ def run(
         if mode not in (VerbosityMode.QUIET, VerbosityMode.SILENT):
             reporter = RichProgressReporter()
             with reporter:
-                asyncio.run(run_report_async(report, progress=reporter))
+                asyncio.run(
+                    run_report_async(
+                        report, progress=reporter, export_folder=export_folder
+                    )
+                )
         else:
-            asyncio.run(run_report_async(report))
+            asyncio.run(run_report_async(report, export_folder=export_folder))
         if mode != VerbosityMode.SILENT:
             console.print("[green]✅ Report completed successfully[/green]")
 
