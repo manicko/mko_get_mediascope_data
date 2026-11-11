@@ -638,3 +638,393 @@ async def test_no_overlap_entry_warns_and_continues_later_entries(
         (hermetic_app_service.export_folder / "tv" / "available").glob("*.csv.gz")
     )
     assert len(csv_files) > 0, f"Expected entry 2 CSV output, found {csv_files}"
+
+# ---------------------------------------------------------------------------
+# Per-run export_folder override (B2 / spec 03, CR-1..CR-8)
+# ---------------------------------------------------------------------------
+
+
+def _single_entry_report(tmp_path: Path, relative_path: str = "finance/raw_data") -> Path:
+    entry = [
+        {
+            "media": MediaType.TV.value,
+            "report_type": ReportType.crosstab.value,
+            "report_subtype": ReportSubtype.TOP_NAT_TV_ADVERTISERS.value,
+            "relative_path": relative_path,
+            "data_lang": "ru",
+            "period": {"date_filter": ["2025-01-01", "2025-01-07"]},
+            "target_audiences": {"all 18+": "age >= 18"},
+        }
+    ]
+    config_file = tmp_path / f"single_{relative_path.replace('/', '_')}.json5"
+    config_file.write_text(json5.dumps(entry), encoding="utf-8")
+    return config_file
+
+
+def _two_entry_report(tmp_path: Path) -> Path:
+    entries = [
+        {
+            "media": MediaType.TV.value,
+            "report_type": ReportType.crosstab.value,
+            "report_subtype": ReportSubtype.TOP_NAT_TV_ADVERTISERS.value,
+            "relative_path": "tv/raw_data",
+            "data_lang": "ru",
+            "period": {"date_filter": ["2025-01-01", "2025-01-07"]},
+            "target_audiences": {"all 18+": "age >= 18"},
+        },
+        {
+            "media": MediaType.TV.value,
+            "report_type": ReportType.crosstab.value,
+            "report_subtype": ReportSubtype.DYNAMICS_BY_SPOTS.value,
+            "relative_path": "tv/dynamic_spots",
+            "data_lang": "ru",
+            "period": {"date_filter": ["2025-01-01", "2025-01-07"]},
+            "target_audiences": {"all 18+": "age >= 18"},
+        },
+    ]
+    config_file = tmp_path / "multi_override.json5"
+    config_file.write_text(json5.dumps(entries), encoding="utf-8")
+    return config_file
+
+
+async def test_run_report_default_export_folder_unchanged(
+    tmp_path: Path,
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+) -> None:
+    """Omitted/None export_folder preserves configured-base behavior (CR-3)."""
+    config_file = _single_entry_report(tmp_path)
+    report_settings = ReportSettings(**json5.loads(config_file.read_text(encoding="utf-8"))[0])
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = _compute_result_df(
+        hermetic_app_service, report_settings
+    )
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(
+        side_effect=_delegating_call_effect(mock_report_service)
+    )
+    mock_network_client.has_outstanding_deferred.return_value = False
+    mocker.patch(
+        "mko_get_mediascope_data.core.services.NetworkClient",
+        return_value=mock_network_client,
+    )
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    export_paths = await hermetic_app_service.run_report(config_file)
+
+    expected_base = hermetic_app_service.app_paths.user_dir / "output"
+    assert export_paths == [expected_base / "finance" / "raw_data"]
+    assert export_paths[0].is_dir()
+    assert "export_folder" in hermetic_app_service.__dict__
+    assert hermetic_app_service.app_config.app_settings.export_folder == Path("output")
+
+
+async def test_run_report_explicit_none_export_folder_uses_default(
+    tmp_path: Path,
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+) -> None:
+    """Explicit export_folder=None behaves identically to default (CR-3)."""
+    config_file = _single_entry_report(tmp_path, relative_path="tv/default_none")
+    report_settings = ReportSettings(**json5.loads(config_file.read_text(encoding="utf-8"))[0])
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = _compute_result_df(
+        hermetic_app_service, report_settings
+    )
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(
+        side_effect=_delegating_call_effect(mock_report_service)
+    )
+    mock_network_client.has_outstanding_deferred.return_value = False
+    mocker.patch(
+        "mko_get_mediascope_data.core.services.NetworkClient",
+        return_value=mock_network_client,
+    )
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    export_paths = await hermetic_app_service.run_report(
+        config_file, export_folder=None
+    )
+
+    expected_base = hermetic_app_service.app_paths.user_dir / "output"
+    assert export_paths == [expected_base / "tv" / "default_none"]
+
+
+async def test_run_report_override_routes_exports_and_returned_paths(
+    tmp_path: Path,
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+) -> None:
+    """Provided override uses one run-scoped base for per-entry paths (CR-4/6/7)."""
+    config_file = _single_entry_report(tmp_path)
+    report_settings = ReportSettings(**json5.loads(config_file.read_text(encoding="utf-8"))[0])
+    override_base = tmp_path / "override_base"
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.return_value = _compute_result_df(
+        hermetic_app_service, report_settings
+    )
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(
+        side_effect=_delegating_call_effect(mock_report_service)
+    )
+    mock_network_client.has_outstanding_deferred.return_value = False
+    mocker.patch(
+        "mko_get_mediascope_data.core.services.NetworkClient",
+        return_value=mock_network_client,
+    )
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    captured_reports: list[object] = []
+    real_tv_media_report = __import__(
+        "mko_get_mediascope_data.core.reports", fromlist=["TVMediaReport"]
+    ).TVMediaReport
+
+    def capture_report(*args, **kwargs):
+        rep = real_tv_media_report(*args, **kwargs)
+        captured_reports.append(rep)
+        return rep
+
+    mocker.patch(
+        "mko_get_mediascope_data.core.services.TVMediaReport",
+        side_effect=capture_report,
+    )
+
+    export_paths = await hermetic_app_service.run_report(
+        config_file, export_folder=override_base
+    )
+
+    expected = override_base.resolve() / "finance" / "raw_data"
+    assert export_paths == [expected]
+    assert expected.is_dir()
+    assert list(expected.rglob("*.csv.gz"))
+    assert captured_reports
+    assert Path(captured_reports[0].export_path) == expected  # type: ignore[attr-defined]
+    default_base = hermetic_app_service.app_paths.user_dir / "output"
+    assert not list((default_base / "finance" / "raw_data").rglob("*.csv.gz"))
+
+
+async def test_run_report_override_applies_uniformly_to_multi_entry(
+    tmp_path: Path,
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+) -> None:
+    """One override base is applied to every entry in the run (CR-4)."""
+    config_file = _two_entry_report(tmp_path)
+    entries = json5.loads(config_file.read_text(encoding="utf-8"))
+    settings_1 = ReportSettings.model_validate(entries[0])
+    settings_2 = ReportSettings.model_validate(entries[1])
+    override_base = tmp_path / "multi_override_base"
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.side_effect = [
+        _compute_result_df(hermetic_app_service, settings_1),
+        _compute_result_df(hermetic_app_service, settings_2),
+    ]
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(
+        side_effect=_delegating_call_effect(mock_report_service)
+    )
+    mock_network_client.has_outstanding_deferred.return_value = False
+    mocker.patch(
+        "mko_get_mediascope_data.core.services.NetworkClient",
+        return_value=mock_network_client,
+    )
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    export_paths = await hermetic_app_service.run_report(
+        config_file, export_folder=override_base
+    )
+
+    resolved = override_base.resolve()
+    assert export_paths == [
+        resolved / "tv" / "raw_data",
+        resolved / "tv" / "dynamic_spots",
+    ]
+    assert list((resolved / "tv" / "raw_data").rglob("*.csv.gz"))
+    assert list((resolved / "tv" / "dynamic_spots").rglob("*.csv.gz"))
+
+
+async def test_run_report_override_resume_coherence_against_overridden_destination(
+    tmp_path: Path,
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+) -> None:
+    """check_done/resume is evaluated against overridden per-entry destination (CR-7)."""
+    config_file = _single_entry_report(tmp_path)
+    override_base = tmp_path / "resume_override"
+    target_dir = override_base / "finance" / "raw_data"
+    target_dir.mkdir(parents=True)
+    done_name = "2025-01-01_2025-01-07_all 18+.csv.gz"
+    (target_dir / done_name).write_bytes(b"done")
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(
+        side_effect=_delegating_call_effect(mock_report_service)
+    )
+    mock_network_client.has_outstanding_deferred.return_value = False
+    mocker.patch(
+        "mko_get_mediascope_data.core.services.NetworkClient",
+        return_value=mock_network_client,
+    )
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    export_paths = await hermetic_app_service.run_report(
+        config_file, export_folder=override_base
+    )
+
+    assert export_paths == [target_dir.resolve()]
+    mock_report_service.send_task.assert_not_called()
+    mock_report_service.get_result.assert_not_called()
+    # A file placed only in the default location must not count as done here.
+    default_dir = hermetic_app_service.app_paths.user_dir / "output" / "finance" / "raw_data"
+    assert not (default_dir / done_name).exists()
+
+
+async def test_run_report_override_isolation_no_leak_across_sequential_runs(
+    tmp_path: Path,
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+) -> None:
+    """Override run must not leak into subsequent default run (CR-5)."""
+    config_a = _single_entry_report(tmp_path, relative_path="finance/raw_data")
+    config_b = _single_entry_report(tmp_path, relative_path="tv/next")
+    settings_a = ReportSettings(**json5.loads(config_a.read_text(encoding="utf-8"))[0])
+    settings_b = ReportSettings(**json5.loads(config_b.read_text(encoding="utf-8"))[0])
+    override_base = tmp_path / "isolated_override"
+    default_base = hermetic_app_service.app_paths.user_dir / "output"
+
+    hermetic_app_service.__dict__.pop("export_folder", None)
+    original_app_config = hermetic_app_service.app_config
+    original_settings_folder = hermetic_app_service.app_config.app_settings.export_folder
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_report_service.build_task.return_value = {"task_json": "mock"}
+    mock_report_service.send_task.return_value = MOCK_TASK_KEY
+    mock_report_service.get_status.return_value = {"taskStatus": "DONE"}
+    mock_report_service.get_result.return_value = {"result": "mock_data"}
+    mock_report_service.result2table.side_effect = [
+        _compute_result_df(hermetic_app_service, settings_a),
+        _compute_result_df(hermetic_app_service, settings_b),
+    ]
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(
+        side_effect=_delegating_call_effect(mock_report_service)
+    )
+    mock_network_client.has_outstanding_deferred.return_value = False
+    mocker.patch(
+        "mko_get_mediascope_data.core.services.NetworkClient",
+        return_value=mock_network_client,
+    )
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    export_paths_override = await hermetic_app_service.run_report(
+        config_a, export_folder=override_base
+    )
+
+    assert export_paths_override == [override_base.resolve() / "finance" / "raw_data"]
+    assert "export_folder" not in hermetic_app_service.__dict__
+    assert hermetic_app_service.app_config is original_app_config
+    assert hermetic_app_service.app_config.app_settings.export_folder == original_settings_folder
+
+    export_paths_default = await hermetic_app_service.run_report(config_b)
+
+    assert export_paths_default == [default_base / "tv" / "next"]
+    assert hermetic_app_service.export_folder == default_base
+    assert hermetic_app_service.app_config.app_settings.export_folder == original_settings_folder
+    assert not list((override_base.resolve() / "tv" / "next").rglob("*.csv.gz"))
+
+
+async def test_run_report_override_cwd_relative_and_tilde_paths(
+    tmp_path: Path,
+    monkeypatch,
+    mocker,
+    dummy_df: pd.DataFrame,
+    hermetic_app_service: AppService,
+) -> None:
+    """CWD-relative override resolves from CWD; ~ expands before resolve (U1/CR-6)."""
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    home_dir = tmp_path / "home"
+    home_dir.mkdir()
+    monkeypatch.setenv("HOME", str(home_dir))
+    monkeypatch.setenv("USERPROFILE", str(home_dir))
+
+    mock_report_service = MagicMock()
+    mock_report_service.cats = MagicMock()
+    mock_report_service.cats.get_availability_period.return_value = dummy_df
+    mock_network_client = MagicMock()
+    mock_network_client.call = AsyncMock(
+        side_effect=_delegating_call_effect(mock_report_service)
+    )
+    mock_network_client.has_outstanding_deferred.return_value = False
+    mocker.patch(
+        "mko_get_mediascope_data.core.services.NetworkClient",
+        return_value=mock_network_client,
+    )
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
+    cfg_rel = _single_entry_report(tmp_path, relative_path="finance/rel")
+    rel_dir = workdir / "rel_base" / "finance" / "rel"
+    rel_dir.mkdir(parents=True)
+    (rel_dir / "2025-01-01_2025-01-07_all 18+.csv.gz").write_bytes(b"done")
+    paths_rel = await hermetic_app_service.run_report(
+        cfg_rel, export_folder="rel_base"
+    )
+    assert paths_rel == [(workdir / "rel_base").resolve() / "finance" / "rel"]
+
+    cfg_tilde = _single_entry_report(tmp_path, relative_path="finance/tilde")
+    tilde_dir = Path("~/tilde_base").expanduser() / "finance" / "tilde"
+    tilde_dir.mkdir(parents=True)
+    (tilde_dir / "2025-01-01_2025-01-07_all 18+.csv.gz").write_bytes(b"done")
+    paths_tilde = await hermetic_app_service.run_report(
+        cfg_tilde, export_folder="~/tilde_base"
+    )
+    assert paths_tilde == [
+        Path("~/tilde_base").expanduser().resolve() / "finance" / "tilde"
+    ]
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\n\t"])
+async def test_run_report_override_rejects_blank_string(
+    hermetic_app_service: AppService, tmp_path: Path, blank: str
+) -> None:
+    """Blank/whitespace-only override is rejected with clear ValueError (U4)."""
+    config_file = _single_entry_report(tmp_path)
+    with pytest.raises(ValueError, match="export_folder override must not be empty or blank"):
+        await hermetic_app_service.run_report(config_file, export_folder=blank)

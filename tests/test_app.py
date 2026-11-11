@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import sys
 import warnings
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -105,7 +106,9 @@ def test_run_report_sync_wrapper(mocker, tmp_path):
     mock_async = mocker.patch("mko_get_mediascope_data.app.run_report_async")
     mock_run = mocker.patch("asyncio.run")
     run_report(str(report_file))
-    mock_async.assert_called_once_with(str(report_file), progress=None)
+    mock_async.assert_called_once_with(
+        str(report_file), progress=None, export_folder=None
+    )
     mock_run.assert_called_once()
 
 
@@ -125,10 +128,10 @@ def test_sync_wrapper_drives_requested_async_report_work(mocker, tmp_path):
     report_file.write_text("{}", encoding="utf-8")
 
     progress = mocker.MagicMock()
-    recorded: list[tuple[str, object]] = []
+    recorded: list[tuple[str, object, object]] = []
 
-    async def recording_stub(report_path, *, progress=None):
-        recorded.append((report_path, progress))
+    async def recording_stub(report_path, *, progress=None, export_folder=None):
+        recorded.append((report_path, progress, export_folder))
 
     mocker.patch(
         "mko_get_mediascope_data.app.run_report_async", new=recording_stub
@@ -137,7 +140,7 @@ def test_sync_wrapper_drives_requested_async_report_work(mocker, tmp_path):
     run_report(str(report_file), progress=progress)
 
     # The async stub body must have actually run (work was delivered).
-    assert recorded == [(str(report_file), progress)]
+    assert recorded == [(str(report_file), progress, None)]
 
 
 def test_initialize_settings_wrapper(mocker, tmp_path):
@@ -360,3 +363,41 @@ def test_run_report_in_running_host_loop_has_actionable_contract():
     )
 
     assert "run_report_async" in (run_report.__doc__ or "")
+
+def test_run_report_async_forwards_export_folder_override(mocker, tmp_path):
+    """run_report_async forwards export_folder to AppService.run_report."""
+    from mko_get_mediascope_data.app import run_report_async
+
+    report_file = tmp_path / "report.json5"
+    report_file.write_text("{}", encoding="utf-8")
+    mock_service = mocker.MagicMock()
+    mock_service.run_report = AsyncMock(return_value=[tmp_path / "out"])
+    mocker.patch("mko_get_mediascope_data.app.get_app_service", return_value=mock_service)
+    override = tmp_path / "override"
+
+    asyncio.run(run_report_async(report_file, export_folder=override))
+
+    mock_service.run_report.assert_awaited_once_with(
+        Path(report_file),
+        progress=mocker.ANY,
+        export_folder=override,
+    )
+
+
+def test_run_report_sync_forwards_export_folder_override(mocker, tmp_path):
+    """run_report forwards export_folder to run_report_async and drives execution."""
+    from mko_get_mediascope_data.app import run_report
+
+    report_file = tmp_path / "report.json5"
+    report_file.write_text("{}", encoding="utf-8")
+    override = tmp_path / "override"
+    recorded: list[tuple[str, object, object]] = []
+
+    async def recording_stub(report_path, *, progress=None, export_folder=None):
+        recorded.append((report_path, progress, export_folder))
+
+    mocker.patch("mko_get_mediascope_data.app.run_report_async", new=recording_stub)
+
+    run_report(str(report_file), export_folder=override)
+
+    assert recorded == [(str(report_file), None, override)]

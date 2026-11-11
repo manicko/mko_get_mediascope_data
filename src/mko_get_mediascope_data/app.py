@@ -290,6 +290,8 @@ def list_reports():
 async def run_report_async(
     report_path: str | Path,
     progress: ProgressReporter | None = None,
+    *,
+    export_folder: str | Path | None = None,
 ) -> None:
     """
     Async version for environments with a running event loop.
@@ -300,17 +302,24 @@ async def run_report_async(
 
     :param progress: Optional progress reporter. When ``None``,
         a :class:`NullProgressReporter` is used.
+    :param export_folder: Optional per-run export base override. When provided,
+        output paths for this run are resolved from this base; when ``None``,
+        the configured export folder is used.
     """
     path = Path(report_path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     reporter = progress if progress is not None else NullProgressReporter()
-    await get_app_service().run_report(path, progress=reporter)
+    await get_app_service().run_report(
+        path, progress=reporter, export_folder=export_folder
+    )
 
 
 def run_report(
     report_path: str | Path,
     progress: ProgressReporter | None = None,
+    *,
+    export_folder: str | Path | None = None,
 ) -> None:
     """
     Synchronous wrapper for scripts and Airflow tasks.
@@ -323,6 +332,9 @@ def run_report(
 
     :param progress: Optional progress reporter. When ``None``,
         a :class:`NullProgressReporter` is used.
+    :param export_folder: Optional per-run export base override. When provided,
+        output paths for this run are resolved from this base; when ``None``,
+        the configured export folder is used.
 
     Example (synchronous script or Airflow task):
         from mko_get_mediascope_data import run_report
@@ -341,7 +353,9 @@ def run_report(
             "run_report() cannot be called from a running event loop "
             "(e.g. Jupyter/IPython). Use await run_report_async(...) instead."
         )
-    asyncio.run(run_report_async(report_path, progress=progress))
+    asyncio.run(
+        run_report_async(report_path, progress=progress, export_folder=export_folder)
+    )
 
 
 def initialize_settings(force: bool = False) -> Path:

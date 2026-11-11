@@ -254,10 +254,25 @@ class AppService:
             )
             raise
 
+    def _resolve_effective_export_base(self, export_folder: str | Path) -> Path:
+        """Resolve and prepare a run-scoped export base override.
+
+        The override is normalized via ``Path(...).expanduser().resolve()``
+        (CWD-anchored) and ensured as a directory. Service config, caches, and
+        global state are not mutated.
+        """
+        if isinstance(export_folder, str) and export_folder.strip() == "":
+            raise ValueError("export_folder override must not be empty or blank")
+        effective_base = Path(export_folder).expanduser().resolve()
+        self.resolver.ensure_dir(effective_base)
+        return effective_base
+
     async def run_report(
         self,
         report_settings_path: Path,
         progress: ProgressReporter | None = None,
+        *,
+        export_folder: str | Path | None = None,
     ) -> list[Path]:
         reporter = progress if progress is not None else NullProgressReporter()
         report_settings_sequence: Generator[ReportSettings] = self.get_report_settings(
@@ -268,6 +283,11 @@ class AppService:
         exported = 0
         warned = 0
 
+        if export_folder is None:
+            effective_base = self.export_folder
+        else:
+            effective_base = self._resolve_effective_export_base(export_folder)
+
         start_time = datetime.now().replace(microsecond=0)
         logger.info(
             f"{'-' * 10}  Processing started: {start_time} {'-' * 10}"
@@ -277,7 +297,7 @@ class AppService:
         for report_settings in report_settings_sequence:
             attempted += 1
             logger.info(f"Report {idx}: {report_settings.report_subtype}")
-            export_path: Path = Path(self.export_folder / report_settings.relative_path)
+            export_path: Path = Path(effective_base / report_settings.relative_path)
             self.resolver.ensure_dir(export_path)
 
             data_settings: Data = self.get_data_settings(report_settings)
