@@ -1,0 +1,30 @@
+[
+  {
+    "media": "TV",
+    "report_type": "crosstab",
+    "report_subtype": "TOP_NAT_TV_ADVERTISERS", // report type
+    "data_lang": "ru", // set data language
+    "relative_path": "adv_total_m",
+    "multiple_files": true, // If period exceeds 1 year, split exports by month/week
+    "ad_filter": null,
+    "target_audiences": {
+      "all 20-45 BC": "age >= 20 AND age <= 45 AND incomeGroupRussia IN (2,3)",
+      "all 25-55 BC": "age >= 25 AND age <= 55 AND incomeGroupRussia IN (2,3)",
+      "all 30-60 BC": "age >= 30 AND age <= 60 AND incomeGroupRussia IN (2,3)",
+      "m 25-44 BC": "sex = 1 AND age >= 25 AND age <= 44 AND incomeGroupRussia IN (2,3)",
+      "m 25-54 BC": "sex = 1 AND age >= 25 AND age <= 54 AND incomeGroupRussia IN (2,3)",
+      "w 25-55": "sex = 2 and age >= 25 AND age <= 55"
+    },
+    "period": {
+      "date_filter": null, //['2023-09-01', '2023-09-02'], #Null, # Set period explicitly ['2023-09-01', '2023-09-31'] or Null
+      "time_unit": "m", // Split frequency: d/w/m/y
+      "last_time": { //if you need the last few months #
+        "unit_count": 24,
+        "include_current": false
+      }
+    },
+    "slices": [
+      "researchMonth",  // month - can specify at most 1 time slice per task.
+    ]
+  },
+ ]
